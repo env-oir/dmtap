@@ -69,6 +69,7 @@ above and for ordering hints.
 | Relay per-circuit cap | 2 min / 128 KiB | brief hole-punch assist only — not sustained sync |
 | Reachability ladder | IPv6 → hole-punch → relay | prefer direct (§4.3) |
 | Offline-buffer TTL | 20 days | relay-mailbox message hold (§14.5) |
+| Peer-buffer TTL | 20 days | buddy-node ciphertext hold (§4.3, §14.5); not an archive |
 | Inactive-account purge | 90 days | relay-mailbox (§14.5) |
 | Push payload | ≤ 4 KiB, content-free | wake-and-fetch only (§14.3) |
 
@@ -78,6 +79,20 @@ above and for ordering hints.
 |--------:|------|-----|------|------|--------|
 | `0x01` | Ed25519 | X25519 (HPKE) | ChaCha20-Poly1305 | BLAKE3-256 | v0 REQUIRED |
 | `0x02` | Ed25519+ML-DSA-65 | X-Wing (X25519+ML-KEM-768) | ChaCha20-Poly1305 | BLAKE3-256 | PQ target |
+
+## 16.8 Auth, sessions & group ordering
+
+| Parameter | Default | Notes |
+|-----------|---------|-------|
+| DMTAP-Auth session TTL | 24 h | key-bound session lifetime before re-auth (§13.4) |
+| DMTAP-Auth session idle-timeout | 30 min | idle expiry of a key-bound session (§13.4) |
+| RP delegation re-validation interval | ≤ 15 min | RP re-checks status endpoint / KT head (§13.4) |
+| Recovery-weakening veto window | 72 h | delay before a factor-weakening `RecoveryPolicy` change takes effect (§1.4) |
+| Recovery veto quorum | `rotate_threshold` | a veto MUST satisfy this (asymmetric; a single factor cannot veto its own eviction, §1.4) |
+| Committer-liveness timeout | 5 min | pending signed proposal unordered past this → takeover eligible (§5.1) |
+| Committer-takeover hysteresis | 2 consecutive misses | takeover only after the timeout is exceeded twice in a row, to avoid churn on transient NAT/relay blips (§5.1) |
+| **Committer roster quorum** | **> n/2** (⌈(n+1)/2⌉ of current members) | a takeover Commit is valid only with a strict-majority member-signature quorum, so two partitions CANNOT each elect a rival successor (split-brain prevention, §5.1) |
+| Group join-request expiry | 30 days | a `request`-mode join with no admin response is auto-expired/cleaned up (§5.8.2; mirrors requests-area retention §16.5) |
 
 All numeric values here are v0 defaults; a future protocol version MAY revise them, and
 capability negotiation (§10.2) carries any non-default profile.

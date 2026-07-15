@@ -14,10 +14,15 @@ for f in "$SPEC"/[0-9][0-9]-*.md; do
   pandoc "$f" \
     --from=gfm+tex_math_dollars \
     --to=latex \
+    --no-highlight \
     --top-level-division=section \
     --wrap=preserve \
     -o "body/${name}.tex"
 done
+
+# Cleanup: swap Unicode glyphs that some mono/roman fonts lack, inside generated LaTeX only
+# (keeps the canonical Markdown clean). ‖ -> ||, and NBSP normalization.
+perl -CSD -i -pe 's/\x{2016}/||/g; s/\x{00A0}/ /g' body/*.tex
 
 echo "Converted $(ls body/*.tex | wc -l | tr -d ' ') sections."
 

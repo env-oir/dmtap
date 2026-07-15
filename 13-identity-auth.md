@@ -18,8 +18,9 @@ DMTAP-Auth MUST provide:
    verifying a signature from your key; there is no Google/Okta in the middle.
 2. **Phishing resistance** — a signature obtained by a look-alike site MUST NOT authenticate to
    the real site.
-3. **No bearer tokens after login** — sessions are bound to your key (proof-of-possession), so
-   a stolen token is useless without the key.
+3. **No bearer tokens after login (native path)** — native sessions are bound to your key
+   (proof-of-possession), so a stolen token is useless without the key. (The legacy OIDC *bridge*
+   path yields a classical bearer token and forfeits this — see §13.4, §13.6, §13.7.)
 4. **Legacy interoperability** — existing OIDC/OAuth relying parties can consume DMTAP-Auth
    through a compatibility bridge.
 5. **Recoverable & revocable** — losing a device does not lose your identity (§1.4), and a
@@ -49,14 +50,20 @@ DMTAP-Auth introduces almost no new cryptography — it reuses:
      { rp_origin, nonce, issued_at, exp, aud, [scope] }
 4. The challenge is presented to a TRUSTED CLIENT on the user's side (browser/OS/app), which
    binds and displays the VERIFIED rp_origin, and runs a WebAuthn/passkey user-verification
-   ceremony (§13.3.1)
-5. The user's key signs  H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud)  (canonical, §2)
-6. RP verifies the signature against alice's pinned key (§3.4) and that rp_origin == its own
-   origin, nonce unused, not expired → authenticated
+   ceremony (§13.3.1). BEFORE signing, the client generates a fresh per-RP, per-device SESSION
+   keypair (§13.4) and computes  cnf = H(session_pubkey).
+5. The user's key signs  H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ cnf)  (canonical, §2)
+6. RP verifies the signature against alice's pinned key (§3.4), that rp_origin == its own
+   origin, nonce unused, not expired → authenticated, and binds the session ONLY to the key
+   named by cnf (proof-of-possession, §13.4)
 ```
 
 The signed statement is a structured, origin-scoped, nonce-bound challenge (the SIWE/CAIP-122
-pattern, hardened — see §13.7). The `aud` field binds the assertion to the intended RP.
+pattern, hardened — see §13.7). The `aud` field binds the assertion to the intended RP. The
+`cnf` field (confirmation key, RFC 7800 style) binds the assertion to the session key the client
+generated *before* signing, so a captured assertion — including one seen by the bridge (§13.6) —
+**cannot be replayed with an attacker-chosen session key** (session-hijack defense). The RP MUST
+bind the session to `cnf` and to nothing else.
 
 ### 13.3.1 Origin binding is the load-bearing property (normative)
 
@@ -77,16 +84,45 @@ never by the signer trusting a value handed to it by the RP.
   2. a trusted approval surface (the node's own authenticated client/app, or a paired
      passkey) **displays the verified `rp_origin`** to the human and requires explicit
      approval per login;
-  3. the node MUST reject a challenge whose `rp_origin` it cannot attribute to an
-     authenticated request channel, and MUST rate-limit and log approvals (consent-farming
+  3. the node MUST bind the challenge to a **pending, user-initiated login intent** — a nonce
+     the node *itself* minted at the moment the user actively **started** a login on the node's
+     own authenticated client. This is what "authenticated request channel" means: the node only
+     signs a challenge that **matches an intent it originated a request for**. An unsolicited
+     challenge **relayed** by a third party has no matching pending intent and MUST be refused —
+     there is nothing for it to match. The node MUST rate-limit and log approvals (consent-farming
      defense).
 
-  Preferred design: the **passkey/WebAuthn ceremony happens in the user's client**, and the
-  node's key is only invoked *after* a successful local user-verification bound to the origin —
-  i.e. the passkey gates the node's signature. Concretely, use the **WebAuthn PRF extension**
-  (over CTAP2 `hmac-secret`) so the passkey deterministically derives the key that unlocks the
-  node's signing key — the identity key never leaves the node and never touches the RP (the
-  deployed wwWallet pattern). Nodes MUST NOT offer "approve any challenge" modes.
+  Preferred — and, for a remote node, the **only permitted** — design: the **passkey/WebAuthn
+  ceremony happens in the user's client**, and the node's key is only invoked *after* a
+  successful local user-verification bound to the origin — i.e. the passkey gates the node's
+  signature. Concretely, use the **WebAuthn PRF extension** (over CTAP2 `hmac-secret`) so the
+  passkey deterministically derives the key that unlocks the node's signing key — the identity
+  key never leaves the node and never touches the RP (the deployed wwWallet pattern). A **bare
+  node-signed mode** — the node signing on its own authority, without a local
+  user-verification bound to the origin — is **FORBIDDEN** for any remote node. Nodes MUST NOT
+  offer "approve any challenge" modes.
+
+  **Users without a passkey (availability, normative).** The load-bearing requirement is a
+  *trusted client that enforces origin-binding + intent-matching + user-verification* — a FIDO
+  passkey is the strongest such client but not the only permitted one. A user with no
+  passkey/PRF authenticator MAY instead use an **authenticated paired companion client** (their
+  own signed-in Envoir app on a device paired to the node, §5.6) as the trusted client: it
+  originates the login intent, performs user verification (biometric/PIN), and only then
+  authorizes the node's signature.
+
+  **Honest calibration (normative — do not overclaim).** The companion path preserves
+  **intent-matching** (a relayed unsolicited challenge has no matching pending intent and is
+  refused), so it keeps the H1 relay hole closed. But it is **NOT equivalent to a passkey**: a
+  WebAuthn passkey binds the *machine-observed* origin (the browser writes the actual navigated
+  origin into `clientDataJSON` and enforces `rpId` scoping), whereas the companion receives
+  `rp_origin` as *data* and can only *display* it — degrading origin verification to the
+  **user-verified mode that §13.7 limit 1 calls weaker**, leaving residual look-alike/homograph-
+  origin exposure. To restore machine-enforced comparison, a companion client MUST
+  **TOFU-pin the RP's origin on first login and fail closed on any origin mismatch thereafter**,
+  so an established RP cannot later be confused with a look-alike. Passkey (machine origin
+  binding) remains the RECOMMENDED mode; the companion path is the acceptable fallback with this
+  stated, weaker-against-look-alikes property. What is forbidden is *any* mode with no trusted
+  client enforcing intent — never the absence of a FIDO passkey specifically.
 
 ## 13.4 Sessions: key-bound, not bearer
 
@@ -102,6 +138,27 @@ key**, so a leaked token cannot be replayed by a thief:
   log and/or a short-lived status endpoint; it MUST NOT require rotating `IK`. Rotating a
   device key (§1.5) revokes all its sessions at once. Losing `IK` and recovering (§1.4) MUST
   invalidate all prior session authorizations.
+- **Bounded re-validation (normative).** Because an RP validates the login-time delegation
+  **once**, IK rotation (§1.5), device revocation, or recovery (§1.4) would not otherwise reach a
+  live RP session. Therefore session authorizations MUST be **short-lived** (DMTAP-Auth session
+  TTL + idle-timeout, §16), and an RP MUST NOT treat a login-time delegation as valid
+  indefinitely: it MUST **re-validate the delegation** against the user's status endpoint or KT
+  head at a **bounded interval** (RP re-validation interval, §16), or bind the session to a
+  **revocation-list epoch** it MUST refresh at that interval. A session whose delegation no longer
+  validates MUST be terminated at the next check.
+- **On unreachable status/KT (normative, sensible default).** If the status endpoint / KT head is
+  unreachable at a re-validation check, the RP MUST NOT honor the session indefinitely (fail-open
+  would let an attacker who partitions the endpoint keep a revoked session alive) and SHOULD NOT
+  hard-fail instantly (that would log everyone out on a transient outage). Instead the RP MUST
+  honor the last successfully-validated delegation only until a bounded **grace window** (= 2×
+  the re-validation interval, §16), then fail closed and require re-authentication. This bounds
+  an attacker's post-revocation persistence to the grace window while tolerating brief outages —
+  mirroring §3.3's fail-closed-on-unreachable-KT stance.
+- **Bridge path caveat (honest).** These key-bound / proof-of-possession guarantees hold on the
+  **native** path. A **bridged** login (§13.6) mints a classical OIDC ID Token — a *bearer* token
+  — so the "stolen token is useless without the key" property (goal 3) is **forfeited on the
+  bridge path**: it inherits classical OIDC bearer-token risk. Only the native path is key-bound
+  end to end. Implementers MUST NOT assume proof-of-possession on bridged sessions.
 
 ## 13.5 Capabilities & delegation
 
@@ -111,6 +168,13 @@ rather than opaque scopes: a signed, offline-verifiable, attenuable capability t
 calendar MOTEs for 24h") from `IK`/device key to an app or another of the user's nodes.
 Delegations are attenuable (a device can only sub-delegate a subset), time-bound, and
 revocable. This also carries authorization **across the user's own device cluster** (§5.6).
+
+**Owner-visible grants (BEC defense, normative).** A new capability delegation, a new RP-session
+authorization (§13.4), and any **auto-forward / redirection rule** change MUST be routed through
+the owner's **device-cluster notification + KT self-monitoring path** (§3.5), exactly like
+identity events (§1.4) — so a **silent grant** an attacker installs (the classic business-email-
+compromise move: quietly delegating access or auto-forwarding mail) is **visible to the owner's
+other devices** and alertable. Silent, unlogged authorization is prohibited.
 
 ## 13.6 Legacy bridge: OIDC / OAuth compatibility
 
@@ -125,12 +189,26 @@ consumable by them — the same native-path/legacy-bridge duality as mail (§7):
   a URL you own; a W3C Note + IndieWeb living standard, not a Recommendation — cite the living
   standard). DMTAP-Auth expresses the binding as **`did:web` rooted at the user's mail domain**
   (`did:web:yourdomain:users:alice` → `did.json`), the DID method that matches §3's DNS name→key.
+  The `did.json` MUST be **byte-consistent with the §3 DNS `name → key` binding and its KT entry**
+  (same `IK`, same current `Identity` hash); an RP MUST **cross-check the `did.json` key against
+  DNS + KT and pin it** (§3.4), never trusting the DID document alone — it is the same
+  discovery-not-proof pointer as DNS (§3.2).
 - **Hosted bridge (compat).** Because mainstream RP libraries assume a *fixed* issuer allowlist
   and rarely implement WebFinger discovery or dynamic client registration, DMTAP-Auth defines a
   **bridge OIDC Provider**: a standard, well-known OP whose backend is DMTAP-Auth. Legacy RPs
   add it like any OIDC provider; the bridge performs the §13.3 ceremony and mints a standard ID
-  Token. The bridge is a *convenience operator*, swappable and self-hostable — it sees login
-  events but never the user's key (it verifies signatures), and it is content-blind to mail.
+  Token. **The bridge signs that ID Token with its OWN key, so a compromised bridge could forge
+  logins for its RPs exactly as any classical IdP could.** DMTAP-Auth bounds this two ways:
+  (a) the minted ID Token MUST **embed the user's own §13.3 signed assertion** (and its `cnf`) as
+  a verifiable claim, so an RP MAY additionally **verify the user's key directly** and stop
+  trusting the bridge's signature alone; (b) every token the bridge mints MUST be appended to a
+  **bridge-transparency log** (KT-style, §3.5) that the user's node **monitors**, so a bridge
+  minting a login the user never performed is **detectable** (the same intrusion-detection
+  posture as identity KT). The bridge is a *convenience operator*, swappable and self-hostable —
+  it sees login events but never the user's key (it verifies signatures), and it is content-blind
+  to mail. **Honest framing:** a bridge-mediated login trusts the bridge **to the same degree as
+  any classical IdP**; only the **native path** (RPs verifying the user's signature directly,
+  §13.3) removes the trusted third party entirely (§13.7).
 - **DID interop.** `alice@yourdomain`'s `name→key` binding is expressible as **`did:web`**
   (DNS/HTTPS-rooted, matching §3) so DID-aware verifiers and Verifiable-Credential ecosystems
   (OID4VP, Final) can consume DMTAP identities. `did:key` expresses a raw-key identity (tier A,
@@ -163,9 +241,9 @@ Honest limits (stated in-product):
    only mode; DMTAP-Auth improves on it via §13.3.1 but a compromised or absent trusted client
    degrades to user-verified security.
 2. **Remote-node consent farming.** A remote always-on node approving relayed challenges cannot
-   use proximity; the mitigations in §13.3.1 (origin display, per-login approval, channel
-   attribution, rate-limit, log) bound but do not eliminate the risk. Passkey-gated signing is
-   the safer default.
+   use proximity; the mitigations in §13.3.1 (pending-intent binding, origin display, per-login
+   approval, rate-limit, log) bound but do not eliminate the risk. Passkey-gated signing is
+   therefore the **only permitted** remote-node mode (bare node-signed is forbidden, §13.3.1).
 3. **Key loss = login loss.** Your key now guards every login, so recovery UX (§1.4) is
    critical; this raises the stakes on getting recovery right, not a new vulnerability.
 4. **RP adoption is chicken-and-egg.** The OIDC bridge (§13.6) is what makes DMTAP-Auth useful
@@ -175,8 +253,22 @@ Honest limits (stated in-product):
 6. **No PKI beyond DNS/CA.** `did:web` (and DNS-rooted naming, §3) bottoms out at DNS + TLS/CA —
    there is no independent proof binding domain to key, so a DNS/registrar/CA compromise is an
    identity compromise. Key transparency (§3.5) makes such a substitution *detectable*, not
-   impossible; high-value use SHOULD add out-of-band verification.
+   impossible; high-value use SHOULD add out-of-band verification. **For AUTH specifically**, a
+   v0 single KT log that can present a **split view** (§6.6 item 6) is a **silent per-RP account
+   takeover**, so DMTAP-Auth REQUIRES — even in v0 — that high-value login RPs verify the
+   `name → key` binding against **multiple independent KT logs** (consistency across them) or an
+   **out-of-band-verified pin**, never a single unaudited log.
 7. **Login is a deliberate identity disclosure.** Authenticating to a relying party intentionally
    reveals your identity *to that RP*; this is opt-in and per-RP, and MUST NOT be conflated with
    or allowed to weaken the mail/messaging metadata-privacy guarantees (§6). Session keys are
-   per-RP (§13.4) so RPs cannot correlate you across sites via the auth layer.
+   per-RP (§13.4) so RPs cannot correlate you across sites via the auth layer. This cross-site
+   unlinkability holds **against the RPs**, not against the **bridge** (§13.6), which sees *all*
+   of a user's bridged logins, nor against the user's own **issuing node/host**, which learns
+   *which RP* a login resolves to. To bound the bridge's view, the bridge SHOULD issue
+   **pairwise/blinded subject identifiers** (a distinct `sub` per RP), never one global subject.
+8. **The hosted bridge is a trusted third party.** A bridge-mediated login (§13.6) trusts the
+   bridge's signing key **to the same degree as any classical IdP** — a compromised bridge can
+   forge logins for its RPs. The embedded user assertion + `cnf` (so an RP MAY verify the user's
+   key directly) and the bridge-transparency log the user's node monitors (§13.6) **bound and
+   make detectable** this risk, but do not remove it. Only the **native path** (§13.3, RPs
+   verifying the user's signature) eliminates the trusted third party.

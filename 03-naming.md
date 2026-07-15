@@ -54,6 +54,11 @@ def.com.             IN  MX   ...             ; only if a legacy gateway serves 
   full object). `id` pins the current `Identity` version (§1.3).
 - Multiple `ik`/suite entries MAY appear during PQ migration (§1.1).
 - DNSSEC SHOULD be enabled; it is not sufficient alone (hence KT).
+- **`did:web` consistency (normative, for DMTAP-Auth §13.6).** Where the same identity is also
+  published as a `did:web` document (`did.json`), that document's key MUST be **byte-consistent
+  with this DNS `name → key` binding and its KT entry** (same `IK`, same `Identity` hash). A
+  verifier MUST **cross-check the two and pin** (§3.4); a `did.json` is the same discovery-only
+  pointer as DNS and never proof on its own.
 
 ## 3.3 Resolution
 
@@ -298,8 +303,16 @@ to the same key — and support subaddressing:
 - **Subaddressing (plus-addressing).** `you+tag@domain` (and, for handles, `@you+tag`) is
   supported: the `+tag` is preserved for client-side filtering/labeling but resolves to the same
   key. Catch-all (`*@yourdomain`) is a domain-owner option (tier C).
-- **Security:** every alias resolves to the *same key*, so an alias cannot be used to impersonate
-  — authenticity is always the key, not the name. Aliases are published/audited via the same KT
-  (§3.5); adding/removing an alias is a signed `Identity` version. A legacy-alias's inbound mail
-  is marked *legacy-origin* (not E2E before the gateway, §7.2), so the user sees which messages
-  came the old way.
+- **Security — self-asserted names need forward verification (normative).** `Identity.names` is
+  **self-asserted**: an identity can *list* any string, including a **victim's address**. A listed
+  name therefore proves **nothing** on its own, and a client MUST trust or display a name in
+  `Identity.names` **only after verifying the forward `name → ik` binding** (DNS + KT, §3.3–3.5)
+  **also resolves to this same key** — i.e. the name points back. Before accepting a name
+  (especially a **legacy alias**), the client MUST require **proof of control**: a DNS challenge
+  under that name, or a **KT-anchored per-name record** binding `name → ik`. A name that does not
+  verify back MUST be rendered **as unverified**, never shown as an authenticated address. Given
+  that check, every *verified* alias resolves to the *same key*, so it cannot be used to
+  impersonate — authenticity is always the key, not the name. Adding/removing an alias is a signed
+  `Identity` version, audited via the same KT (§3.5). A legacy-alias's inbound mail is marked
+  *legacy-origin* (not E2E before the gateway, §7.2), so the user sees which messages came the old
+  way.

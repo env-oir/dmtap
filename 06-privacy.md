@@ -126,6 +126,9 @@ hostile-buffer scenarios.
    trusted single source** — a network SHOULD run multiple independent logs even in v0, and
    clients SHOULD treat a single unaudited log as advisory, leaning on OOB verification for
    high-value contacts. This is a real tension with the sovereignty goal and is stated as such.
+   For **DMTAP-Auth (§13)** specifically, a split view is a **silent per-RP account takeover**, so
+   high-value login RPs MUST require **multi-log consistency or an OOB-verified pin even in v0**
+   (§13.7).
 7. **Group handshake ordering is a metadata concentration point.** The per-group committer/
    ordering channel (§5.1) necessarily sees all of a group's handshake traffic; this is an
    explicit exception to the "no single node sees both ends" framing, bounded by rotating the
@@ -145,9 +148,11 @@ anonymous."
   ephemeral messages — this is a property of files, not a DMTAP flaw (§5.5).
 - **Access revocation on group-member removal (normative).** MLS removal blocks a removed
   member's *future* messages but does NOT revoke file keys they already hold. Therefore, when a
-  member is removed from a shared file folder (§5.5), the node SHOULD (MUST for folders marked
-  confidential) **re-key and re-encrypt** every file the removed member had access to, and
-  redistribute the new keys to remaining members. Without this, a removed member retains
-  indefinite read access to already-shared files. Clients MUST surface that pre-removal copies a
+  member is removed from a shared file folder (§5.5), the node MUST **re-key and re-encrypt**
+  every file the removed member had access to **by default**, and redistribute the new keys to
+  remaining members. **Skipping the re-key is an explicit, surfaced opt-out** (e.g. low-sensitivity
+  shared media where the cost outweighs the benefit), never the silent default; folders marked
+  **confidential** MUST always re-key (opt-out forbidden). Without a re-key, a removed member
+  retains indefinite read access to already-shared files. Clients MUST surface that pre-removal copies a
   member already downloaded cannot be recalled (the un-share limit, § file-safety).
 - Recovery custody (§1.4) governs how at-rest keys survive device loss.

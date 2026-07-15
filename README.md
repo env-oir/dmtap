@@ -45,6 +45,11 @@ spec disagree, **the spec wins** (or the discrepancy is a bug to reconcile).
 | 14 | [`14-scaling.md`](14-scaling.md) | detailed | Node classes (always-on / mobile), horizontally-scalable gateways, relay/buffer scaling, hosted topology |
 | 15 | [`15-references.md`](15-references.md) | detailed | Normative & informative references (RFCs/specs DMTAP profiles: SMTP/IMAP/JMAP/CalDAV/CardDAV/MLS/OAuth/HPKE/…) |
 | 16 | [`16-parameters.md`](16-parameters.md) | detailed | Numeric parameters (v0): time/replay windows, KT/DHT, mixnet, file tiers, anti-abuse, suites |
+| 17 | [`17-parity.md`](17-parity.md) | detailed | Feature-parity audit: every legacy mail/calendar/contacts feature → DMTAP mechanism, sense-checked + security-reviewed |
+| 18 | [`18-wire-format.md`](18-wire-format.md) | detailed | Appendix A — Wire format: CDDL grammar for every object, per-field semantics, canonical signing preimages, collected grammar |
+| 19 | [`19-operations.md`](19-operations.md) | detailed | Appendix B — Protocol operations: every op (params/pre/post/errors) + worked traces; JMAP mapping |
+| 20 | [`20-state-machines.md`](20-state-machines.md) | detailed | Appendix C — State machines: delivery, validation, resolution, reachability, group/committer, auth session, node lifecycle |
+| 21 | [`21-errors-iana.md`](21-errors-iana.md) | detailed | Appendix D — Error/status registry (81 codes) + IANA registries + extension/versioning procedure |
 
 ## Conventions
 

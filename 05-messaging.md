@@ -47,13 +47,41 @@ node that serializes handshake messages into an append-only, hash-chained per-gr
 - **Rotation:** any member MAY be promoted to committer by a Commit (so committer role is not
   tied to one device's uptime). Committer SHOULD rotate on the current committer going offline
   past a timeout, or on member vote, via a Commit that all members apply.
-- **Failover / liveness:** if the committer is unreachable, members hold pending Proposals and
-  either wait for it to return or elect a new committer (a Commit referencing the last agreed
-  log head). The hash-chained log makes a **fork detectable**: two Commits at the same log
-  position with the same predecessor is proof of committer misbehavior, and members MUST halt
-  and alert (analogous to KT equivocation, §3.5).
-- **Censorship:** a committer can *stall* (withhold ordering) but cannot *forge* — every
-  handshake is member-signed. A stalling committer is rotated out.
+- **Failover / liveness & deterministic succession:** if the committer is unreachable, members
+  hold pending Proposals and initiate a **takeover that does not depend on the incumbent's
+  cooperation**. The successor is **deterministic**: among live, non-faulted members the one with
+  the **lowest member signing key** (canonical byte order) is the designated next committer
+  (keys are unique; earliest join epoch is the fallback tie-break). The successor proposes a
+  **takeover Commit** referencing the last agreed log head; it takes effect **only when it carries
+  a threshold of member signatures** (a roster quorum, §16), so a partitioned minority cannot
+  install a rival committer and there is no split-brain over *who* takes over. (Edge case: a
+  2-member group cannot perform a takeover if one member is dead — the > n/2 quorum needs both —
+  so a censoring committer in a 2-party group is resolved by leaving/recreating the group, not by
+  takeover.) The hash-chained
+  log makes a **fork detectable**: two Commits at the same log position with the same predecessor
+  is proof of committer misbehavior; members MUST halt and alert (analogous to KT equivocation,
+  §3.5) and recover per the fork-recovery path below.
+- **Censorship is misbehavior — including *selective* censorship:** a committer can *stall* but
+  cannot *forge* (every handshake is member-signed). Crucially, a committer that stays live yet
+  **withholds ordering of one specific pending, member-signed proposal** (e.g. never orders a
+  member's own removal) past the **committer-liveness timeout (§16)** is treated **identically to
+  a dead committer** and triggers the deterministic takeover above — total silence is *not*
+  required to justify replacement. This defeats the selective-censor-and-block-your-own-
+  replacement attack, since the successor rule and member-signature threshold need no consent
+  from the incumbent.
+
+**Fork recovery (out of HALT).** A detected fork halts the group (above); recovery is
+**out-of-band**. Members compare hash-chained log heads and identify the **last common epoch**
+both forks share; an `admin`/`owner` (per §5.8.2 authority) proposes a recovery Commit on top of
+that last common epoch, and — **for consistency with committer takeover (§16 roster quorum) and
+to deny a single admin unilateral fork-selection power** — the recovery Commit is canonical only
+when it carries the same **> n/2 member-signature quorum** as a takeover. This re-establishes a
+single canonical head that a strict majority endorsed, not one admin's choice. Members that
+applied the losing fork **roll back to the last common epoch** and re-apply from the recovery
+Commit; application messages committed only on the abandoned fork are re-submitted by their
+senders (sender retry, §2.6). This manual reconciliation is the v0 stopgap; **Decentralized MLS
+(`draft-kohbrok-mls-dmls`) is the eventual leaderless fix** that removes the single-orderer fork
+surface entirely.
 
 **Metadata exposure (honest, §6.6 item 7).** The committer necessarily sees **all handshake
 traffic for its group** — an explicit exception to the "no single node sees both ends" framing.
@@ -88,7 +116,7 @@ To message an identity whose devices are all offline, DMTAP uses **MLS's own asy
 mechanisms** rather than bolting on a separate PQXDH/X3DH handshake (which would add a second
 protocol and a second security proof for no benefit when everything is already MLS):
 
-1. Each device pre-publishes signed **KeyPackages** (located via `Identity.prekeys`, §1.3) to
+1. Each device pre-publishes signed **KeyPackages** (located via `Identity.keypkgs`, §1.3) to
    the mesh. A KeyPackage is MLS's prekey: identity/signature key, HPKE init key, and (for PQ)
    an ML-KEM init key via the MLS PQ ciphersuite.
 2. The initiator **Adds** the offline member (a Commit) and sends a **Welcome** so the new
@@ -201,7 +229,9 @@ authorized by role:
 All membership/role/policy changes are signed and appear in the group's hash-chained handshake
 log (§5.1), so a member can audit "who added/removed whom" — the group analog of identity
 key-transparency (§3.5). A malicious/coerced committer can stall but not forge (every change is
-member-signed); forks are detectable.
+member-signed); **selective non-ordering of a pending signed management proposal past the
+committer-liveness timeout is misbehavior that triggers the deterministic committer takeover
+(§5.1)**, and forks are detectable and recoverable (§5.1).
 
 ### 5.8.3 Membership privacy (subscriber-list)
 
@@ -219,6 +249,14 @@ This resolves the earlier mailing-list-privacy gap: choose the model per group, 
   (sealed to each), pull-or-push, so a 10k-member list is 10k individual sealed deliveries, not a
   10k-member MLS tree. This trades cryptographic group-sharing for scalability and hidden
   membership — the right trade for announce lists.
+- **Anti-abuse through fan-out (normative, §9.9).** Fan-out is an **amplification vector**: one
+  post becomes N deliveries, so the recipient's per-sender policy (§9) MUST apply to the
+  **original poster**, not to the list identity. The poster's **ARC token / postage / PoW** (§9)
+  MUST be **carried through the fan-out** and presented on each per-member delivery, and each
+  recipient evaluates it against the *poster* — no accountability laundering behind the group
+  address. Fan-out MUST be **rate-limited per poster**, amplification for `open` (anyone-can-post)
+  lists MUST be **capped**, and posting to a **large list** MUST require **postage or PoW**
+  commensurate with the fan-out size.
 
 ### 5.8.5 Legacy interop
 
@@ -226,3 +264,26 @@ A group MAY have a **legacy address** (`team@company.com`) served by the gateway
 legacy mail to the address is fanned out to members as MOTEs; outbound from the list to legacy
 subscribers goes via the gateway. So a DMTAP group is reachable as an ordinary mailing-list
 address from the old world, while native members get the full encrypted/group experience.
+Legacy fan-out is bound by the **same per-poster anti-abuse carry-through and fan-out rate-limits**
+(§5.8.4, §9.9); the gateway attributes the origin (§9.6), so list fan-out cannot launder a
+spammer's accountability.
+
+### 5.8.6 Group key custody, recovery & threshold (normative)
+
+A group is an addressable identity (§5.8) with its **own keypair**, so it needs the same custody
+discipline as a personal identity (§1) — otherwise a single admin or committer holding the group
+key can unilaterally hijack `team@company.com`.
+
+- **Threshold-held signing key.** The group's identity signing key MUST be **threshold-held by
+  the group's `owner`/`admin` set** (FROST-style, reusing the §1.4 recovery machinery), so no
+  single admin — and no committer — can sign as the group alone. Group-authoritative acts (below)
+  require a threshold of admins, not one.
+- **Group `RecoveryPolicy` + `rotate_threshold`.** A group has its own `RecoveryPolicy` (§1.4);
+  changes to the group `Identity`, its recovery methods, or its key MUST satisfy the group's
+  `rotate_threshold` (the weakening-quorum + veto-window rules of §1.4 apply), so a compromised
+  admin device cannot rewrite group recovery or evict co-owners.
+- **KT-logged group key events.** Group `Identity` / `KeyRotation` / `RecoveryPolicy` events MUST
+  appear in key transparency (§3.5) exactly like personal ones, so members and the wider network
+  detect an unauthorized group-key change. The committer (§5.1) orders *handshakes*; it is
+  **not** authorized to change the group's identity key — that is a threshold act above the
+  committer role.

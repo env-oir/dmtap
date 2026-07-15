@@ -180,6 +180,10 @@ deliver(outer_mote)   → recipient node receives, unwraps outer, verifies envel
 ack(id)               → recipient confirms receipt of MOTE `id`.
 ```
 
+- **`ack(id)` transport.** An `ack` is a **small signed control MOTE** (kind `system`, §2.3) —
+  or, on a live direct/`fast` connection, a transport-level ack over the same channel — carrying
+  `id` and signed by the recipient's device key, so the sender's retry queue (§4.7) can
+  authenticate the confirmation. Acks are not themselves acked (no ack storm).
 - **Durability = the sender's node retries** until `ack`, with exponential backoff and an
   `expires`-bounded deadline. The mixnet/relay holds nothing durably.
 - **Deduplication.** A recipient that already holds `id` acks immediately without
@@ -204,7 +208,8 @@ in order:
    `challenge` field (ARC token / PoW / stamp / vouch) — all checkable without decrypting.
    Reject or defer per §9.2 / §2.7a if the challenge is absent or insufficient.
 7. Decrypt `ciphertext` (MLS epoch key or HPKE to recipient key); drop on failure.
-8. Verify `Payload.sig` under `Payload.from`; verify `from` matches the pinned identity for a
+8. Verify `Payload.sig` under `Payload.from`; **on failure, discard silently and do not `ack`**
+   (fail closed, matching steps 1–3). Otherwise verify `from` matches the pinned identity for a
    known contact, or TOFU-pin on first contact (§3.4). For a cold sender whose `from` is now
    revealed, re-apply block/allow lists.
 9. Apply `expires`, `refs`, `kind` semantics; store; `ack`.

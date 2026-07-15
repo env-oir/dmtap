@@ -31,6 +31,7 @@ LocationRecord {
   ik:        bytes,        // identity key (DHT key = hash(ik))
   peer_id:   bytes,        // libp2p peer id (may be per-epoch / unlinkable, §6)
   addrs:     [* multiaddr],// current reachability hints (may be relay circuits, mix addrs)
+  seq:       u64,          // monotonic sequence number; reject older-or-equal (rollback defense, §16.2)
   ttl:       u64,
   ts:        u64,
   sig:       bytes,        // signed by a device key

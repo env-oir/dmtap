@@ -67,3 +67,8 @@ the same **mesh/mixnet** — with **no central server** for any of it. Legacy pr
 (IMAP/POP/SMTP/CalDAV/CardDAV) and the OIDC bridge (§13.6) are **edge-compat surfaces only**;
 they never become a central store or a required intermediary. The node is the authority for
 *everything*, uniformly. There is no data class that quietly depends on a central service.
+
+Silent grants that would **redirect or delegate** that data — **auto-forward rules**, new
+**capability delegations** (§13.5), and new **RP-session authorizations** (§13.4) — MUST be
+surfaced to the owner's device cluster and logged to KT self-monitoring (§3.5), so a
+business-email-compromise-style silent redirect or delegation is owner-visible, not covert.

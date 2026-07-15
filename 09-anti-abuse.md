@@ -148,3 +148,40 @@ Mix nodes are content-blind and cannot filter content. Abuse of the mixnet itsel
 bounded by: token/PoW admission at the *entry* (a MOTE without valid postage/token is not
 accepted into the mixnet by the sender's own entry policy), operator rate limits, and stake for
 mix operators (§6.4, §7.5). Cover traffic is rate-bounded per node.
+
+## 9.9 Group-address amplification
+
+A **group address** (§5.8) is a first-class abuse-amplification vector: a single post fans out to
+N recipients, and a naïve design evaluates the anti-abuse challenge **once at list ingress** and
+then attributes delivery to the **group**, bypassing each recipient's per-sender policy (§9.2) and
+**laundering the poster's accountability**. DMTAP forbids this:
+
+- **Origin accountability carries through fan-out — with the right proof per list type.** The
+  **poster's** challenge proof MUST be carried on each fanned-out per-member delivery; each
+  recipient applies its per-sender policy to the **original poster**, not the group identity.
+  *Which* proof depends on the list's membership model, because ARC tokens are per-origin
+  (per-recipient) scoped and cross-recipient-unlinkable (§9.3) and therefore **do not compose**
+  with fan-out to many recipients:
+  - **Member-visible channels** (§5.8.3): the poster knows the members, so it MAY mint a
+    per-member ARC token (one per recipient origin). ARC carry-through applies here.
+  - **Hidden-membership lists** (§5.8.3): the poster does *not* know the members (that's the
+    point), so per-member ARC is impossible without breaking membership privacy. These lists
+    MUST use **postage or PoW scoped to the list address** as the poster's proof (a single
+    list-scoped proof the committer/relay verifies at ingress and vouches per-delivery), not
+    per-member ARC. The committer attests "this fan-out carried a valid list-scoped proof from
+    poster P" so recipients still get origin accountability without learning a cross-recipient
+    ARC graph. **Honest limit:** this hands the hidden-list committer a trust power recipients
+    must accept — it could false-vouch (launder a spammer), misattribute (frame a poster or evade
+    a recipient's block on P), or under-size the "commensurate" proof. It is bounded (the hidden
+    list's committer *is* the list operator, which already re-seals the fan-out and knows the full
+    membership — roughly the mailing-list trust you already accept), and abuse is detectable
+    (recipients down-score a committer/list that vouches for spam, §7.5). Member-visible channels
+    avoid this power entirely (each recipient verifies ARC independently), so hidden-membership
+    trades a committer-trust assumption for its privacy — disclose it, don't hide it.
+- **Per-poster fan-out rate-limits.** A list MUST rate-limit fan-out **per poster** and **cap
+  amplification** for `open`-join lists (anyone-can-post), whose amplification is otherwise
+  unbounded.
+- **Cost to post to large lists.** Posting to a large list MUST require **postage or PoW**
+  commensurate with the fan-out size, so mass amplification is not free.
+- **Legacy fan-out** (§5.8.5) is bound by the same rules; the gateway attributes the origin
+  (§9.6).

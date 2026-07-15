@@ -112,6 +112,11 @@ the legacy-translation hop and MUST NOT become a store.
 > TTL loses undelivered mail. Durability MUST land at the recipient's edge once fetched. Senders
 > retry (§2.6) within their own deadline regardless.
 
+**Buffer is not backup (§1.4).** Neither a relay-mailbox nor a peer buffer (§4.3, peer-buffer TTL
+§16.6) is a **content backup**: each holds only *undelivered* ciphertext within its TTL, and key
+recovery (§1.4) restores onto an **empty store**. Durable content continuity requires a surviving
+cluster device (§5.6) or the **portable encrypted backup** of §1.4 — not the buffer.
+
 ## 14.6 Hosted multi-tenant topology (the operator)
 
 For an operator hosting many mailboxes (Envoir Cloud, §12), the sensible horizontally-scalable

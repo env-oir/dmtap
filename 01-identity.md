@@ -84,7 +84,7 @@ Identity {
   devices:  [* DeviceCert],
   keypkgs:  KeyPackageBundleRef,  // location + hash of the current KeyPackage bundle (§5.3)
   recovery: RecoveryPolicyRef,   // hash of the current RecoveryPolicy (§1.4)
-  names:    [* tstr],            // canonical human name(s), e.g. "abc@def.com" (§3)
+  names:    [* tstr],            // self-asserted name(s); trust only after forward name→ik verification (§3.9.4)
   prev:     ?bytes,             // hash of the previous Identity version (hash chain)
   ts:       u64,
   sig:      [+ bytes],         // one signature per suite in `suites`, over all of the above
@@ -136,6 +136,10 @@ SocialMethod { type:"social", guardians: [+ bytes], threshold: u8 }  // Shamir s
 Threshold = { any_of: [+ MethodPredicate] }   // e.g. 1 phrase OR 2 devices OR 2 guardians
 ```
 
+A **`MethodPredicate`** names a satisfied factor: `Phrase` (the phrase-derived key), `Devices(n)`
+(any *n* device factors), `Guardians(n)` (any *n* social shares), or `Ik` (the root key itself).
+A `Threshold`'s `any_of` is met when **any** listed predicate is satisfied.
+
 Rules:
 
 1. **Authenticated.** Every version is signed by `IK` (proactive) or by satisfying the
@@ -144,7 +148,30 @@ Rules:
 2. **`rotate_threshold` ≥ `recover_threshold`.** A single compromised factor may (perhaps)
    recover access but MUST NOT be able to unilaterally rewrite the policy and lock the owner
    out.
-3. **Real revocation.** Rotating a method out MUST re-key the underlying secret, not merely
+3. **Weakening changes need the quorum, not `IK` alone (compromise defense).** A policy change
+   that **removes or weakens any recovery factor** (drops a method, lowers a threshold, evicts a
+   guardian/device) MUST satisfy `rotate_threshold` **even when signed by `IK`** — `IK` alone MUST
+   NOT be sufficient to weaken recovery. This closes the *stolen-`IK`* takeover where an attacker
+   proactively rewrites recovery to evict the owner and install their own factors. **Additive,
+   non-weakening** changes (adding a redundant factor) MAY be signed by `IK` alone.
+4. **Asymmetric veto window on weakening changes.** A recovery-weakening change MUST be published
+   to the transparency log and take effect only **after a veto/delay window** (§16), during which
+   the owner's monitoring devices (§3.5) can detect it and publish a **counter-signed veto/abort**.
+   **The veto is deliberately asymmetric** to avoid a deadlock in which a compromised factor
+   vetoes its *own* eviction:
+   - A veto MUST itself satisfy the **`rotate_threshold`** quorum — a *single* prior factor
+     (e.g. the very factor being removed) CANNOT veto. This ensures a stolen single factor cannot
+     block its own removal.
+   - A recovery change that itself satisfies `rotate_threshold` (a genuine quorum-backed
+     recovery, §1.4 reactive path) **overrides any veto** and is NOT blockable — so legitimate
+     recovery from compromise always wins over an attacker holding one not-yet-removed factor.
+
+   Because rule 3 already requires *every* weakening change to satisfy `rotate_threshold`, a
+   rule-conforming weakening is inherently quorum-backed and thus veto-proof; the veto window is
+   therefore **defense-in-depth** — it exists to detect and block a *non-conforming* (lesser-bar)
+   weakening that slipped through a buggy/malicious implementation, not to gate normal recovery.
+   A weakening change MUST NOT take effect instantly; non-weakening changes are not delayed.
+5. **Real revocation.** Rotating a method out MUST re-key the underlying secret, not merely
    edit a list:
    - rotate **phrase** → re-wrap the identity secret under the new phrase-derived key; old
      phrase becomes useless;
@@ -166,7 +193,7 @@ Rules:
      *authorize* recovery **without ever reassembling the secret key in one place** —
      eliminating the single-point-of-compromise moment that Shamir reconstruction creates.
      This is the preferred design when the recovery secret is a signing key.
-4. **Logged & detectable.** Every version is published to the transparency log; the owner's
+6. **Logged & detectable.** Every version is published to the transparency log; the owner's
    other devices monitor it and MUST alert on a change they did not initiate (intrusion
    detection, §3.5).
 
@@ -181,9 +208,29 @@ Rules:
 ### The bottom turtle
 
 There is a foundational anchor (root phrase + social quorum). It is rotatable but requires
-the strongest `rotate_threshold`. Losing `IK` **and** enough recovery factors simultaneously
-is unrecoverable — this is the one irreducible risk, mitigated only by good recovery UX
-(multiple independent, redundant, rotatable factors so no single loss is fatal).
+the strongest `rotate_threshold`. Two worst cases bound it:
+
+- **Loss.** Losing `IK` **and** enough recovery factors simultaneously is unrecoverable.
+- **Compromise (the sharper case).** An attacker who obtains `IK` **plus** enough factors to
+  satisfy `rotate_threshold` can rewrite recovery and effect an **owner-unrecoverable takeover** —
+  *worse* than loss, because the owner is actively **evicted**, not merely locked out.
+
+Both are mitigated by the same discipline: multiple independent, redundant, rotatable factors so
+no single loss is fatal; the weakening-quorum + veto-window rules above so a *partial* compromise
+cannot silently escalate to takeover; and KT monitoring (§3.5) so any takeover attempt is at
+least detectable and vetoable within the window.
+
+### Backup & restore (content continuity)
+
+Recovery restores the **key**, not the **mailbox**: reconstructing `IK` onto a fresh device
+yields an authoritative identity over an **empty store**. Message/file history returns only from a
+surviving cluster device (§5.6) or from a **portable encrypted backup**. DMTAP therefore defines a
+normative backup primitive: an owner's node MUST be able to export an **encrypted,
+integrity-protected backup** of the mailbox/CRDT state (§5.6) and file blobs (§5.5), sealed under
+a key derived from the recovery phrase (or a separate backup key held in `RecoveryPolicy`) and
+restorable onto an empty store after key recovery. Without a surviving device or such a backup,
+recovery preserves the **identity and all relationships** (§1.6) but **not prior content**. See
+§14.5 for how this differs from a relay/peer buffer (a buffer is not a backup).
 
 ## 1.5 Key rotation
 

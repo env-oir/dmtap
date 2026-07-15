@@ -31,6 +31,30 @@
 \fi
 \usepackage{microtype}
 
+% Map spec-used Unicode symbols to always-renderable forms (avoid missing-glyph boxes)
+\usepackage{newunicodechar}
+\newunicodechar{‖}{\ensuremath{\|}}       % U+2016 double vertical bar (signing preimages)
+\newunicodechar{≤}{\ensuremath{\leq}}     % U+2264
+\newunicodechar{≥}{\ensuremath{\geq}}     % U+2265
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{←}{\ensuremath{\leftarrow}}
+\newunicodechar{×}{\ensuremath{\times}}
+\newunicodechar{⌈}{\ensuremath{\lceil}}
+\newunicodechar{⌉}{\ensuremath{\rceil}}
+\newunicodechar{●}{\textbullet}
+\newunicodechar{⇒}{\ensuremath{\Rightarrow}}
+\newunicodechar{↔}{\ensuremath{\leftrightarrow}}
+\newunicodechar{⇄}{\ensuremath{\rightleftarrows}}
+\newunicodechar{⚠}{\textbf{[!]}}
+\newunicodechar{≠}{\ensuremath{\neq}}
+\newunicodechar{⊕}{\ensuremath{\oplus}}
+\newunicodechar{⁵}{\textsuperscript{5}}
+\newunicodechar{∖}{\ensuremath{\setminus}}
+\newunicodechar{∥}{\ensuremath{\|}}
+\newunicodechar{≈}{\ensuremath{\approx}}
+\newunicodechar{√}{\ensuremath{\surd}}
+\newunicodechar{∞}{\ensuremath{\infty}}
+
 % Brand palette (Envoir accent)
 \definecolor{envoirBlue}{HTML}{2F6FE0}
 \definecolor{envoirViolet}{HTML}{6A45E0}
