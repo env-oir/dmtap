@@ -349,8 +349,13 @@ Headers = {
   ? 2 => tstr,                ; subject  mail only
   ? 3 => tstr,                ; mime     content type of Body
   4 => [* ik-pub],            ; cc       additional recipient keys (fan-out is per-recipient)
-  ? 5 => { * tstr => any },   ; ext      extension headers (§10)
+  ? 5 => { * tstr => ext-value }, ; ext   extension headers (§10) — deterministic-safe values only
 }
+
+; ext values are constrained to the deterministic-CBOR-safe subset (§18.1.1): NO floats,
+; NO NaN/Infinity, NO undefined, NO tags. Headers rides inside the SIGNED Payload (§18.9.2),
+; so a non-canonical value here would break signature reproducibility.
+ext-value = bool / int / bytes / tstr / [* ext-value] / { * tstr => ext-value }
 
 Body = tstr / bytes           ; UTF-8 text, or opaque MIME bytes
 ```
@@ -361,7 +366,7 @@ Body = tstr / bytes           ; UTF-8 text, or opaque MIME bytes
 | `subject` | 2 | `tstr` | OPTIONAL | Human subject line; meaningful for `mail` kind only. UTF-8. |
 | `mime` | 3 | `tstr` | OPTIONAL | Media type of `Body` (e.g. `"text/plain; charset=utf-8"`, `"message/rfc822"`). If absent, `Body` of type `tstr` defaults to `text/plain; charset=utf-8`. |
 | `cc` | 4 | `[* ik-pub]` | MUST (MAY be empty) | Additional recipient identity keys. Delivery fan-out is one sealed MOTE **per recipient** (§2.4); `cc` is informational threading metadata visible only to those who can decrypt. |
-| `ext` | 5 | `{* tstr => any}` | OPTIONAL | Text-keyed extension headers (§10). The **only** place text keys and arbitrary CBOR values are admitted. Unknown extensions MUST be ignored, never rejected. Keys SHOULD be namespaced (e.g. `"x-vendor-foo"`). |
+| `ext` | 5 | `{* tstr => ext-value}` | OPTIONAL | Text-keyed extension headers (§10). The **only** place text keys are admitted — but values are restricted to `ext-value` (bool/int/bytes/tstr and nestings), **not** arbitrary CBOR: floats, NaN/Infinity, `undefined`, and tags are forbidden (§18.1.1 rules 4–5), because `Headers` is inside the signed `Payload` (§18.9.2) and a non-canonical value would make the signature non-reproducible. A decoder MUST reject an `ext` value outside `ext-value` (fail closed) rather than sign/verify over an ambiguous encoding. Unknown extension *keys* MUST be ignored, never rejected. Keys SHOULD be namespaced (e.g. `"x-vendor-foo"`). |
 | `Body` | — | `tstr / bytes` | (as `Payload.body`) | `tstr` ⇒ UTF-8 text; `bytes` ⇒ opaque MIME per `mime`. A decoder MUST accept either major type. |
 
 ### 18.3.7 `Attachment` and `ManifestRef` (§2.5)

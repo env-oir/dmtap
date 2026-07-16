@@ -205,7 +205,7 @@ conditions onto the existing IANA "SMTP Enhanced Status Codes" registry.
 | Pre-`DATA` anti-abuse reject: RBL/DNSBL, SPF/DMARC hard fail (§9, §7.2 step 2) | `550` | `5.7.1` | Permanent — delivery refused on policy grounds. |
 | Pre-`DATA` greylisting / rate-limit (§7.2 step 2) | `450` | `4.7.1` | Transient — try again later. |
 | Message exceeds size policy | `552` | `5.3.4` | Permanent. |
-| Recipient node reachable but declines (recipient-side `Policy.block`, §9.2) | `550` | `5.7.1` | Permanent, from the gateway's perspective — the block is enforced downstream and is not distinguishable to the SMTP client from "no such user" by design (never leak block-list membership to a sender). |
+| Recipient node reachable but declines (recipient-side `Policy.block`, §9.2) | `550` | `5.1.1` | Permanent. **MUST use the identical code+enhanced status as "no such user" above** (`550 5.1.1`), so a blocked sender cannot distinguish a block from a non-existent address — closing the block-membership oracle. A distinct `5.7.x` here would itself leak that the recipient exists and has blocked this sender; the block is enforced downstream and never surfaced as its own SMTP signal. |
 
 ### 21.9.1 Why a stateless gateway defers rather than accepting-then-losing (DSN safety)
 

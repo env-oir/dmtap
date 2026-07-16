@@ -182,8 +182,10 @@ survive translation, and that is correct, not a bug).
 - **Open issue:** **Gap.** Recommend implementations surface auto-forward rule changes through
   the same device-cluster-notification path used for read/flag sync (§5.6), so a newly added
   silent forwarding rule is visible to the owner's other devices, mirroring the KT
-  self-monitoring pattern (§3.5) that already protects identity/recovery changes. Not currently
-  specified.
+  self-monitoring pattern (§3.5) that already protects identity/recovery changes. This is a
+  direct consequence of the all-data-classes decentralization invariant (§8.5): a forwarding
+  rule is node-local state and MUST replicate to every device like any other data class, so
+  none is blind to it. Not currently specified (tracked as §19.10 gap 5 / §17.6 #5).
 
 #### 13. Vacation / auto-responder / out-of-office — **Different (improved)**
 - **How:** A client/node-local automation: reply-once-per-sender-per-window with a template.
@@ -807,12 +809,17 @@ Ranked by how load-bearing the gap is:
    (Calendly-style); worth a short note on composing it from a broadcast group + automated
    responder (same pattern as resource booking, item 47).
 4. **Delegate-send/edit attribution marker** (items 23, 43) — delegated `send`-capable devices
-   are indistinguishable from the principal; a `Headers.ext` convention for "sent/edited by
-   delegate device X" would close this small but real gap versus legacy's `Sender:`/"on behalf
-   of" distinction.
+   are indistinguishable from the principal; a `Headers.ext` convention (an `ext-value`-typed
+   extension header, §18.3.6) for "sent/edited by delegate device X" would close this small but
+   real gap versus legacy's `Sender:`/"on behalf of" distinction. The delegation itself is the
+   capability model of **§13.5** (`DeviceCert.caps`/UCAN-style scoping), so the marker should
+   name the delegated capability from there; this is the same open item tracked as §19.10 gap 5.
 5. **Auto-forward rule-change auditing** (item 12) — silent forwarding-rule injection is a
    live real-world account-takeover technique; recommend surfacing rule changes through the
-   same device-cluster-notification path already used for identity/KT self-monitoring (§3.5).
+   same device-cluster-notification path already used for identity/KT self-monitoring (§3.5),
+   consistent with the all-data-classes decentralization invariant of **§8.5** (a forwarding
+   rule is node-local state that MUST replicate to the owner's other devices the same way mail/
+   calendar/contact state does, so no device is blind to it).
 6. **Explicit naming of "shared address book" / "shared calendar" as named constructs** (items
    32, 42) — the mechanism (MLS group over a data-class's MOTEs) is sound and consistent with
    how §5.5/§5.7 name shared file folders, but §8.4 doesn't spell it out the same way for
