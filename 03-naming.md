@@ -465,6 +465,69 @@ to the same key — and support subaddressing:
   *legacy-origin* (not E2E before the gateway, §7.2), so the user sees which messages came the old
   way.
 
+### 3.9.5 `Profile` — human display data (self-asserted, signed)
+
+A name is a pointer to a key; a **profile** is a pointer to *how a human is shown* — a display
+name, an optional given/family name, and an avatar. Like a name, it is a **replaceable pointer,
+not the identity**: the key remains the sole trust root, and a profile can be republished any
+number of times without touching the identity. DMTAP carries this small, principled object so
+that display data is *authenticated to the key* rather than invented by whichever server renders
+it.
+
+**The `Profile` object (§18.4.12).** A `Profile` binds an identity's `IK` to:
+
+- `display_name` — the primary human-shown string (REQUIRED);
+- `given_name` / `family_name` — OPTIONAL structured name parts (for legacy interop and sorting);
+- `avatar` — OPTIONAL: an owner-set **public URL** (`avatar.url`) pointing at the image, plus an
+  OPTIONAL **content address** (`avatar.hash` = `0x1e ‖ BLAKE3-256(image_bytes)`, §18.1.5) of the
+  exact image bytes the owner signed.
+
+It is **self-asserted and signed by the identity key** (`IK`, or an `IK`-authorized device key,
+§1.2) — exactly the authentication model of `Identity.names` (§3.9.4): the signature proves *this
+key asserts this display data*, nothing more. It carries a monotonic `version` (rollback-rejected
+like `Identity.version`, `ERR_STALE_ROLLBACK` `0x0105`) and is published and pinned the same way
+as the rest of an identity's data — via the directory / DNS / KT path (§3.3–3.5, §3.10.3). A
+`Profile` whose `sig` does not verify under the identity's `IK` MUST be rejected
+(`ERR_PROFILE_SIG_INVALID` `0x0119`, fail closed) and the prior pinned profile (or the fallback
+ladder below) used instead.
+
+**Honest scope.** A profile is display data, **not an identity-verification scheme.** A signed
+`display_name` proves the *key* chose that string; it does **not** prove the person's legal name,
+and a client MUST NOT present a profile field as a verified real-world identity. Impersonation is
+prevented where it matters — by the key and the verified `name → ik` binding (§3.9.4) — not by
+the profile. Two different keys MAY assert the same `display_name`; the key (and its safety
+number, §3.4.1) disambiguates, never the string.
+
+**Avatar tamper-evidence (normative).** The owner *hosts* the avatar wherever they like; DMTAP
+does not host images. When `avatar.hash` is present, a client that fetches `avatar.url` MUST
+verify the fetched bytes content-address to `avatar.hash` **before displaying them**; on mismatch
+it MUST NOT display the fetched image, MUST fall back down the ladder below, and SHOULD surface a
+non-blocking warning (`ERR_PROFILE_AVATAR_HASH_MISMATCH` `0x011A`, USER_WARN). This gives
+tamper-evidence for the image the owner signed **without** DMTAP hosting or proxying it: a host
+that swaps the bytes is caught. When `avatar.hash` is absent, the URL is a best-effort pointer
+with no integrity guarantee, and a client SHOULD treat it as untrusted third-party content
+(§6 metadata caveats apply — fetching a URL discloses the fetch to its host).
+
+**Avatar fallback ladder (normative order).** A client resolving an avatar for display MUST use,
+in order:
+
+1. **Owner-set avatar** — `avatar.url`, displayed **only if** it verifies against `avatar.hash`
+   when that hash is present (above); if the hash is absent, displayed best-effort.
+2. **Key-derived identicon** — a deterministic identicon rendered from the identity's public key
+   (e.g. over the §3.9.1 key-name / `BLAKE3-256(ik)` bytes), so every identity always has a
+   stable, unspoofable default that needs no hosting and no third party.
+3. **Initials** — from `display_name` (or the name the user addresses), as a final text fallback.
+
+**Gravatar and other email-hash avatars (OPTIONAL legacy interop, privacy-caveated).** A client
+MAY, as an explicit opt-in, fall back to an email-hash avatar service (e.g. Gravatar, `MD5`/
+`SHA-256` of an email address → URL) for a *legacy* address, but this MUST NOT be a default and
+MUST be disclosed: it **leaks a hash of the user's email address to a third-party host** on every
+render (a well-known privacy and tracking vector), and the returned image is **not** signed by
+the key, so it carries none of the tamper-evidence of a `Profile` avatar. The key-derived
+identicon (step 2) is the correct zero-authority default; an email-hash service is only a
+convenience for interop with an existing legacy identity and ranks **below** a signed `Profile`
+avatar, never above it.
+
 ## 3.10 Organization & domain administration
 
 An organization that controls `@abc.com` needs the things a management console provides — add

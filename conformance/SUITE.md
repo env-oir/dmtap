@@ -54,20 +54,22 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — org administration (`ORG`) | 5 | 0 | 0 | 5 |
 | **Private** — KT-v1 hardening (`KTV1`) | 4 | 0 | 0 | 4 |
 | **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 |
-| **Total** | **100** | **33** | **6** | **61** |
+| **Core** — profile / avatar (`PROFILE`) | 2 | 0 | 0 | 2 |
+| **Total** | **102** | **33** | **6** | **63** |
 
 The 33 vectored + 6 self-contained cases (**39**) are fully machine-runnable **today** from
 `vectors.json` + the inline bytes here, with **no reference implementation required**. They pin the
 entire deterministic, security-critical Core spine — canonical CBOR, content addressing, the two
 MOTE signature preimages (§18.9.1/§18.9.2), Ed25519 (with RFC 8032 cross-checks), the 8-word
-key-name, safety numbers, and suite fail-closed. The 61 `construction-todo` cases give the exact
+key-name, safety numbers, and suite fail-closed. The 63 `construction-todo` cases give the exact
 recipe and expected §21 error for every remaining normative branch (the full §2.7 pipeline,
-identity/KT fail-closed, the higher levels, and the wave-2 hardening families —
-`DENIABLE`/`ORG`/`KTV1`/`ATTEST`); each becomes byte-backed when the corresponding subsystem gains
-a fixed-input KAT in `vectors.json` (see README "Coverage vs. deferred"). **Sync note:** the
-wave-2 additions (this `.md`) still need to be mirrored into the machine-readable
-[`suite.json`](suite.json) so the two carry the same case ids — a follow-up alongside re-vectoring
-the changed deniable objects (§5.2.1 dedicated-`idk`).
+identity/KT fail-closed, the higher levels, the wave-2 hardening families —
+`DENIABLE`/`ORG`/`KTV1`/`ATTEST` — and the `PROFILE` display-data guards); each becomes byte-backed
+when the corresponding subsystem gains a fixed-input KAT in `vectors.json` (see README "Coverage vs.
+deferred"). **Sync status:** `SUITE.md` and [`suite.json`](suite.json) are **in sync** — both carry
+the same **102** case ids (the wave-2 `DENIABLE`/`KTV1` families and the `PROFILE` cases are
+mirrored into `suite.json`). The changed deniable objects (§5.2.1 dedicated-`idk`) are still to be
+re-vectored when the reference regenerates `vectors.json`.
 
 > All 39 byte-backed cases correspond one-for-one to entries in `vectors.json`
 > (**32 vectors**, several driving more than one case). No case references a `vectors.json`
@@ -323,6 +325,20 @@ implemented**. RFC 6962-profiled objects (`SignedTreeHead`/`InclusionProof`/`Con
 |----|-----|--------|--------|--------|--------|
 | DMTAP-ATTEST-01 | MUST | §1.2a, §18.4.2 | an attestation-gated context rejects a device whose `key_protection`/`attestation` is absent or fails against the platform root (advisory — never overrides §1.4 authority) | reject → `ERR_DEVICE_ATTESTATION_INVALID` (0x0116), FAIL_CLOSED_BLOCK | construction-todo |
 | DMTAP-ATTEST-02 | MUST | §1.2a, §18.4.2, §16.9 | evidence older than the re-attestation cadence (≤ 90 d), past its window, or chaining only to a retired root is treated as expired → re-attest | reject → `ERR_DEVICE_ATTESTATION_EXPIRED` (0x0118), FAIL_CLOSED_BLOCK | construction-todo |
+
+---
+
+## Profile — human display data (§3.9.5) — `PROFILE`
+
+The self-asserted, signed display object (`display_name` / name parts / avatar). Signed by the
+`IK` (or an `IK`-authorized device key) and authenticated to the key exactly like `Identity.names`
+— a replaceable pointer, never a real-world-identity claim. No byte-exact vectors yet (a signed
+`Profile` KAT is added when the reference gains the object); the reject guards below are MUST.
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-PROFILE-01 | MUST | §3.9.5, §18.4.12, §18.9.3 | a `Profile` whose `sig` (DS-tag `DMTAP-v0/profile`) does not verify under the identity's `IK` / an `IK`-authorized device key is rejected; the prior pinned profile (or the fallback ladder) is used | reject → `ERR_PROFILE_SIG_INVALID` (0x0119), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-PROFILE-02 | MUST | §3.9.5, §18.4.12 | a `Profile` whose `avatar.hash` is present but the bytes fetched from `avatar.url` do **not** content-address (`0x1e ‖ BLAKE3-256`) to it MUST NOT be displayed; the client falls back down the §3.9.5 ladder (key-derived identicon → initials) and warns | reject → `ERR_PROFILE_AVATAR_HASH_MISMATCH` (0x011A), USER_WARN | construction-todo |
 
 ---
 

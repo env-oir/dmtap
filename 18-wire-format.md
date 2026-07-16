@@ -943,6 +943,51 @@ ConsistencyProof = {
 | `second_size` | 2 | `u64` | MUST | Later tree size. |
 | `proof_path` | 3 | `[* hash]` | MUST (MAY be empty when `first_size ∈ {0, second_size}`) | The RFC 6962 consistency nodes; the verifier checks that the `first_size` root is a prefix of the `second_size` root (both from the two STHs). A proof that does not verify — or the demonstrable **absence** of any valid proof between two heads of one log — is an append-only violation, `ERR_KT_STH_INCONSISTENT` (`0x0110`) → equivocation response (§3.5.2(d)). |
 
+### 18.4.12 `Profile` (§3.9.5)
+
+An identity's **self-asserted, signed human display data** — display name, optional structured
+name parts, and an optional avatar pointer (§3.9.5). It is a **replaceable pointer**, authenticated
+to the key exactly like `Identity.names` (§3.9.4): the signature proves the key asserts this data,
+never a real-world identity. Signed by `IK` (or an `IK`-authorized device key, §1.2); versioned
+and rollback-protected like `Identity`; published and pinned via the directory / DNS / KT path
+(§3.3–3.5). The avatar is **owner-hosted** — DMTAP stores no image — with an OPTIONAL content
+address giving tamper-evidence for the exact bytes the owner signed.
+
+```cddl
+Profile = {
+  1 => suite,           ; suite         suite of ik/sig
+  2 => ik-pub,          ; ik            the identity this profile describes
+  3 => u64,             ; version       monotonic; reject <= last pinned (rollback defense)
+  4 => tstr,            ; display_name  primary human-shown string (UTF-8, NFC)
+  ? 5 => tstr,          ; given_name    OPTIONAL structured name part
+  ? 6 => tstr,          ; family_name   OPTIONAL structured name part
+  ? 7 => Avatar,        ; avatar        OPTIONAL owner-set avatar pointer
+  ? 8 => hash,          ; prev          OPTIONAL hash of previous Profile version (chain)
+  9 => ts,              ; ts            publication time
+  10 => sig-val,        ; sig           IK (or IK-authorized device key) over the body (§18.9.3)
+}
+
+Avatar = {
+  1 => tstr,            ; url           owner-set public URL of the image (https RECOMMENDED)
+  ? 2 => hash,          ; hash          OPTIONAL 0x1e ‖ BLAKE3-256 content address of the image bytes
+}
+```
+
+| Object | Field | Key | Type | Presence | Meaning & constraints |
+|--------|-------|----:|------|----------|-----------------------|
+| `Profile` | `suite` | 1 | `suite` | MUST | Suite of `ik`/`sig`. |
+| | `ik` | 2 | `ik-pub` | MUST | The identity this profile describes; MUST match the pinned `Identity.iks[suite]`. |
+| | `version` | 3 | `u64` | MUST | Monotonic. A verifier MUST reject a `version` ≤ the last pinned for this identity (rollback defense, `ERR_STALE_ROLLBACK` `0x0105`, same rule as `Identity.version`). |
+| | `display_name` | 4 | `tstr` | MUST | The primary human-shown string, UTF-8 (NFC). **Self-asserted** — proves only that this key chose it, never a real-world identity (§3.9.5); two keys MAY assert the same string. Confusable/spoofing handling is a rendering concern, not an authenticity claim. |
+| | `given_name` | 5 | `tstr` | OPTIONAL | Structured given-name part (legacy interop / sorting). |
+| | `family_name` | 6 | `tstr` | OPTIONAL | Structured family-name part. |
+| | `avatar` | 7 | `Avatar` | OPTIONAL | Owner-set avatar pointer. Absent ⇒ the client uses the §3.9.5 fallback ladder (key-derived identicon, then initials). |
+| | `prev` | 8 | `hash` | OPTIONAL | Hash of the previous `Profile` version; absent for the first. Chains profile history for KT audit (§3.5), same shape as `Identity.prev`. |
+| | `ts` | 9 | `ts` | MUST | Publication time. |
+| | `sig` | 10 | `sig-val` | MUST | `IK` (or an `IK`-authorized device key, §1.2) signature over the body (§18.9.3, DS-tag `DMTAP-v0/profile`). A `Profile` whose `sig` fails MUST be rejected (`ERR_PROFILE_SIG_INVALID` `0x0119`, FAIL_CLOSED_BLOCK) and the prior pinned profile / fallback ladder used. |
+| `Avatar` | `url` | 1 | `tstr` | MUST | Owner-set public URL of the avatar image (`https` RECOMMENDED). DMTAP does **not** host the image — this is a pointer the owner controls. Fetching it discloses the fetch to the URL's host (§6 metadata caveat). |
+| | `hash` | 2 | `hash` | OPTIONAL | Content address (`0x1e ‖ BLAKE3-256`, §18.1.5) of the exact image bytes. When present, a client MUST verify the fetched bytes address to this value **before display**; on mismatch it MUST NOT display them, MUST fall back (§3.9.5), and SHOULD warn (`ERR_PROFILE_AVATAR_HASH_MISMATCH` `0x011A`, USER_WARN). Absent ⇒ the URL is best-effort with no integrity guarantee. |
+
 ---
 
 ## 18.5 Transport-layer object (§4)
@@ -1393,6 +1438,7 @@ every signature is over `DS-tag ‖ det_cbor(object∖sig)`, where:
 | `KeyRotation` | `sig` (k7) | `DMTAP-v0/key-rotation` | `det_cbor(KeyRotation ∖ {7})` |
 | `MoveRecord` | `sig` (k7) | `DMTAP-v0/move-record` | `det_cbor(MoveRecord ∖ {7})` |
 | `DomainDirectory` | `sig` (k9) | `DMTAP-v0/domain-directory` | `det_cbor(DomainDirectory ∖ {9})` |
+| `Profile` | `sig` (k10) | `DMTAP-v0/profile` | `det_cbor(Profile ∖ {10})` (§18.4.12) |
 | `LocationRecord` | `sig` (k7) | `DMTAP-v0/location-record` | `det_cbor(LocationRecord ∖ {7})` |
 | `MixNodeDescriptor` | `sig` (k7) | `DMTAP-v0/mix-descriptor` | `det_cbor(MixNodeDescriptor ∖ {7})` |
 | `MixDirectory` | `sig` (k8) | `DMTAP-v0/mix-directory` | `det_cbor(MixDirectory ∖ {8})` |
@@ -1457,11 +1503,12 @@ under `from`'s `Identity` (§1.2). Verified at §2.7 step 8.
 ### 18.9.3 Identity-family objects
 
 `Identity`, `DeviceCert`, `RecoveryPolicy`, `KeyRotation`, `MoveRecord`, `LocationRecord`,
-`DomainDirectory` all use the general rule: `Sign(sk, DS-tag ‖ 0x00 ‖ det_cbor(object ∖ {sig-key}))`
+`DomainDirectory`, `Profile` all use the general rule: `Sign(sk, DS-tag ‖ 0x00 ‖ det_cbor(object ∖ {sig-key}))`
 with the DS-tags in the table above. The signing key is: IK for `Identity`/`DeviceCert`/`MoveRecord`;
 IK **or** a satisfied `rotate_threshold` quorum for `RecoveryPolicy`; **`old_ik`** for `KeyRotation`;
 an authorized **device key** for `LocationRecord`; the **domain authority IK** (threshold-held,
-§3.10.1/§5.8.6) for `DomainDirectory`.
+§3.10.1/§5.8.6) for `DomainDirectory`; IK **or** an `IK`-authorized device key for `Profile`
+(§3.9.5, §18.4.12).
 
 ### 18.9.4 Object content addresses (`Envelope.id`, `Identity` anchor)
 
@@ -1820,6 +1867,15 @@ DomainDirectory = {
 DirEntry       = { 1 => tstr, 2 => ik-pub, 3 => hash, 4 => member-custody, ? 5 => [* tstr], 6 => ts }
 dir-visibility = "public" / "members-only"
 member-custody = "sovereign" / "org-managed"
+
+; Self-asserted, signed human display data (§3.9.5); a REPLACEABLE pointer, not an identity claim.
+; sig (key 10) by IK or an IK-authorized device key (DMTAP-v0/profile). Avatar is owner-hosted;
+; avatar.hash (0x1e ‖ BLAKE3-256 of the image) gives tamper-evidence without DMTAP hosting the image.
+Profile = {
+  1 => suite, 2 => ik-pub, 3 => u64, 4 => tstr,
+  ? 5 => tstr, ? 6 => tstr, ? 7 => Avatar, ? 8 => hash, 9 => ts, 10 => sig-val,
+}
+Avatar = { 1 => tstr, ? 2 => hash }
 
 ; ── key transparency (§3.5); RFC 6962-profiled. STH signed by the LOG's key (log_id).
 ; InclusionProof/ConsistencyProof are UNSIGNED — verified against an STH root_hash (§18.9.13).

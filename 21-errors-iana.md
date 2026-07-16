@@ -87,7 +87,7 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x0102` | `ERR_SUITE_INTERSECTION_EMPTY` | Suite selection for delivery (§1.3) | Sender's and recipient's supported-suite sets do not intersect. | Conditional (recipient publishes an overlapping suite) | REJECT_NOTIFY |
 | `0x0103` | `ERR_IDENTITY_SIG_INVALID` | `Identity` verification (§1.3) | One or more `sig` entries fail to validate under the corresponding `iks` entry. | No | FAIL_CLOSED_BLOCK |
 | `0x0104` | `ERR_IDENTITY_CHAIN_BROKEN` | `Identity.prev` / `KeyRotation` / `MoveRecord` chain check (§1.3, §1.5, §1.6) | The presented object's hash chain is inconsistent with what this node has previously pinned or observed. | No | HALT_ALERT |
-| `0x0105` | `ERR_STALE_ROLLBACK` | `Identity`/`RecoveryPolicy` version check (§1.3, §1.4, §3.5) | A version number ≤ a version already seen/pinned is presented (rollback/replay of a superseded-but-validly-signed object). | No | FAIL_CLOSED_BLOCK; HALT_ALERT if the target is this node's own pinned identity |
+| `0x0105` | `ERR_STALE_ROLLBACK` | `Identity`/`RecoveryPolicy`/`Profile` version check (§1.3, §1.4, §3.5, §3.9.5) | A version number ≤ a version already seen/pinned is presented (rollback/replay of a superseded-but-validly-signed object). | No | FAIL_CLOSED_BLOCK; HALT_ALERT if the target is this node's own pinned identity |
 | `0x0106` | `ERR_KT_UNREACHABLE` | KT check at first contact (§3.3) | Key transparency log is unreachable, partitioned, or censored at the moment of first-contact pinning. | Yes (network condition) | FAIL_CLOSED_BLOCK — MUST NOT silently TOFU-pin; block or hard-warn and require explicit acceptance |
 | `0x0107` | `ERR_KT_EQUIVOCATION` | KT tree-head gossip cross-check (§3.5) | The log shows different histories to different observers (split-view). | No | HALT_ALERT |
 | `0x0108` | `ERR_KT_PROOF_INVALID` | Inclusion/consistency proof verification (§3.5) | A signed tree head or inclusion proof fails to verify against the log's public key. | Yes (fetch a fresh proof) | FAIL_CLOSED_BLOCK |
@@ -107,6 +107,8 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x0116` | `ERR_DEVICE_ATTESTATION_INVALID` | `DeviceCert` hardware-attestation check (§1.2a, §18.4.2) | A context that **requires** a hardware-backed, non-exportable device key finds the `DeviceCert`'s `key_protection`/`attestation` absent or failing to verify against the platform attestation root. Advisory hardening only — never overrides the §1.4 authorization authority. | Conditional (re-enroll on an attested keystore) | FAIL_CLOSED_BLOCK — reject the device for the attestation-gated context; a non-gated context is unaffected |
 | `0x0117` | `ERR_KT_LEAF_HASH_MISMATCH` | KT inclusion-proof leaf check (§3.5, §18.4.9, §18.4.10) | The leaf a KT `InclusionProof` commits to does not equal the leaf hash recomputed by the Identity-entry rule (`0x1e ‖ BLAKE3-256(0x00 ‖ det_cbor([name, ik, version, identity_id]))`) — the log presents a binding whose leaf does not match the resolved identity. | No | FAIL_CLOSED_BLOCK — the log indexes, it does not redefine; MUST NOT pin on the mismatched leaf (escalate to HALT_ALERT if it evidences equivocation, §3.5.2(d)) |
 | `0x0118` | `ERR_DEVICE_ATTESTATION_EXPIRED` | `DeviceCert` attestation-freshness check (§1.2a, §18.4.2, §16.9) | An attestation-gated context finds the `DeviceCert.attestation` evidence older than the re-attestation cadence (≤ 90 days), past its own validity window, or chaining only to a **retired** attestation root. Advisory hardening only — never overrides the §1.4 authorization authority. | Conditional (re-attest over the same non-exportable key under a current root) | FAIL_CLOSED_BLOCK — reject for the attestation-gated context until re-attested; a non-gated context is unaffected |
+| `0x0119` | `ERR_PROFILE_SIG_INVALID` | `Profile` verification (§3.9.5, §18.4.12, §18.9.3) | A `Profile`'s `sig` does not verify under the identity's `IK` (or an `IK`-authorized device key). Profile display data is self-asserted (authenticated to the key, never a real-world-identity claim); a bad signature means the data is not authorized by the key. | No | FAIL_CLOSED_BLOCK — reject the object; retain the prior pinned `Profile` or fall to the §3.9.5 avatar/initials fallback ladder |
+| `0x011A` | `ERR_PROFILE_AVATAR_HASH_MISMATCH` | `Profile` avatar integrity check (§3.9.5, §18.4.12) | A `Profile` carries `avatar.hash`, but the bytes fetched from `avatar.url` do not content-address (`0x1e ‖ BLAKE3-256`) to it — the owner-hosted image was swapped/tampered. Tamper-evidence, not a hosting guarantee. | Yes (re-fetch; a corrected host resolves it) | USER_WARN — MUST NOT display the fetched image; fall back down the §3.9.5 ladder (key-derived identicon, then initials) and surface a non-blocking warning |
 
 ## 21.4 Delivery & Validation — the MOTE object (`0x02xx`)
 
@@ -311,6 +313,8 @@ auditability:
 | Device hardware-attestation invalid | `0x0116` |
 | Device attestation evidence expired / root retired | `0x0118` |
 | KT inclusion-proof leaf-hash mismatch | `0x0117` |
+| Profile signature invalid (self-asserted display data) | `0x0119` |
+| Profile avatar bytes mismatch signed content-address | `0x011A` |
 | Capability delegation invalid (malformed/expired/over-attenuated) | `0x0508` |
 | Capability revoked (valid grant, explicitly revoked) | `0x050B` |
 | Session-revoked | `0x0504` |
@@ -355,7 +359,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 109 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 111 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -514,10 +518,11 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 109 (`0x0101`–`0x0118`: 24, incl. the KT-v1 detection codes
+- **Error/status codes defined:** 111 (`0x0101`–`0x011A`: 26, incl. the KT-v1 detection codes
   `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
-  device-attestation and `0x0118` attestation-expired (§1.2a), and `0x0117` KT leaf-hash mismatch
-  (§3.5, §18.4.9); `0x0201`–`0x0210`: 16, incl. `0x020F` suite-downgrade and `0x0210`
+  device-attestation and `0x0118` attestation-expired (§1.2a), `0x0117` KT leaf-hash mismatch
+  (§3.5, §18.4.9), and the `Profile` display-data codes `0x0119` (signature invalid) and `0x011A`
+  (avatar content-address mismatch) (§3.9.5, §18.4.12); `0x0201`–`0x0210`: 16, incl. `0x020F` suite-downgrade and `0x0210`
   hybrid-suite-incomplete (intra-suite PQ-strip defense, §1.3);
   `0x0301`–`0x0311`: 17, incl. `0x030A` capability-announce
   rollback (§10.2) and the mixnet codes `0x030B`–`0x0311` — directory/descriptor/path (`0x030B`–`0x030D`),

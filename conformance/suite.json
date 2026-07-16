@@ -23,7 +23,7 @@
   "vectors_file": "vectors/vectors.json",
   "vectors_count": 32,
   "notes": [
-    "reject cases map to spec §21 (104-code registry); error_code + error_name + disposition (Action column) are normative.",
+    "reject cases map to spec §21 (111-code registry); error_code + error_name + disposition (Action column) are normative.",
     "self-contained CBOR reject cases assert a deterministic-CBOR (RFC 8949 §4.2 / §18.1.1) decoder rejects the given bytes.",
     "construction-todo cases are non-deterministic to seal (sealed Envelope/Payload) or belong to subsystems not yet vectored (README 'Coverage vs. deferred')."
   ],
@@ -1634,6 +1634,106 @@
       "status": "construction-todo"
     },
     {
+      "id": "DMTAP-DENIABLE-01",
+      "level": "Private",
+      "category": "DENIABLE",
+      "req": "MUST",
+      "clause": [
+        "§5.2.1(c)",
+        "§18.3.10"
+      ],
+      "checks": "a DeniablePayload carrying any signature field is rejected (a signature would defeat repudiation)",
+      "operation": "deniable_payload_decode",
+      "construction": "DeniablePayload with a signature field present",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x040F",
+        "error_name": "ERR_DENIABLE_SIGNATURE_PRESENT",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-DENIABLE-02",
+      "level": "Private",
+      "category": "DENIABLE",
+      "req": "MUST",
+      "clause": [
+        "§5.2.1(d)",
+        "§10.2"
+      ],
+      "checks": "a deniable session to a peer that has not advertised deniable-1:1 is refused; the client surfaces the choice, never silently downgrades",
+      "operation": "deniable_capability_check",
+      "construction": "initiate a deniable session to a peer without the deniable-1:1 capability token",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x040E",
+        "error_name": "ERR_DENIABLE_MODE_UNAVAILABLE",
+        "action": "REJECT_NOTIFY"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-DENIABLE-03",
+      "level": "Private",
+      "category": "DENIABLE",
+      "req": "MUST",
+      "clause": [
+        "§5.2.1(b)",
+        "§18.9.10"
+      ],
+      "checks": "a DeniableMessage whose Double-Ratchet AEAD tag (shared-key MAC) fails is dropped; substitutes for Payload.sig (§20.2 fork)",
+      "operation": "deniable_message_verify",
+      "construction": "DeniableMessage with a flipped AEAD tag byte",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x040D",
+        "error_name": "ERR_DENIABLE_RATCHET_AUTH_FAILED",
+        "action": "DROP_SILENT"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-DENIABLE-04",
+      "level": "Private",
+      "category": "DENIABLE",
+      "req": "MUST",
+      "clause": [
+        "§5.2.1(a)",
+        "§18.4.8"
+      ],
+      "checks": "an invalid/exhausted DeniablePrekeyBundle (sig/spk_sig/idk_sig fail, or no unspent prekey) is rejected",
+      "operation": "deniable_prekey_intake",
+      "construction": "DeniablePrekeyBundle with a tampered spk_sig, or exhausted of unspent prekeys",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x040B",
+        "error_name": "ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED",
+        "action": "REJECT_NOTIFY"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-DENIABLE-05",
+      "level": "Private",
+      "category": "DENIABLE",
+      "req": "MUST",
+      "clause": [
+        "§5.2.1(a)",
+        "§18.3.9"
+      ],
+      "checks": "X3DH/PQXDH over the dedicated idk (NOT XEdDSA-from-IK): a DeniableInit whose idk_a_cert does not certify idk_a under ik_a, or whose key agreement fails, is rejected; last-resort-only first-message replay is caught",
+      "operation": "deniable_init_verify",
+      "construction": "DeniableInit whose idk_a_cert does not certify idk_a under ik_a (or a failing key agreement)",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x040C",
+        "error_name": "ERR_DENIABLE_X3DH_FAILED",
+        "action": "REJECT_NOTIFY"
+      },
+      "status": "construction-todo"
+    },
+    {
       "id": "DMTAP-ORG-01",
       "level": "Core",
       "category": "ORG",
@@ -1734,6 +1834,87 @@
       "status": "construction-todo"
     },
     {
+      "id": "DMTAP-KTV1-01",
+      "level": "Private",
+      "category": "KTV1",
+      "req": "MUST",
+      "clause": [
+        "§3.5.2(a),(d)",
+        "§18.4.9"
+      ],
+      "checks": "two validly-signed STHs of one log with equal tree_size but differing root_hash (or no consistency proof) => equivocation: HALT + alert + publish evidence",
+      "operation": "kt_sth_gossip_check",
+      "construction": "two validly-signed STHs of one log_id with equal tree_size and differing root_hash",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0110",
+        "error_name": "ERR_KT_STH_INCONSISTENT",
+        "action": "HALT_ALERT",
+        "note": "companion conclusion code ERR_KT_EQUIVOCATION (0x0107); publish the conflicting STHs as transferable evidence (§3.5.2(d))"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-KTV1-02",
+      "level": "Private",
+      "category": "KTV1",
+      "req": "MUST",
+      "clause": [
+        "§3.5.2(b)",
+        "§18.4.10"
+      ],
+      "checks": "a name -> ik binding not attested by a > n/2 quorum of the pinned log set fails closed -> OOB",
+      "operation": "kt_log_quorum_check",
+      "construction": "a name -> ik binding attested by <= n/2 of the pinned log set",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0111",
+        "error_name": "ERR_KT_LOG_QUORUM_UNMET",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-KTV1-03",
+      "level": "Private",
+      "category": "KTV1",
+      "req": "MUST",
+      "clause": [
+        "§3.5.2(a)",
+        "§16.2"
+      ],
+      "checks": "a SignedTreeHead older than the freshness window (freeze attack) is treated as stale and refreshed",
+      "operation": "kt_sth_freshness_check",
+      "construction": "a self-consistent SignedTreeHead older than the STH freshness window",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0112",
+        "error_name": "ERR_KT_STH_STALE",
+        "action": "HOLD_RESYNC"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-KTV1-04",
+      "level": "Private",
+      "category": "KTV1",
+      "req": "MUST",
+      "clause": [
+        "§18.4.9",
+        "§18.4.10"
+      ],
+      "checks": "an InclusionProof whose committed leaf != the recomputed Identity-entry leaf-hash 0x1e||BLAKE3-256(0x00||det_cbor([name,ik,version,identity_id])) is rejected",
+      "operation": "kt_inclusion_proof_verify",
+      "construction": "an InclusionProof whose committed leaf_hash differs from the recomputed Identity-entry leaf-hash",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0117",
+        "error_name": "ERR_KT_LEAF_HASH_MISMATCH",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
       "id": "DMTAP-ATTEST-01",
       "level": "Core",
       "category": "ATTEST",
@@ -1771,6 +1952,47 @@
         "error_code": "0x0118",
         "error_name": "ERR_DEVICE_ATTESTATION_EXPIRED",
         "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-PROFILE-01",
+      "level": "Core",
+      "category": "PROFILE",
+      "req": "MUST",
+      "clause": [
+        "§3.9.5",
+        "§18.4.12",
+        "§18.9.3"
+      ],
+      "checks": "a Profile whose sig (DS-tag DMTAP-v0/profile) does not verify under the identity's IK / an IK-authorized device key is rejected; the prior pinned profile (or fallback ladder) is used",
+      "operation": "profile_verify",
+      "construction": "a Profile with a tampered sig",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0119",
+        "error_name": "ERR_PROFILE_SIG_INVALID",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-PROFILE-02",
+      "level": "Core",
+      "category": "PROFILE",
+      "req": "MUST",
+      "clause": [
+        "§3.9.5",
+        "§18.4.12"
+      ],
+      "checks": "a Profile whose avatar.hash is present but the bytes fetched from avatar.url do not content-address (0x1e||BLAKE3-256) to it MUST NOT be displayed; the client falls back down the §3.9.5 ladder (key-derived identicon -> initials) and warns",
+      "operation": "profile_avatar_verify",
+      "construction": "a Profile with avatar.hash present and tampered fetched avatar bytes",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x011A",
+        "error_name": "ERR_PROFILE_AVATAR_HASH_MISMATCH",
+        "action": "USER_WARN"
       },
       "status": "construction-todo"
     }

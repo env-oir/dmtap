@@ -12,10 +12,10 @@ The suite has two coupled artifacts plus this guide:
 | [`suite.json`](suite.json) | The **machine-readable** form of those cases (mirroring their case ids; see the sync note below) — a runner in any language drives it. |
 | [`vectors/vectors.json`](vectors/vectors.json) | The **byte-exact known-answer inputs** the vectored cases dispatch on. |
 
-`SUITE.md` catalogs **100** numbered cases; `suite.json` currently mirrors **91** of them — the 9
-wave-2 additions (the deniable-1:1 and KT-v1-hardening families) are pending mirror, per the
-`SUITE.md` sync note — and the two MUST stay in sync. 39 cases are byte-runnable today (33 backed by
-a `vectors.json` entry, 6 self-contained CBOR-reject cases whose bytes are inline); 61 are
+`SUITE.md` catalogs **102** numbered cases and `suite.json` mirrors all **102** — the two are **in
+sync** (the wave-2 deniable-1:1 and KT-v1-hardening families and the `PROFILE` display-data cases
+are mirrored) and MUST stay so. 39 cases are byte-runnable today (33 backed by
+a `vectors.json` entry, 6 self-contained CBOR-reject cases whose bytes are inline); 63 are
 `construction-todo` — each carries an exact construction recipe and the
 expected §21 error, and becomes byte-backed as its subsystem gains a fixed-input KAT (see
 [Coverage vs. deferred](#coverage-vs-deferred)).
@@ -37,8 +37,8 @@ expected §21 error, and becomes byte-backed as its subsystem gains a fixed-inpu
 
 | Level | Case prefixes | Requires (spec) |
 |-------|---------------|-----------------|
-| **Core** | `CBOR`, `ADDR`, `SIG`, `PRE`, `NAME`, `SAFE`, `SUITE`, `VAL`, `IDENT` | Identity (§1), MOTE (§2), naming + TOFU + fail-closed KT (§3), delivery + `deliver`/`ack` (§4), MLS 1:1 (§5), cold-sender challenge gating (§9) |
-| **Private** | `PRIV` (+ Core) | Core + mixnet + sealed sender + cover traffic + anti-active-adversary + fail-closed no-downgrade + privacy tiers (§4.4, §6). A production mail node MUST implement Private. |
+| **Core** | `CBOR`, `ADDR`, `SIG`, `PRE`, `NAME`, `SAFE`, `SUITE`, `VAL`, `IDENT`, `ORG`, `ATTEST`, `PROFILE` | Identity (§1), MOTE (§2), naming + TOFU + fail-closed KT + org administration + `Profile` display data (§3), delivery + `deliver`/`ack` (§4), MLS 1:1 (§5), cold-sender challenge gating (§9), device attestation (§1.2a) |
+| **Private** | `PRIV`, `DENIABLE`, `KTV1` (+ Core) | Core + mixnet + sealed sender + cover traffic + anti-active-adversary + fail-closed no-downgrade + privacy tiers (§4.4, §6); optional deniable 1:1 mode (§5.2.1) and KT-v1 hardening (§3.5.2) guards MUST hold when those modes are implemented. A production mail node MUST implement Private. |
 | **Groups & Files** | `GRP`, `FILE` (+ Core) | Core + MLS groups + content-addressed file transfer (§5) |
 | **Legacy** | `LEG` (+ Core) | Core + gateway inbound/outbound + DKIM delegation (§7) |
 | **Clients** | `CLI` (+ Core) | Core + JMAP; IMAP/POP/SMTP-submission compat RECOMMENDED (§8) |

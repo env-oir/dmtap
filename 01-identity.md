@@ -404,6 +404,7 @@ layer.
 | `KeyRotation` | old IK → new IK | via Identity chain | yes |
 | `MoveRecord` | IK | yes | yes |
 | `DeniablePrekeyBundle` | device key (+ `spk_sig`) | via Identity (`deniable_prekeys`) | no (like `keypkgs`) |
+| `Profile` | IK or IK-authorized device key | yes (`prev`) | yes (KT-audited, §3.9.5) |
 
 All identity-lifecycle operations share one machinery: **signed, versioned objects,
 threshold-gated changes, and the transparency log as the audit trail** (§3).
