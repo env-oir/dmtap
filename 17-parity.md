@@ -112,7 +112,7 @@ survive translation, and that is correct, not a bug).
   (privacy weakens as size grows, §6.5).
 - **Security:** Content and integrity are strictly better (per-chunk hashes, dedup, resumable
   swarm transfer, §5.5). Metadata privacy is weaker for large files specifically — the spec is
-  explicit about this (§6.6.2) rather than pretending otherwise.
+  explicit about this (§6.6 item 2) rather than pretending otherwise.
 - **Open issue:** None beyond the disclosed large-file metadata tradeoff (§6.5), which is a
   known, stated limit, not an unresolved gap.
 
@@ -248,7 +248,7 @@ survive translation, and that is correct, not a bug).
   perfectly.
 - **Security:** Same as legacy in the pre-dispatch window; same *honest limit* as legacy
   post-dispatch (neither system can un-deliver bytes already in a recipient's hands) — DMTAP
-  is more upfront about this limit (§6.6.8) than most legacy clients' UI copy is.
+  is more upfront about this limit (§6.6 item 8) than most legacy clients' UI copy is.
 - **Open issue:** None — the limit is disclosed, not hidden.
 
 #### 18. Mark read/unread, flag/star — **Clean**
@@ -392,7 +392,7 @@ survive translation, and that is correct, not a bug).
   principle (legacy recall's occasional partial success stems from the message often still
   sitting in a shared Exchange store the sender's organization controls) — so DMTAP recall is
   unambiguously cooperative-only, with no false hope of provider-side deletion.
-- **Open issue:** None — this is a disclosed, irreducible limit (§6.6.8), not a gap to close.
+- **Open issue:** None — this is a disclosed, irreducible limit (§6.6 item 8), not a gap to close.
 
 #### 29. DKIM / SPF / DMARC — **Clean**
 - **How:** Entirely the gateway's job (§7): DKIM via delegated selectors so the gateway signs
@@ -657,7 +657,7 @@ survive translation, and that is correct, not a bug).
 - **Security:** Better — sync is end-to-end encrypted between the owner's own devices, not
   just between the owner and a central server; legacy IMAP sync trusts the provider to relay
   state between devices in whatever form the provider stores it.
-- **Open issue:** Endpoint compromise has cluster-wide blast radius (§6.6.3) — a stolen
+- **Open issue:** Endpoint compromise has cluster-wide blast radius (§6.6 item 3) — a stolen
   synced device exposes the whole replicated mailbox history, not just a device-local slice.
   Mitigated by optional scoped sync (recent-N-days on mobile) but not eliminated; disclosed
   explicitly in §6.6, not a hidden gap.
@@ -768,7 +768,7 @@ survive translation, and that is correct, not a bug).
 | 25 | Distribution lists | Clean | Groups-as-address, hidden membership (§5.8) |
 | 26 | Catch-all | Clean | Named tier-C option (§3.9.4) |
 | 27 | Priority/importance | N/A | Cosmetic; undefined ext header, low value |
-| 28 | Message recall | Harder | Cooperative-only, disclosed (§6.6.8); legacy recall never really worked either |
+| 28 | Message recall | Harder | Cooperative-only, disclosed (§6.6 item 8); legacy recall never really worked either |
 | 29 | DKIM/SPF/DMARC | Clean | Gateway-only, delegated selectors (§7, §3.8) |
 | 30 | Contact cards | Clean | JSContact/CardDAV (§8.4) |
 | 31 | Contact groups | Different | Split cleanly into addressable groups vs. local tags |

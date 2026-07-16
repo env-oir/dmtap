@@ -109,12 +109,12 @@ operator seam (§12.2) — and the inviolable rule (§12.3) draws the honest lin
   (§3.10.3), assigning admin roles (§13.5.1), and per-member quotas are org/operations concerns the
   seam MAY meter and gate (**Policy**, §12.2). But the inviolable rule (§12.3) forbids any seam
   hook that would disable a member's encryption, weaken metadata privacy, or deny a member access
-  to **their own keys or mailbox**. In particular, a **sovereign** member's key (§3.10.2a) is never
+  to **their own keys or mailbox**. In particular, a **sovereign** member's key (§3.10.2(a)) is never
   a seam-controllable object: no operator plan, quota, or admin action can read it, escrow it, or
   lock the member out of it. The org controls the **name and the operations**, never a sovereign
   member's key.
 - **Org-managed escrow is a disclosed member arrangement, not a seam backdoor.** The org-managed
-  model (§3.10.2b) lets the *org* hold a member's key for compliance — but that is an explicit,
+  model (§3.10.2(b)) lets the *org* hold a member's key for compliance — but that is an explicit,
   disclosed, per-account arrangement visible to the user (`custody = "org-managed"`, §18.4.7),
   **not** a hidden operator hook and **not** applied to sovereign accounts. It does not violate
   §12.3 because it disables nothing in the protocol and hides nothing: the member is told, at

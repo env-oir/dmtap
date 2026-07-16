@@ -174,10 +174,27 @@ farming.
 
 ## 9.8 Mixnet abuse
 
-Mix nodes are content-blind and cannot filter content. Abuse of the mixnet itself (flooding) is
-bounded by: token/PoW admission at the *entry* (a MOTE without valid postage/token is not
-accepted into the mixnet by the sender's own entry policy), operator rate limits, and stake for
-mix operators (§6.4, §7.5). Cover traffic is rate-bounded per node.
+Mix nodes are content-blind and cannot filter content — and, crucially, an entry mix **cannot**
+verify the recipient-facing anti-abuse proof (ARC token / postage / PoW) either, because that
+proof is **sealed inside the encrypted `ciphertext`** (§2.2b, §6.2) and bound to the *recipient*,
+not to the mix. Mixnet flood-abuse is therefore bounded by mechanisms a **content-blind** node can
+actually apply:
+
+- **Per-connection / per-guard-operator rate limiting (MUST).** An entry mix admits Sphinx cells
+  under a **per-connection and per-operator rate budget** — it limits how fast any one source (and
+  any one upstream operator) may inject cells — **not** by inspecting a sealed recipient proof it
+  cannot read. This is the honest entry-admission control: it caps injection rate blind to content.
+- **Optional mix-visible anti-flood PoW (MAY).** A mix MAY additionally require a **small
+  proof-of-work bound to the mix hop itself** (a puzzle over the cell + epoch the mix *can* check
+  without decrypting) as an anti-flood cost knob under load — distinct from the recipient's §9.4
+  cold-sender PoW, which the mix cannot see.
+- **Operator rate limits and stake (MUST/SHOULD).** Operator-level rate limits and mix-operator
+  **stake/bond** (§6.4, §7.5, §9.6) make sustained flooding costly and attributable.
+
+The recipient's sealed token/postage/PoW (§9.3–§9.5) still gates whether the message is *accepted
+into the recipient's inbox* — but it is enforced at the **recipient**, after mix delivery, never
+mistaken for something an entry mix verifies. Cover traffic is itself **rate-bounded per node**
+(§4.4.7) so cover cannot be turned into the flood.
 
 ## 9.9 Group-address amplification
 

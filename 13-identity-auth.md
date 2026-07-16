@@ -52,7 +52,11 @@ DMTAP-Auth introduces almost no new cryptography — it reuses:
    binds and displays the VERIFIED rp_origin, and runs a WebAuthn/passkey user-verification
    ceremony (§13.3.1). BEFORE signing, the client generates a fresh per-RP, per-device SESSION
    keypair (§13.4) and computes  cnf = H(session_pubkey).
-5. The user's key signs  H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ cnf)  (canonical, §2)
+5. The user's key signs the DOMAIN-SEPARATED preimage
+     "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ cnf)
+   (canonical, §2; the exact preimage and DS-tag are normative in §18.9.8 — like every other
+    DMTAP signature this one is domain-separated, so an assertion can never be confused with any
+    other signed object)
 6. RP verifies the signature against alice's pinned key (§3.4), that rp_origin == its own
    origin, nonce unused, not expired → authenticated, and binds the session ONLY to the key
    named by cnf (proof-of-possession, §13.4)

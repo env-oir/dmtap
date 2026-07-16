@@ -171,23 +171,50 @@ Session setup reuses **X3DH** (Marlinspike & Perrin, 2016) for `suite = 0x01` an
 (Kret & Schmidt, 2023) for `suite = 0x02` (ML-KEM-768, matching the suite's X-Wing KEM, §16.7)
 — **not reimplemented here**. DMTAP supplies only the binding to its own identity and prekeys:
 
-- **Long-term identity DH key from `IK`.** X3DH mixes the parties' *long-term identity DH keys*.
-  DMTAP's `IK` is an **Ed25519 signing** key, so both parties derive the corresponding
-  X25519 identity DH key from `IK` via **XEdDSA** (Perrin, 2016) — **no new long-term key is
-  provisioned**, and the `IK ↔ name` binding (KT, §3.5) still authenticates the counterpart.
+- **Dedicated long-term identity DH key (NOT `IK`).** X3DH mixes the parties' *long-term identity
+  DH keys*. DMTAP's `IK` is an **Ed25519 signing** key; rather than derive an X25519 key from it by
+  XEdDSA, an identity that offers the mode provisions a **dedicated long-term X25519
+  "deniable-identity DH key" `idk`**, **certified once by an `IK`-authorized device key**
+  (`idk_sig`, DS-tag `DMTAP-v0/deniable-idk`, §18.9.10). `idk` — not `IK` — is the X3DH long-term
+  DH input on both sides. This is a deliberate change from earlier drafts: it (i) keeps **`IK`
+  cold** — `IK` never performs Diffie–Hellman, only certifies — so `IK` can live in a **usage-fixed
+  hardware keystore** (Apple Secure Enclave is P-256-only and sign-only; a TPM/StrongBox key can be
+  provisioned sign-only) that **cannot** do both signing and DH on one key, making the mode
+  **hardware-buildable**; and (ii) preserves deniability exactly, because the only long-term
+  signature (`idk_sig`) still covers a *public DH key*, never content or a transcript (below). The
+  `IK ↔ name` binding (KT, §3.5) still authenticates the counterpart, and the AD binding
+  (`AD = IK_A ‖ IK_B`, oriented initiator‖responder, §18.3.9) still ties the session to the two
+  identities.
 - **Published deniable prekeys.** An identity that offers the mode publishes a
   **`DeniablePrekeyBundle`** (§18.4.8) located via `Identity.deniable_prekeys` (§1.3, §18.4.1):
-  a **signed prekey** `spk` (X25519) with its signature, a set of **one-time prekeys** `opks`,
-  and — under `suite = 0x02` — a signed **last-resort ML-KEM key** plus one-time KEM keys
-  (PQXDH). The bundle is replenished by the owner's node exactly like KeyPackages (§5.3);
-  exhaustion falls back to the signed prekey / last-resort key, rate-limited (§16.9).
-- **What is signed vs MAC'd (the crux).** The **only** signature in the whole mode is the
-  **signed-prekey signature** (`spk_sig`), which attests that the *prekey was published* — it
-  does **not** sign any message, transcript, or the fact that a conversation occurred. This is
-  exactly the standard X3DH signed prekey and is what preserves deniability: the long-term
-  signature covers a public prekey, never content. **Every message is authenticated by a
-  shared-key MAC** (the Double Ratchet AEAD tag under a per-message key derived from the shared
-  secret), which **both** parties can compute ⇒ **participation + message repudiation**.
+  the certified **identity DH key** `idk` (with `idk_sig`), a **signed prekey** `spk` (X25519) with
+  its signature, a set of **one-time prekeys** `opks`, and — under `suite = 0x02` — a signed
+  **last-resort ML-KEM key** plus one-time KEM keys (PQXDH). The bundle is replenished by the
+  owner's node exactly like KeyPackages (§5.3); exhaustion falls back to the signed prekey /
+  last-resort key, rate-limited (§16.9). The initiator carries **its own** `idk_a` + `idk_a_cert`
+  inline in `DeniableInit` (§18.3.9) so an offline responder can complete the async handshake
+  without a round trip.
+- **What is signed vs MAC'd (the crux).** The **only** signatures in the whole mode are the
+  **identity-DH-key certification** (`idk_sig` / `idk_a_cert`) and the **signed-prekey signature**
+  (`spk_sig`) — both of which attest that a *public key was published*. Neither signs any message,
+  transcript, or the fact that a conversation occurred; they are exactly the standard X3DH
+  prekey-authentication signatures and are what preserve deniability: every long-term signature
+  covers a public key, never content. **Every message is authenticated by a shared-key MAC** (the
+  Double Ratchet AEAD tag under a per-message key derived from the shared secret), which **both**
+  parties can compute ⇒ **participation + message repudiation**.
+
+- **First-message replay defense (last-resort / signed-prekey-only init, normative).** A
+  `DeniableInit` that consumes **no one-time prekey** (`opk_ref` absent and, under PQXDH, `kem_ref`
+  absent — the last-resort / signed-prekey-only path) is **replayable**: an attacker can resend the
+  captured first message and, absent a defense, the responder re-derives the same session and
+  re-accepts it. A responder MUST therefore either (i) **prefer a one-time prekey** — reject a
+  last-resort-only first contact when an unspent `opk`/one-time-KEM is available in its published
+  bundle (the initiator SHOULD always consume one when offered) — or (ii) maintain a **replay cache
+  of consumed initiator `ek_a` (and `idk_a`) values** for the lifetime of the signed prekey plus its
+  overlap window and drop a repeat, **and** require a **post-X3DH key-confirmation** round before
+  the session is treated as established. A repeated last-resort init that fails this check is
+  `ERR_DENIABLE_X3DH_FAILED` (`0x040C`). This mirrors Signal's documented X3DH replay caveat and is
+  the deniable-mode analog of the MOTE content-address dedup (§2.6).
 
 #### (b) Session — Double Ratchet, by reference
 
@@ -196,6 +223,15 @@ After the handshake yields a root secret, messages travel over the **Double Ratc
 secrecy and per-message post-compromise security** — *finer* healing than MLS's per-epoch Commit
 (§5.2), a bonus of the mode, not a regression. Message keys authenticate via AEAD (a shared-key
 MAC), never a signature.
+
+**PCS requires bidirectional traffic (disclosed).** The DH-ratchet step that delivers
+post-compromise security only advances when a **reply** is received: healing needs a fresh DH
+contribution from the *other* party. A strictly **one-way thread** — the archetypal
+whistleblower→journalist channel where the source sends and never receives — therefore **does not
+self-heal**; a compromise of either endpoint's chain keys stays effective until a reply flows.
+Clients MUST disclose that per-message PCS is a property of **bidirectional** conversations and
+that a send-only channel retains only forward secrecy, not post-compromise recovery, until it
+turns around.
 
 #### (c) Wire framing
 
@@ -252,6 +288,37 @@ Two residuals survive and are stated plainly:
 
 This is honest deniability: *repudiation of the cryptographic transcript*, disclosed for what it
 is, not a promise that a determined endpoint compromise can be undone.
+
+#### (f) Teardown & re-establishment on device loss / revocation (normative)
+
+The pairwise Double Ratchet is **outside MLS**, so the cluster-healing path of §6.7 (MLS Remove +
+device-key rotation) does **not** by itself repair or tear down a deniable session — an MLS Remove
+advances group epochs but reaches no 1:1 ratchet. Deniable sessions therefore have their own
+explicit lost-/stolen-device flow, tied into §6.7 and recovery §1.4:
+
+- **Prekey withdrawal (MUST).** On revoking a device, the owner MUST publish a new
+  `DeniablePrekeyBundle` (§18.4.8) with an incremented `version` that **omits every `spk`/`opk`
+  (and PQ KEM key) the revoked device generated or could have exfiltrated**, and — if the revoked
+  device could have used the `idk` private key — **rotate `idk`**: provision a fresh dedicated
+  identity DH key, certify it with a surviving device key (`idk_sig`), and let the old `idk`
+  version age out (rollback defense rejects the withdrawn bundle, `0x040B`). New sessions then
+  cannot be initiated against the revoked material.
+- **In-flight ratchet teardown (MUST).** Every deniable ratchet the revoked device held is
+  considered compromised. The surviving cluster MUST **tear those sessions down** — discard their
+  ratchet state and, for conversations the owner wants to keep, **re-establish a fresh session**
+  from the new prekeys (a new `DeniableInit`), exactly as a first contact. There is no in-place
+  "remove a device from a pairwise ratchet"; re-establishment is the healing primitive, and it is
+  what restores post-compromise security for the deniable channel (the DH-ratchet reboot of (b)).
+- **Counterpart signal (SHOULD).** The owner's node SHOULD signal active deniable correspondents
+  (over the surviving channel, or on next contact) that the prior session is retired so they
+  re-establish rather than send into a dead ratchet; a message that fails to decrypt against any
+  live ratchet is held for resync (`0x040D`), never silently dropped as forged.
+- **Recovery interaction.** After a full identity recovery (§1.4), all prior deniable sessions and
+  prekeys are treated as revoked by the same rule — the recovered identity republishes a fresh
+  `idk`/bundle and re-establishes sessions, consistent with the "recovery invalidates prior
+  authorizations" posture of §13.4 (`0x050A`). This is the deniable-mode entry in the §6.7
+  lost-/stolen-device sequence; it introduces no new revocation protocol, only the pairwise
+  teardown+re-establish the ratchet already implies.
 
 ## 5.3 Async session initiation (MLS-native)
 
@@ -468,5 +535,5 @@ needed; the org-administration layer only adds **who may provision and administe
   rate-limits (§5.8.4, §9.9) apply unchanged.
 - **Offboarding.** Removing a person from the org (§3.10.5) SHOULD remove them from org groups via
   the normal §5.8.2 Remove (re-keying shared state, §6.7), so a departed member loses group access
-  even though their **sovereign key survives** (§3.10.2a) — the group evicts the *member*, it does
+  even though their **sovereign key survives** (§3.10.2(a)) — the group evicts the *member*, it does
   not touch their *identity*.

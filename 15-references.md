@@ -19,7 +19,9 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **Signal X3DH** (Marlinspike & Perrin, 2016) | Extended Triple Diffie-Hellman | authenticated key agreement for the optional deniable 1:1 mode (§5.2.1) |
 | **Signal PQXDH** (Kret & Schmidt, 2023) | Post-Quantum X3DH (ML-KEM-768) | PQ variant of the deniable-mode handshake, suite 0x02 (§5.2.1) |
 | **Signal Double Ratchet** (Perrin & Marlinspike, 2016) | per-message FS + PCS ratchet, shared-key-MAC auth | the deniable 1:1 session channel (§5.2.1) |
-| **XEdDSA / VXEdDSA** (Perrin, 2016) | Ed25519↔X25519 signing/DH from one key | derive the X3DH identity DH key from `IK` without a new long-term key (§5.2.1) |
+| **RFC 6962** | Certificate Transparency (Merkle log, STH, inclusion/consistency proofs) | the profile for key-transparency `SignedTreeHead`/`InclusionProof`/`ConsistencyProof` (§3.5, §18.4.9–§18.4.11) |
+| **UCAN v1.0** (Fission et al.) | User-Controlled Authorization Networks — chained, attenuable capability tokens | the profile for the delegated `CapabilityToken` (§13.5, §18.7.3) |
+| **XEdDSA / VXEdDSA** (Perrin, 2016) | Ed25519↔X25519 signing/DH from one key | **historical:** earlier drafts derived the deniable X3DH identity DH key from `IK` via XEdDSA; **retired** in favor of a dedicated `IK`-certified X25519 `idk` so `IK` stays sign-only and hardware-buildable (§5.2.1(a)). No longer used by DMTAP. |
 | **RFC 8949** | Concise Binary Object Representation (CBOR) | wire serialization; **deterministic (core) encoding, §4.2** (all objects) |
 | **FIPS 203** | ML-KEM (Module-Lattice KEM) | PQ KEM (suite 0x02, §1.1) |
 | **FIPS 204** | ML-DSA (Module-Lattice signatures) | PQ signatures (suite 0x02, §1.1) |

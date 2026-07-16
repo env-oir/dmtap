@@ -78,11 +78,24 @@ pinned `Identity` chain (§1.3) itself signals a rotation/migration (§3.3 step 
 **Procedure (normative; mirrors §3.3, numbered identically).**
 1. DNS/name-backend lookup: query `<local>._dmtap.<domain>. TXT` (§3.2) → `{iks, id, kt,
    keypkgs}`. If no record resolves: **fail** `NAME_NOT_FOUND`.
-2. **(first contact only)** Fetch a signed KT tree head + inclusion proof for `id` from `kt`
-   (§3.5). If KT is unreachable, partitioned, or censored: apply the §3.3 fail-closed rule —
+2. **(first contact only)** Fetch a KT `SignedTreeHead` + `InclusionProof` for `id` from `kt`
+   (§3.5, §18.4.9/§18.4.10), and verify the proof's committed leaf equals the Identity-entry
+   leaf-hash recomputed from the resolved `Identity` (§18.4.9); a mismatch is
+   `ERR_KT_LEAF_HASH_MISMATCH` (`0x0117`). **KT profile fork:**
+   - **v0-minimal (log-type `0x01`, §3.5.1):** a **single** signed log. Verify the STH signature
+     and inclusion proof against the one pinned log key.
+   - **v1-hardening (log-type `0x02`, §3.5.2):** the `kt=` anchor pins a **set** of logs. The
+     binding is accepted only when it appears with a valid `InclusionProof` in a **`> n/2` quorum**
+     of the pinned set (§3.5.2(b), `quorum-resolve` below); the verifier also runs the gossip
+     `ConsistencyProof` cross-check (§18.4.11, §3.5.2(a)) and STH-freshness check. Sub-quorum ⇒
+     `ERR_KT_LOG_QUORUM_UNMET` (`0x0111`); a detected split view/append-only violation ⇒
+     `ERR_KT_STH_INCONSISTENT`/`ERR_KT_EQUIVOCATION` (`0x0110`/`0x0107`) → HALT and fall back to the
+     honest-quorum/OOB path (§3.5.2(d)); a stale head ⇒ `ERR_KT_STH_STALE` (`0x0112`), refresh.
+   If KT is unreachable, partitioned, or censored: apply the §3.3 fail-closed rule —
    refuse to pin, or (if the caller's policy allows) hard-warn and require explicit user
    acceptance. Silent TOFU is prohibited. If `require_oob` is set, this step is mandatory and
-   a KT outage is a hard failure, not a warn-and-continue.
+   a KT outage is a hard failure, not a warn-and-continue. Under v1, `> n/2`-quorum success is the
+   normal path and is what closes the v0 split-view gap.
 3. Fetch the full `Identity` object (§1.3) from the mesh by `id`; verify every `sig` in
    `Identity.sig` validates under the corresponding `iks[suite]`, and that the chain (`prev`) is
    consistent with anything previously pinned for this `name`. Reject on any signature failure
@@ -283,6 +296,169 @@ bob: routing unaffected — still addressing ik=MFk... directly
 bob → A: ack(id)
 ```
 
+### 19.1.4 KT-v1 operations (§3.5.2) — `gossip-sth` / `verify-consistency` / `quorum-resolve` / `monitor` / `auditor` / `equivocation-response`
+
+**Purpose.** The federated, gossiped, equivocation-detecting key-transparency operations (§3.5.2),
+grouped here as one spec block because they share the same objects (`SignedTreeHead`,
+`InclusionProof`, `ConsistencyProof`, §18.4.9–§18.4.11) and role model. They are the v1-hardening
+(log-type `0x02`) path that `resolve` (§19.1.1 step 2) invokes; v0-minimal uses only single-log STH
++ inclusion verification.
+
+**Initiator / Responder.** Initiator: any v1 verifier — a resolving node, a **monitor** (watches
+one identity), or an **auditor** (watches one log, §3.5.2(c)). Responder: the pinned **set** of KT
+logs and the verifier's **gossip peers**.
+
+**Parameters.**
+- `log_set` (`[+ bytes]`, MUST) — the pinned log signing keys for the name/log being checked (the
+  `kt=` anchor, §3.2).
+- `name`/`id` (MUST for `quorum-resolve`/`monitor`) — the binding under audit.
+- `own_sth` (`SignedTreeHead`, MUST for `verify-consistency`) — the verifier's latest head per log.
+- `gossiped_sth` (`SignedTreeHead`, MUST for `verify-consistency`) — a head received from a peer.
+
+**Preconditions.** The verifier has pinned `log_set` (v1 negotiated, §10.2, §21.19) and holds at
+least one prior `SignedTreeHead` per followed log (bootstrap fetch otherwise).
+
+**Procedure (normative; mirrors §3.5.2).**
+1. **`gossip-sth`** — on fetching any `SignedTreeHead` (verify its signature under `log_id`,
+   `0x0108` on failure), **re-publish** the head `(log_id, tree_size, root_hash, timestamp, sig)` to
+   gossip peers (SHOULD over the mixnet, §3.7; direct only at bootstrap, §3.5.2(a) disclosed leak).
+2. **`verify-consistency`** — on receiving a `gossiped_sth` for a followed log, request a
+   `ConsistencyProof` between `own_sth` and `gossiped_sth` and verify the smaller tree is a prefix
+   of the larger (§18.4.11). Two validly-signed heads with equal `tree_size` but differing
+   `root_hash`, or no valid consistency proof, ⇒ `ERR_KT_STH_INCONSISTENT` (`0x0110`) →
+   `equivocation-response`.
+3. **`quorum-resolve`** — accept a `name → ik@version` binding only if it appears with a valid
+   `InclusionProof` (leaf-hash checked per §18.4.9, `0x0117` on mismatch) in a **`> n/2` quorum** of
+   `log_set`. Sub-quorum (disagreement or too-many-unreachable) ⇒ `ERR_KT_LOG_QUORUM_UNMET`
+   (`0x0111`), fail closed → OOB (§3.4.1).
+4. **`monitor`** (owner devices / relying RP) — poll every log in the identity's `log_set` for any
+   entry under the owner's `name`/`IK`; **`HALT_ALERT`** on any change the owner did not initiate
+   (identity intrusion detection, §3.5.2(c)).
+5. **`auditor`** — name-agnostically verify every STH signature and that each new STH is a
+   consistent append-only extension of prior heads; gossip STHs (step 1). Needs no user key; SHOULD
+   run the private path (§3.7). A deployment SHOULD run ≥ 2 independent auditors per log.
+6. **`equivocation-response`** — on any detection (steps 2/3): **HALT** (stop trusting the log),
+   **ALERT** (`0x0107` / `0x0110`), **publish the conflicting STHs** as transferable evidence, and
+   **recover on the honest quorum** — evict the offending log and proceed if `> n/2` still agree,
+   else fail closed (`0x0111`) → OOB (§3.5.2(d)).
+
+**Success result.** A binding accepted under `> n/2` quorum with a fresh, gossip-cross-checked,
+append-only-consistent view; or a **detected, attributable, responded-to** equivocation.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| STH signature invalid | Reject | `ERR_KT_PROOF_INVALID` (`0x0108`), FAIL_CLOSED |
+| Inclusion-proof leaf ≠ recomputed leaf-hash | Reject | `ERR_KT_LEAF_HASH_MISMATCH` (`0x0117`), FAIL_CLOSED (HALT_ALERT if it evidences equivocation) |
+| No consistency proof / equal size differing root | Reject | `ERR_KT_STH_INCONSISTENT` (`0x0110`) + `ERR_KT_EQUIVOCATION` (`0x0107`), HALT_ALERT |
+| Binding not in `> n/2` quorum | Reject/Defer | `ERR_KT_LOG_QUORUM_UNMET` (`0x0111`), FAIL_CLOSED → OOB; a later fetch reaching quorum resolves it |
+| STH older than freshness window (freeze) | Defer | `ERR_KT_STH_STALE` (`0x0112`), HOLD_RESYNC — refetch; escalate to HALT_ALERT if persistent |
+
+**Idempotency / retry.** All are read-side / monitoring operations over signed evidence; re-running
+is safe and returns the same conclusion for the same heads. Gossip is idempotent (a peer re-seeing
+a head it holds is a no-op).
+
+### 19.1.5 Organization administration (§3.10) — `provision-member` / `publish-directory` / `query-directory` / `offboard`
+
+**Purpose.** The domain-administration operations of §3.10: create/remove a member binding under a
+domain, publish and query the `DomainDirectory` GAL, and offboard. Admin *authority* is a §13.5
+capability (`delegate-capability`/`revoke-capability`, §19.6.6); this block is the member/directory
+lifecycle those capabilities gate.
+
+**Initiator / Responder.** Initiator: a holder of the relevant org capability (`domain-admin` /
+`user-admin`, §13.5.1). Responder: the domain authority's node (KT append + mesh publish), DNS, and
+the querying member.
+
+**Parameters.**
+- `member` (`{name, ik, custody}`, MUST for `provision`/`offboard`) — the member binding;
+  `custody ∈ {sovereign, org-managed}` (§3.10.2).
+- `cap` (`CapabilityToken`, MUST) — the admin capability authorizing the act (§18.7.3).
+- `directory` (`DomainDirectory`, MUST for `publish`) — the new signed directory version.
+
+**Preconditions.** `cap` validates (chain + attenuation + not revoked, §18.7.3) and covers the
+requested `(resource, ability)`; a **domain-authoritative** act (anchor/directory-key rotation)
+requires the domain **threshold**, not one admin (§13.5.1, §3.10.1).
+
+**Procedure (normative; mirrors §3.10).**
+1. **`provision-member`** — verify `cap`; publish `member.name → member.ik` as a `_dmtap` DNS
+   record (§3.2), a KT entry (§3.5), and a new `DirEntry` in the next `DomainDirectory` version
+   (§18.4.7). If `custody = org-managed`, the entry MUST carry the `org-managed` marker; presenting
+   an org-managed account as sovereign fails `ERR_ORG_MANAGED_UNDISCLOSED` (`0x0115`). Default
+   SHOULD be `sovereign`.
+2. **`publish-directory`** — sign the new `DomainDirectory` under the (threshold-held) domain
+   authority, increment `version`, append its root to KT. A directory not authority-signed ⇒
+   `ERR_DOMAIN_DIRECTORY_SIG_INVALID` (`0x0113`); older-or-equal `version` rejected (rollback).
+3. **`query-directory`** — a member fetches the GAL; each `DirEntry` MUST be independently
+   forward-verified against DNS+KT (§3.10.3) before display — an entry that does not resolve forward
+   is `ERR_DIRECTORY_ENTRY_UNVERIFIED` (`0x0114`), rendered unverified, never used to address mail.
+   `members-only` visibility serves entries only to authenticated members (§3.10.3).
+4. **`offboard`** — publish a `DomainDirectory` version dropping the entry, retire the `_dmtap` DNS
+   record (KT-logged), revoke the member's org capabilities (`revoke-capability`, §19.6.6), and
+   remove them from org groups via §5.8.2 Remove (which re-keys shared folders, §6.7). Mailbox
+   disposition diverges by custody model (§3.10.5).
+
+**Success result.** A KT-logged, directory-versioned, owner/authority-visible membership change; a
+forward-verifiable GAL.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| `cap` invalid / over-attenuated / expired | Reject | `ERR_CAPABILITY_DELEGATION_INVALID` (`0x0508`), DENY_POLICY |
+| `cap` revoked | Reject | `ERR_CAPABILITY_REVOKED` (`0x050B`), DENY_POLICY |
+| Domain-authoritative act without threshold | Reject | Treated as unauthorized (`0x0508`) — no unilateral super-admin (§13.5.1) |
+| Directory not authority-signed / stale version | Reject | `ERR_DOMAIN_DIRECTORY_SIG_INVALID` (`0x0113`) / rollback reject |
+| `DirEntry` fails forward-verify | Reject | `ERR_DIRECTORY_ENTRY_UNVERIFIED` (`0x0114`), unverified render |
+| Org-managed custody undisclosed | Reject | `ERR_ORG_MANAGED_UNDISCLOSED` (`0x0115`), HALT_ALERT |
+
+**Idempotency / retry.** `provision`/`offboard` are idempotent on the resulting binding state (a
+re-published identical directory version is a no-op; a stale version is rejected). `query-directory`
+is a pure read.
+
+### 19.1.6 Device attestation (§1.2a) — `attest-enroll` / `attest-verify`
+
+**Purpose.** Enroll a device with hardware key-attestation evidence and verify it in an
+attestation-gated context (§1.2a). Advisory hardening only — never overrides §1.4 authority.
+
+**Initiator / Responder.** Initiator: the enrolling device (`attest-enroll`) or the relying context
+— a group admit, org provisioning (`attest-verify`). Responder: the owner's `IK`/quorum (issues the
+`DeviceCert`) and the relying verifier.
+
+**Parameters.**
+- `device_key` (`ik-pub`, MUST) — the non-exportable key being attested.
+- `evidence` (`bytes`, MUST) — platform attestation (Android Key Attestation / Apple / TPM `AK`
+  quote / FIDO), carried in `DeviceCert.attestation` (§18.4.2).
+- `key_protection` (`key-protection`, MUST) — the keystore class.
+
+**Preconditions.** `device_key` is (or is being) authorized by a valid `DeviceCert` under the
+owner's `Identity` (§1.2) — attestation never substitutes for that authorization.
+
+**Procedure (normative).**
+1. **`attest-enroll`** — generate `device_key` inside the hardware keystore (§1.2a), obtain
+   platform `evidence`, and issue a `DeviceCert` with `key_protection` (key 9) and `attestation`
+   (key 10) set; the cert is IK-signed as usual (§18.9.3).
+2. **`attest-verify`** — in a context that **requires** attestation: check `evidence` verifies
+   against a **current** platform attestation root and that `device_key` is bound in it as
+   hardware-resident/non-exportable. Absent/invalid ⇒ `ERR_DEVICE_ATTESTATION_INVALID` (`0x0116`);
+   evidence older than the re-attestation cadence (≤ 90 days, §16.9), past its window, or chaining
+   only to a retired root ⇒ `ERR_DEVICE_ATTESTATION_EXPIRED` (`0x0118`) → require re-attestation. A
+   non-gated context ignores absence.
+
+**Success result.** A device accepted for the attestation-gated context (or rejected fail-closed),
+with the owner's §1.4 authority unchanged either way.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| Attestation absent/invalid in a gated context | Reject | `ERR_DEVICE_ATTESTATION_INVALID` (`0x0116`), FAIL_CLOSED_BLOCK |
+| Attestation evidence expired / root retired | Reject | `ERR_DEVICE_ATTESTATION_EXPIRED` (`0x0118`), FAIL_CLOSED_BLOCK → re-attest |
+| Device not §1.4-authorized (however well-attested) | Reject | Rejected on authorization grounds (`0x010D`), regardless of attestation |
+
+**Idempotency / retry.** `attest-verify` is a pure read over the cert; re-verifying is safe.
+`attest-enroll` re-issued for the same key updates the `DeviceCert` (higher version supersedes).
+
 ## 19.2 Reachability operations (§4)
 
 ### 19.2.1 `publish-location(location_record)`
@@ -478,6 +654,74 @@ A: reachability established via rung 2 (hole-punch)
 A: proceed to deliver() over this connection
 ```
 
+### 19.2.4 Mixnet operations (§4.4) — `publish-mix-descriptor` / `publish-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`
+
+**Purpose.** The `private`-tier metadata-privacy operations (§4.4): how a mix advertises itself,
+how the directory is published and fetched, and how a sender builds a fail-closed path and sends,
+plus the loop-cover active-attack detector. Grouped because they share the mixnet objects
+(`MixNodeDescriptor`, `MixDirectory`, `SphinxCell`, §18.5.2–§18.5.4).
+
+**Initiator / Responder.** Initiator: a mix node (`publish-mix-descriptor`, `emit-loop`), a
+directory authority (`publish-directory`), or a sender (`fetch-directory`, `build-path`,
+`send-over-mixnet`, `detect-active-attack`). Responder: KT, the mesh, and the mix fleet.
+
+**Parameters.**
+- `descriptor` (`MixNodeDescriptor`, MUST for publish) — with `operator` + a valid `_dmtap-mix`
+  attestation (§4.4.8) if it is to count toward operator-diversity.
+- `directory` (`MixDirectory`, MUST) — the KT-anchored fleet snapshot for an epoch.
+- `mote` (`Envelope`, MUST for send) — already padded to a bucket rung (§4.4.1).
+- `profile` (`{Standard|High-security}`, MUST for `build-path`/`send`) — the in-force profile
+  (§4.4.10).
+
+**Preconditions.** The sender has the pinned directory-authority key (§4.4.2) and a fresh
+`MixDirectory` for the current epoch; a mix has an IK-authorized identity (§4.4.2).
+
+**Procedure (normative; mirrors §4.4).**
+1. **`publish-mix-descriptor`** — a mix signs and publishes its `MixNodeDescriptor` (current + next
+   epoch Sphinx keys, layer, `operator`). Its **operator control MUST be attested** by a
+   `_dmtap-mix` DNS/KT record (§4.4.8) or it does not count as a distinct operator.
+2. **`publish-directory`** — the (threshold-held / `> n/2`-quorum, §4.4.2) authority signs a
+   versioned `MixDirectory` of attested mixes, ≥ 1 per stratified layer, and appends its root to KT.
+   Not authority-signed ⇒ `ERR_MIX_DIRECTORY_SIG_INVALID` (`0x030B`); a directory split view is
+   detectable to the degree the KT profile allows (v1 gossip; v0 only after-the-fact, §4.4.2, M4).
+3. **`fetch-directory`** — a sender refreshes the `MixDirectory` at least once per epoch; verifies
+   the authority signature and the KT anchor; a stale descriptor/epoch key ⇒
+   `ERR_MIX_DESCRIPTOR_STALE` (`0x030C`).
+4. **`build-path`** — draw one mix per stratified layer in order, under the **in-force profile's**
+   bar: **≥ 3 hops / ≥ 3 attested-disjoint operators** (Standard) or **≥ 5 / ≥ 5** (High-security),
+   current-epoch keys, honoring pinned **entry guards** (§4.4.8). Un-attested/absent-`operator`
+   mixes do **not** contribute diversity (§4.4.8, M3). If no path meeting the in-force bar is
+   buildable, **fail closed** — never silently satisfy a lesser bar (`ERR_MIX_PATH_UNBUILDABLE`
+   `0x030D` / `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` `0x0310`).
+5. **`send-over-mixnet`** — fragment the padded `mote` into `bucket/2 KiB` `SphinxCell`s
+   (§18.5.4), each over an **independent** `build-path` result, with per-hop Poisson delays; emit.
+   A build failure holds the MOTE in the retry queue (§4.7), never downgrades (§4.4.9).
+6. **`emit-loop`** — every `private` node emits client loops (via SURB) and every mix emits mix
+   loops at `λ_loop` (§4.4.7); loops are Sphinx cells indistinguishable from real traffic.
+7. **`detect-active-attack`** — track the sliding-window loop-return fraction and latency; below the
+   loop-loss threshold (§16.3) ⇒ `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`) → rotate away from
+   implicated mixes/guards, `HALT_ALERT`, and **fail closed for `private`** (never auto-downgrade).
+   Sub-threshold selective drop is bounded, not eliminated (§16.3, §6.6).
+
+**Success result.** A MOTE delivered over an in-profile, operator-diverse, current-epoch mix path
+with no silent downgrade; or a held+alerted fail-closed state under attack/outage.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| Directory not authority-signed / sub-quorum | Reject | `ERR_MIX_DIRECTORY_SIG_INVALID` (`0x030B`), FAIL_CLOSED |
+| Descriptor/epoch key stale | Defer | `ERR_MIX_DESCRIPTOR_STALE` (`0x030C`), ROTATE_RETRY — refetch, rebuild |
+| No conformant path (layer empty / diversity unmet) | Defer/Reject | `ERR_MIX_PATH_UNBUILDABLE` (`0x030D`); if it forces a tier/profile downgrade, `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` (`0x0310`), FAIL_CLOSED — hold + retry, never downgrade |
+| Sphinx cell malformed / reassembly inconsistent | Silent drop | `ERR_MIX_PACKET_MALFORMED` (`0x0307`) — content-blind, no notify |
+| Replayed cell (per-hop tag in cache) | Silent drop | `ERR_MIX_REPLAY_DETECTED` (`0x030E`) |
+| Loop-return below threshold | Defer + Alert | `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`), HALT_ALERT + rotate + fail-closed |
+
+**Idempotency / retry.** Path building and sending are **not** idempotent at the path level (each
+cell MUST take a fresh, independent path, §4.4.3); MOTE delivery is idempotent end-to-end via
+content-address dedup at the recipient (§2.6). `publish-directory`/`publish-mix-descriptor` are
+monotonic-version publishes (older-or-equal rejected).
+
 ## 19.3 Delivery operations (§2.6, §2.7, §2.7a)
 
 ### 19.3.1 `deliver(outer_mote)`
@@ -531,12 +775,26 @@ definition, which is exactly why its ordering is normatively fixed (§2.7).
    - Valid and at/above threshold → proceed to step 7 exactly as a known contact would.
 7. Decrypt `ciphertext` (MLS epoch key for group `epoch`, or HPKE to the recipient's key for 1:1
    §5.3 async-init). Drop on decryption failure (wrong epoch, corrupt ciphertext, key not held).
+   **Deniable fork (`kind = 0x0b`, §5.2.1, §18.3.9).** If `kind = 0x0b`, the `ciphertext` is a
+   `DeniableFrame`, **not** an MLS/HPKE-sealed `Payload`; a conformant recipient MUST route it
+   through the **Double Ratchet** and MUST NOT attempt MLS/HPKE decrypt (nor silently drop it for
+   lacking a `Payload`). A `DeniableInit` runs X3DH/PQXDH — verifying `idk_a_cert` over `idk_a`
+   (`0x040C` on failure), consuming the referenced responder prekey (marking any `opk`/one-time-KEM
+   spent), and applying the §5.2.1(a) first-message replay defense for a last-resort-only init —
+   then decrypts the embedded first `DeniableMessage`; a subsequent `DeniableMessage` advances the
+   ratchet. A ratchet decrypt/skip failure is `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`); an
+   unknown/exhausted prekey is `0x040B`.
 8. Verify `Payload.sig` under `Payload.from`. For a known contact, `from` MUST match the pinned
    identity (§3.4); a mismatch is treated as a forged/relayed message — drop, do not ack. For a
    cold sender whose `from` is only now revealed (post-decryption), re-apply the recipient's
    block/allow lists against the now-known identity — a sender that passed the anonymous
    challenge gate (step 6) but is on an explicit per-identity block list (§9.2 `block`) is still
-   rejected here.
+   rejected here. **Deniable fork (`kind = 0x0b`).** A `DeniablePayload` carries **no** `Payload.sig`:
+   the recipient substitutes the **Double-Ratchet AEAD tag** (the shared-key MAC verified at step 7)
+   for the signature check, binds `DeniablePayload.from` to the X3DH-authenticated `IK` against the
+   pinned identity (§3.4), and MUST reject any `DeniablePayload` that carries a signature field
+   (`ERR_DENIABLE_SIGNATURE_PRESENT`, `0x040F`, FAIL_CLOSED). Block/allow re-application against the
+   revealed `from` proceeds as for any MOTE.
 8a. **Verify transport-path provenance (§7.8) and assemble the `ProvenanceRecord` (§18.8.1).**
    - If `Payload.provenance` (§18.3.5 key 9) is present, verify **each** `GatewayAttestation`
      (§18.3.11): recompute `msg_digest` over the decrypted RFC 5322/MIME body and check the `sig`
@@ -578,6 +836,9 @@ already held); deferred and dropped are both unacked, differing only in retentio
 | Cold sender, `challenge` invalid/forged | Silent drop | Per §2.7a exactly |
 | Cold sender, `challenge` absent/below threshold | Defer to requests area, **no ack** | Rate-limited (§9.2), retained 30 days (§16.5), never silently discarded and never shown as an inbox message (§2.7a's two MUST NOTs); not acked (don't confirm receipt to an unproven cold sender — the sender's own retry `EXPIRED`s) |
 | Decryption fails (wrong epoch/key/corrupt) | Silent drop | No ack — indistinguishable from a forged envelope to the sender, by design (does not confirm epoch/key state to an attacker) |
+| `kind = 0x0b` deniable ratchet/AEAD-tag failure, or out-of-order beyond MAX_SKIP | Silent drop / hold-for-resync | `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`) — a MAC failure reveals nothing to notify; skipped-key exhaustion is held for resync (§5.2.1(b)) |
+| `kind = 0x0b` deniable prekey unknown/exhausted, or `idk_a_cert`/X3DH fails | Reject / Reject | `ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED` (`0x040B`) / `ERR_DENIABLE_X3DH_FAILED` (`0x040C`) — surface to the initiating client; do not treat as an MLS message |
+| `kind = 0x0b` `DeniablePayload` carries a signature field | Reject (fail-closed) | `ERR_DENIABLE_SIGNATURE_PRESENT` (`0x040F`) — a signature would defeat the mode; MUST reject, never render |
 | `Payload.sig` fails under `Payload.from`, OR `from` mismatches a known contact's pin | Silent drop | No ack — a passed anti-abuse gate does not substitute for payload authenticity |
 | `from` (revealed post-decrypt) is on the recipient's explicit block list | Silent drop | No ack — step 6 passing (anonymous accountability) does not override an explicit identity-level block once identity is known |
 | Duplicate `id` (already held) | N/A — not a failure | `ack` immediately, no re-processing (§2.6 dedup) |
@@ -923,6 +1184,70 @@ committer: appends Commit_13{ExternalCommit(A)} to log
 committer → all members: Commit_13
 members (incl. A): apply → G@epoch13, A now a full member with role="member" (default for open)
 ```
+
+### 19.4.4 Deniable session (§5.2.1) — `publish-deniable-prekeys` / `consume-opk` / `deniable-establish` / `deniable-send` / `deniable-recv`
+
+**Purpose.** The optional **repudiable 1:1 mode** (§5.2.1): publish prekeys, run the X3DH/PQXDH
+handshake, and send/receive over the Double Ratchet. Grouped because they share the deniable objects
+(`DeniablePrekeyBundle`, `DeniableFrame`, `DeniablePayload`, §18.3.9/§18.3.10/§18.4.8) and the
+no-signature authentication model.
+
+**Initiator / Responder.** Initiator: the identity offering/using the mode (an ordinary node).
+Responder: the mesh (prekey publication), the counterpart node, and — on receipt — `deliver`
+(§19.3.1 step 7–8's deniable fork).
+
+**Parameters.**
+- `bundle` (`DeniablePrekeyBundle`, MUST for publish) — carrying the **dedicated `idk`** (+ `idk_sig`,
+  DS-tag `DMTAP-v0/deniable-idk`), `spk` (+ `spk_sig`), `opks`, and (PQ) KEM keys (§18.4.8).
+- `peer` (`ik` + resolved bundle, MUST for establish) — the counterpart, KT/OOB-pinned (§3.4).
+- `content` (`DeniablePayload`, MUST for send) — the real `kind`/headers/body, **no signature**.
+
+**Preconditions.** **Both** peers advertise the `deniable-1:1` capability (§10.2, §21.22); the user
+selected the mode (never a silent default). The counterpart's `IK` is pinned (§3.4).
+
+**Procedure (normative; mirrors §5.2.1).**
+1. **`publish-deniable-prekeys`** — provision the long-term **`idk`** (a dedicated X25519 DH key,
+   **not** derived from `IK`), certify it with an IK-authorized device key (`idk_sig`), and publish
+   a `DeniablePrekeyBundle` (with `spk`/`opks`/KEM keys) located via `Identity.deniable_prekeys`.
+   Replenish before exhaustion (≤ 20 OPKs remaining, §16.9). An invalid/exhausted bundle intake ⇒
+   `ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED` (`0x040B`).
+2. **`consume-opk`** — a responder marks each `opk`/one-time-KEM **spent** on first use so it is
+   never reused; a repeat is a replay (below).
+3. **`deniable-establish`** — the initiator runs X3DH/PQXDH: it carries **its own** `idk_a` +
+   `idk_a_cert` inline in `DeniableInit`, references a consumed responder `spk`/`opk`(/KEM), and
+   mixes `DH(idk_a, spk_b)`, `DH(ek_a, idk_b)`, `DH(ek_a, spk_b)`(, `DH(ek_a, opk_b)`) — `idk`, not
+   `IK`, on both sides. For a **last-resort / signed-prekey-only** init (no OPK), apply the
+   first-message replay defense (§5.2.1(a)): prefer an OPK when available, else the responder caches
+   consumed `ek_a`/`idk_a` and requires key-confirmation. Handshake/cert failure ⇒
+   `ERR_DENIABLE_X3DH_FAILED` (`0x040C`).
+4. **`deniable-send`** — Double-Ratchet-encrypt the `DeniablePayload` (which carries **no** `sig`)
+   under the per-message key; the AEAD tag **is** the shared-key MAC. Frame as a `DeniableMessage`
+   (or the embedded first message in `DeniableInit`) inside a `kind = 0x0b` MOTE with a fresh,
+   identity-free `Envelope.sender_sig` (§18.9.1). AD = `IK_A ‖ IK_B` oriented **initiator‖responder**.
+5. **`deniable-recv`** — routed by `deliver` (§19.3.1) through the deniable fork: Double-Ratchet
+   decrypt, verify the AEAD tag **instead of** `Payload.sig`, bind `from` to the X3DH-authenticated
+   `IK`, and **reject any `DeniablePayload` bearing a signature** (`ERR_DENIABLE_SIGNATURE_PRESENT`,
+   `0x040F`). A MAC failure or out-of-order beyond MAX_SKIP ⇒ `ERR_DENIABLE_RATCHET_AUTH_FAILED`
+   (`0x040D`).
+
+**Success result.** A live pairwise Double-Ratchet session whose transcript is **repudiable** (no
+transferable proof of authorship), delivered per-device (Sesame fan-out, §5.2.1(d)). On device loss,
+the session is torn down and re-established per §5.2.1(f)/§6.7.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| Peer has not advertised `deniable-1:1` | Reject | `ERR_DENIABLE_MODE_UNAVAILABLE` (`0x040E`) — client MUST surface the choice, never silently downgrade deniability |
+| Bundle invalid / exhausted | Reject/Defer | `ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED` (`0x040B`), REJECT_NOTIFY |
+| `idk_a_cert`/X3DH fails, or last-resort replay | Reject | `ERR_DENIABLE_X3DH_FAILED` (`0x040C`) |
+| Ratchet AEAD-tag fail / beyond MAX_SKIP | Silent drop / hold | `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`) |
+| `DeniablePayload` carries a signature | Reject (fail-closed) | `ERR_DENIABLE_SIGNATURE_PRESENT` (`0x040F`) |
+
+**Idempotency / retry.** `publish-deniable-prekeys` is a monotonic-version publish. Sends are
+idempotent end-to-end via `Envelope.id` dedup (§2.6); a resent `DeniableInit` that reconsumes an
+already-spent OPK is rejected as a replay (`0x040C`) — the mode is **not** safe to blindly replay at
+the handshake layer, only at the transport layer.
 
 ## 19.5 Group operations (§5.1, §5.8)
 
@@ -1677,6 +2002,64 @@ bridge → legacy_rp: authorization code → (token endpoint) → ID Token
 legacy_rp: verifies ID Token against bridge's published JWKS (standard OIDC)   # OK, "logged in"
 ```
 
+### 19.6.6 `delegate-capability(caps, aud) → CapabilityToken` / `revoke-capability(token)`
+
+**Purpose.** Mint an attenuable, offline-verifiable delegated capability (§13.5) — including the org
+admin roles (§13.5.1) — and revoke one. The wire objects are `CapabilityToken` /
+`CapabilityRevocation` (§18.7.3).
+
+**Initiator / Responder.** Initiator: the delegator (`IK`/device key, a parent token's `aud`, or the
+domain authority for org roles). Responder: the delegatee (holds the token), the invoked resource's
+verifier, and the KT log / status endpoint (revocation).
+
+**Parameters.**
+- `caps` (`[+ Capability]`, MUST) — the granted `(resource, ability, caveats)`; each MUST be **≤** a
+  capability the delegator itself holds (attenuation).
+- `aud` (`ik-pub`, MUST) — the delegatee key.
+- `nbf`/`exp` (`u64`, MUST) — validity window; `exp` REQUIRED.
+- `prnt` (`hash`, OPTIONAL) — parent token content-address for a chained delegation.
+- `token` (`hash`, MUST for revoke) — the content-address of the token to revoke.
+
+**Preconditions.** For a delegation, the delegator actually holds (or roots) the `caps`; a
+domain-authoritative capability requires the domain **threshold** (§13.5.1). Both delegation and
+revocation MUST be routed through the owner's/domain's **KT self-monitoring path** (§3.5) so a silent
+grant/revoke is owner-visible (§13.5, BEC defense).
+
+**Procedure (normative).**
+1. **`delegate-capability`** — construct a `CapabilityToken` with `iss` = the delegator, `aud`,
+   `caps`, `nbf`/`exp`, a fresh `nonce`, and `prnt` if chained; sign it (`DMTAP-v0/cap-token`,
+   §18.9.14). Publish the grant event to the owner's device-cluster notification + KT path (§13.5).
+   The delegatee invokes by proving possession of `aud` (its session/DPoP key, §13.4).
+2. **`revoke-capability`** — construct a `CapabilityRevocation` naming `token` (the revoker MUST be
+   the token's `iss` or a chain ancestor), sign it (`DMTAP-v0/cap-revocation`), and **publish it to
+   the transparency log / status endpoint** (§13.4, §13.5.1). Revoking a chain root revokes all
+   descendants.
+3. **Verification (by a resource verifier)** — validate the token signature + whole chain to a
+   trusted root, the attenuation invariant at every link, the validity window, the requested
+   `(resource, ability)` coverage and caveats, and invoker possession of the leaf `aud`; then check
+   **no** covering revocation exists (§18.7.3). Any (1)–(4) failure ⇒
+   `ERR_CAPABILITY_DELEGATION_INVALID` (`0x0508`); a covering revocation ⇒ `ERR_CAPABILITY_REVOKED`
+   (`0x050B`).
+
+**Success result.** A signed, chainable, owner-visible capability the delegatee can present and any
+verifier can check **offline**; or a KT-logged revocation that thereafter denies the token.
+
+**Failure modes.**
+
+| Condition | Class | Response |
+|---|---|---|
+| `caps` exceed the delegator's own / parent (attenuation broken) | Reject | `ERR_CAPABILITY_DELEGATION_INVALID` (`0x0508`), DENY_POLICY |
+| Token expired / malformed / chain-`iss`≠parent-`aud` | Reject | `0x0508`, DENY_POLICY |
+| Invoked right exceeds what was granted | Reject | `0x0508`, DENY_POLICY |
+| Token (or ancestor) covered by a valid revocation | Reject | `ERR_CAPABILITY_REVOKED` (`0x050B`), DENY_POLICY |
+| Domain-authoritative capability minted without threshold | Reject | Unauthorized (`0x0508`) — no unilateral super-admin (§13.5.1) |
+| Grant/revoke not routed through the KT/owner-visible path | Reject | Prohibited (§13.5) — silent authorization is not honored |
+
+**Idempotency / retry.** `delegate-capability` with identical parameters (and `nonce`) yields the
+same token content-address — idempotent. `revoke-capability` is idempotent (re-publishing the same
+revocation is a no-op; revocation is monotonic — a token, once revoked, stays revoked, §21.25
+append-only).
+
 ## 19.7 Gateway operations (§7)
 
 ### 19.7.1 `smtp-inbound(smtp_transaction) → mote | 4xx`
@@ -2028,24 +2411,35 @@ outcome rather than silence — per this appendix's own normative charter.
 
 ## 19.11 Operation count
 
-This appendix specifies **34** operations (plus the JMAP mapping table, §19.9, which maps
+This appendix specifies **60** operations (plus the JMAP mapping table, §19.9, which maps
 existing JMAP methods onto them rather than defining new ones):
 
-- Naming (§19.1): 3 — `resolve`, `publish-identity`, `publish-move`
-- Reachability (§19.2): 3 — `publish-location`, `lookup-location`, reachability-ladder attempt
+- Naming (§19.1): 3 — `resolve`, `publish-identity`, `publish-move` — **plus** the KT-v1 family
+  (§19.1.4): 6 — `gossip-sth`, `verify-consistency`, `quorum-resolve`, `monitor`, `auditor`,
+  `equivocation-response`; the org-admin family (§19.1.5): 4 — `provision-member`,
+  `publish-directory`, `query-directory`, `offboard`; device attestation (§19.1.6): 2 —
+  `attest-enroll`, `attest-verify`
+- Reachability (§19.2): 3 — `publish-location`, `lookup-location`, reachability-ladder attempt —
+  **plus** the mixnet family (§19.2.4): 7 — `publish-mix-descriptor`, `publish-directory`,
+  `fetch-directory`, `build-path`, `send-over-mixnet`, `emit-loop`, `detect-active-attack`
 - Delivery (§19.3): 3 — `deliver`, `ack`, sender-retry state machine
-- Async init (§19.4): 3 — `fetch-keypackage`, `add-member`/`Welcome`, `external-commit`
+- Async init (§19.4): 3 — `fetch-keypackage`, `add-member`/`Welcome`, `external-commit` — **plus**
+  the deniable-session family (§19.4.4): 5 — `publish-deniable-prekeys`, `consume-opk`,
+  `deniable-establish`, `deniable-send`, `deniable-recv`
 - Group (§19.5): 6 — `create-group`, the four Commit-based management ops (grouped as one entry
   since they share one spec block, §19.5.2), `post-to-group`, `join`, `committer-elect`/`rotate`
   (one entry), fork-detection halt
 - Auth (§19.6): 5 — `auth-challenge`, `auth-assert`, `session-establish`, `session-revoke`,
-  `oidc-bridge-issue`
+  `oidc-bridge-issue` — **plus** capability delegation (§19.6.6): 2 — `delegate-capability`,
+  `revoke-capability`
 - Gateway (§19.7): 2 — `smtp-inbound`, `smtp-outbound`
 - Files (§19.8): 2 — `offer-file`, `fetch-chunk`
 
-(3+3+3+3+6+5+2+2 = 27 top-level spec blocks; counting the four individually-role-gated group
-sub-operations inside §19.5.2 as distinct operations, per the task's enumeration of
-"add/remove/role-change/policy-change" as four things, brings the total to **34**.)
+(The original 27 top-level spec blocks → **34** counting the four §19.5.2 group sub-ops; the
+wave-2 hardening pass adds **6** new spec blocks (§19.1.4/.5/.6, §19.2.4, §19.4.4, §19.6.6)
+covering **26** further sub-operations — KT-v1 6, org-admin 4, device-attestation 2, mixnet 7,
+deniable-session 5, capability delegation 2 — bringing the total to **60**. `resolve` (§19.1.1) now
+covers both the v0 single-log and the v1 `> n/2`-quorum/gossip KT path.)
 
 
 

@@ -457,7 +457,9 @@ DeniableFrame = DeniableInit / DeniableMessage
 DeniableInit = {
   0 => 1,               ; discriminator: X3DH/PQXDH first message (§5.2.1(a))
   1 => suite,           ; suite     0x01 ⇒ X3DH; 0x02 ⇒ PQXDH (ML-KEM-768)
-  2 => ik-pub,          ; ik_a      initiator IK (the X25519 identity-DH key is XEdDSA-derived from it)
+  2 => ik-pub,          ; ik_a      initiator Ed25519 IK — for AD binding + to authorize idk_a; NOT a DH input
+  9 => bytes,           ; idk_a     initiator DEDICATED deniable-identity DH key (X25519); the X3DH long-term DH input
+  10 => sig-val,        ; idk_a_cert IK-authorized device-key sig over idk_a (DS-tag DMTAP-v0/deniable-idk, §18.9.10)
   3 => bytes,           ; ek_a      initiator ephemeral X25519 public key
   4 => hash,            ; spk_ref   content-addr of the responder signed prekey consumed
   ? 5 => hash,          ; opk_ref   content-addr of the responder one-time prekey consumed (absent ⇒ signed-prekey only)
@@ -479,7 +481,9 @@ DeniableMessage = {
 |--------|-------|----:|------|----------|-----------------------|
 | `DeniableInit` | disc | 0 | `1` | MUST | Selects the X3DH/PQXDH first message. |
 | | `suite` | 1 | `suite` | MUST | `0x01` ⇒ classical X3DH; `0x02` ⇒ PQXDH with ML-KEM-768 (§16.7). MUST satisfy the recipient's suite ratchet (§1.3); a below-high-water-mark suite is rejected (`0x020F`). |
-| | `ik_a` | 2 | `ik-pub` | MUST | Initiator `IK`. Only the **recipient** parses this (sealed sender — the whole `ciphertext` is opaque to intermediaries). The X3DH long-term identity DH key is XEdDSA-derived from it (§5.2.1(a)); the recipient MUST bind it to the pinned `name → key` identity (§3.4). |
+| | `ik_a` | 2 | `ik-pub` | MUST | Initiator **Ed25519 `IK`**. Only the **recipient** parses this (sealed sender — the whole `ciphertext` is opaque to intermediaries). It is used for the AD identity binding (`AD = IK_A ‖ IK_B`, oriented initiator‖responder) and to authorize `idk_a`; it is **not** an X3DH DH input. The recipient MUST bind it to the pinned `name → key` identity (§3.4). |
+| | `idk_a` | 9 | `bytes` | MUST | Initiator's **dedicated deniable-identity DH key** (X25519) — the X3DH/PQXDH *long-term identity DH input* on the initiator side, carried inline so an offline responder can complete the async handshake without fetching the initiator's own `DeniablePrekeyBundle`. The recipient MUST verify `idk_a_cert` before use; DH1 mixes `idk_a` (not any `IK`-derived key). |
+| | `idk_a_cert` | 10 | `sig-val` | MUST | Signature by an `IK`-authorized device key of `ik_a` over the raw `idk_a` bytes (DS-tag `DMTAP-v0/deniable-idk`, §18.9.10) — the same certification carried in the responder's `DeniablePrekeyBundle.idk_sig` (§18.4.8). Authenticates that `idk_a` belongs to the initiator's identity; a failure is `ERR_DENIABLE_X3DH_FAILED` (`0x040C`). It signs a *public DH key*, never content, so it is deniability-neutral. |
 | | `ek_a` | 3 | `bytes` | MUST | Initiator ephemeral X25519 public key for the X3DH DH mix. |
 | | `spk_ref` | 4 | `hash` | MUST | Content address of the responder **signed prekey** (`spk`) consumed from the responder's `DeniablePrekeyBundle` (§18.4.8). Unknown/expired ⇒ `ERR_DENIABLE_X3DH_FAILED` (`0x040C`). |
 | | `opk_ref` | 5 | `hash` | OPTIONAL | Content address of the responder **one-time prekey** consumed. Absent ⇒ the signed prekey alone was used (last-resort, rate-limited, §16.9). A one-time prekey MUST be marked spent on use. |
@@ -490,7 +494,7 @@ DeniableMessage = {
 | | `dh` | 1 | `bytes` | MUST | Sender's current ratchet X25519 public key (the DH-ratchet step, §5.2.1(b)). |
 | | `pn` | 2 | `u32` | MUST | Count of messages in the previous sending chain (skipped-key handling, MAX_SKIP §16.9). |
 | | `n` | 3 | `u32` | MUST | Message number in the current sending chain. |
-| | `ct` | 4 | `bytes` | MUST | AEAD ciphertext of the `DeniablePayload` (§18.3.10) under the derived message key. The **AEAD tag is the shared-key MAC**; a verification failure is `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`). The AEAD **associated data** is the standard Double-Ratchet AD — the ratchet header `(dh, pn, n)` concatenated with the X3DH-established context `AD = IK_A ‖ IK_B` (the two parties' identity keys, §5.2.1) — so a message cannot be cut-and-pasted across sessions or reattributed. It does **not** and cannot bind `Envelope.id` (which is the hash of the ciphertext that already contains this `ct`). **No signature accompanies it — by design.** |
+| | `ct` | 4 | `bytes` | MUST | AEAD ciphertext of the `DeniablePayload` (§18.3.10) under the derived message key. The **AEAD tag is the shared-key MAC**; a verification failure is `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`). The AEAD **associated data** is the standard Double-Ratchet AD — the ratchet header `(dh, pn, n)` concatenated with the X3DH-established context `AD = IK_A ‖ IK_B` (the two parties' Ed25519 identity keys, §5.2.1), **canonically oriented `initiator ‖ responder`** — `IK_A` is the session initiator's `IK` and `IK_B` the responder's, fixed for the lifetime of the session **regardless of which party is currently sending** — so a message cannot be cut-and-pasted across sessions or reattributed and both endpoints derive byte-identical AD. It does **not** and cannot bind `Envelope.id` (which is the hash of the ciphertext that already contains this `ct`). **No signature accompanies it — by design.** |
 
 ### 18.3.10 `DeniablePayload` (§5.2.1)
 
@@ -631,7 +635,7 @@ key-protection = "software" / "tpm" / "secure-enclave" / "strongbox" / "tee"
 | `caps` | 7 | `[+ tstr]` | MUST | Capability set gating participation: `"send"`, `"recv"`, `"relay"`, `"mix"`, `"gateway"`, `"admin"` (§1.2). An `admin` device counts as only **one factor** toward `rotate_threshold` and MAY NOT unilaterally change recovery (§1.4). |
 | `sig` | 8 | `sig-val` | MUST | IK signature over the body (§18.9.3). Covers keys `9`/`10` when present (the preimage is `DeviceCert ∖ {8}`). |
 | `key_protection` | 9 | `key-protection` | OPTIONAL | The keystore class holding `device_key`: `"software"` or a hardware class (`"tpm"`/`"secure-enclave"`/`"strongbox"`/`"tee"`, §1.2a). A relying context (group admit, org provisioning) MAY require a hardware class. Absent ⇒ unstated (treat as `"software"` for policy). |
-| `attestation` | 10 | `bytes` | OPTIONAL | Platform key-attestation evidence that `device_key` is hardware-resident and **non-exportable** (Android Key Attestation / Apple / TPM `AK` quote / FIDO), §1.2a. Verified against the platform's attestation root out of band. A context requiring attestation rejects a device whose evidence is absent/invalid (`ERR_DEVICE_ATTESTATION_INVALID`, `0x0116`). Advisory hardening — never a substitute for the §1.4 authorization authority. |
+| `attestation` | 10 | `bytes` | OPTIONAL | Platform key-attestation evidence that `device_key` is hardware-resident and **non-exportable** (Android Key Attestation / Apple / TPM `AK` quote / FIDO), §1.2a. Verified against the platform's **attestation root** — a vendor trust anchor (a disclosed TTP, §1.2a) — out of band. A context requiring attestation rejects a device whose evidence is absent/invalid (`ERR_DEVICE_ATTESTATION_INVALID`, `0x0116`). Evidence has a **validity window**: a context MUST treat evidence older than the re-attestation cadence (≤ 90 days, §16.9) or past its own expiry, or chaining only to a retired attestation root, as **expired** (`ERR_DEVICE_ATTESTATION_EXPIRED`, `0x0118`) and require re-attestation over the same key (§1.2a). Advisory hardening — never a substitute for the §1.4 authorization authority. |
 
 ### 18.4.3 `KeyPackageBundleRef` (§1.3, §5.3)
 
@@ -810,7 +814,7 @@ member-custody = "sovereign" / "org-managed"
 | `DirEntry` | `name` | 1 | `tstr` | MUST | The member or group name under the domain (§3.10.2, §5.8.7). |
 | | `ik` | 2 | `ik-pub` | MUST | The member's/group's identity key; MUST match the forward DNS + KT binding (§3.9.4) or the entry is unverified (`0x0114`). |
 | | `id` | 3 | `hash` | MUST | Content address of the member's current `Identity` object (§18.4.1). |
-| | `custody` | 4 | `member-custody` | MUST | `"sovereign"` (member holds their own key; the org cannot access, §3.10.2a) or `"org-managed"` (org holds/escrows the key — a disclosed §6.6-style limit, §3.10.2b). An `"org-managed"` entry MUST be rendered as such; presenting one as sovereign MUST fail closed (`ERR_ORG_MANAGED_UNDISCLOSED`, `0x0115`). |
+| | `custody` | 4 | `member-custody` | MUST | `"sovereign"` (member holds their own key; the org cannot access, §3.10.2(a)) or `"org-managed"` (org holds/escrows the key — a disclosed §6.6-style limit, §3.10.2(b)). An `"org-managed"` entry MUST be rendered as such; presenting one as sovereign MUST fail closed (`ERR_ORG_MANAGED_UNDISCLOSED`, `0x0115`). |
 | | `roles` | 5 | `[* tstr]` | OPTIONAL | Informative org roles / standing-group memberships (§13.5.1, §5.8.7); authority for a role is the capability (§13.5.1), not this hint. |
 | | `added` | 6 | `ts` | MUST | When the entry was published. |
 
@@ -823,9 +827,11 @@ the Signal-style channel; replenished and rate-limited per §16.9.
 ```cddl
 DeniablePrekeyBundle = {
   1 => suite,           ; suite     0x01 (X3DH) or 0x02 (PQXDH)
-  2 => ik-pub,          ; ik        the identity these prekeys belong to
+  2 => ik-pub,          ; ik        the identity these prekeys belong to (Ed25519 IK; used for AD binding + to authorize idk, NOT for DH)
+  11 => bytes,          ; idk       long-term deniable-identity DH key — a DEDICATED X25519 public key, NOT derived from IK (§5.2.1(a))
+  12 => sig-val,        ; idk_sig   IK-authorized device-key signature over `idk` (DS-tag DMTAP-v0/deniable-idk, §18.9.10)
   3 => bytes,           ; spk       signed prekey — X25519 DH public key
-  4 => sig-val,         ; spk_sig   device-key signature over `spk` (the ONE signed thing, §5.2.1(a))
+  4 => sig-val,         ; spk_sig   device-key signature over `spk` (§5.2.1(a))
   5 => [* bytes],       ; opks      one-time prekeys (X25519 DH publics), consumed per session
   ? 6 => bytes,         ; last_kem  (PQ) signed last-resort ML-KEM encapsulation key (suite 0x02)
   ? 7 => [* bytes],     ; okems     (PQ) one-time ML-KEM encapsulation keys
@@ -838,15 +844,104 @@ DeniablePrekeyBundle = {
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
 | `suite` | 1 | `suite` | MUST | `0x01` X3DH or `0x02` PQXDH; governs the DH group and (PQ) the ML-KEM parameters. |
-| `ik` | 2 | `ik-pub` | MUST | The identity offering deniable sessions; MUST match the pinned identity. |
+| `ik` | 2 | `ik-pub` | MUST | The identity offering deniable sessions (its **Ed25519 `IK`**); MUST match the pinned identity. `IK` is used **only** for the AD identity binding (`AD = IK_A ‖ IK_B`, §18.3.9) and to authorize `idk` — it is **never** the X3DH DH input. This keeps `IK` cold and hardware-buildable (a usage-fixed Secure-Enclave/TPM/StrongBox signing key need never also perform DH). |
+| `idk` | 11 | `bytes` | MUST | The **dedicated long-term deniable-identity DH key** — a **standalone X25519 public key**, provisioned once and reused across sessions, that serves as this identity's X3DH/PQXDH *long-term identity DH key*. It is **NOT** derived from `IK` by XEdDSA (the retired construction); a separate DH key means the signing `IK` never needs sign-and-DH on one key material. A verifier MUST reject a bundle whose `idk_sig` does not authorize `idk` under `ik`'s `Identity` (`ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED`, `0x040B`). |
+| `idk_sig` | 12 | `sig-val` | MUST | Signature by an `IK`-authorized **device key** over the raw `idk` bytes (DS-tag `DMTAP-v0/deniable-idk`, §18.9.10). This **certifies the long-term deniable-identity DH key to the identity** — it signs a *public DH key*, never any message, so it is exactly as deniability-preserving as `spk_sig`. It is the certification that replaces the old "`IK` *is* the identity DH key via XEdDSA" binding. |
 | `spk` | 3 | `bytes` | MUST | The signed prekey — an X25519 DH public key. |
-| `spk_sig` | 4 | `sig-val` | MUST | Signature by an `IK`-authorized **device key** over `spk` (DS-tag `DMTAP-v0/deniable-spk`, §18.9.10). This is the **only** signature that participates in a deniable session, and it signs a *public prekey*, never any message — which is exactly why deniability is preserved (§5.2.1(a)). |
+| `spk_sig` | 4 | `sig-val` | MUST | Signature by an `IK`-authorized **device key** over `spk` (DS-tag `DMTAP-v0/deniable-spk`, §18.9.10). Together with `idk_sig`, these are the **only** signatures that participate in a deniable session, and they both sign *public prekeys*, never any message — which is exactly why deniability is preserved (§5.2.1(a)). |
 | `opks` | 5 | `[* bytes]` | MUST (MAY be empty) | One-time prekeys (X25519 DH publics). Each is consumed (marked spent) by one `DeniableInit.opk_ref`. Empty ⇒ only the signed prekey / last-resort path is available (rate-limited, §16.9). |
 | `last_kem` | 6 | `bytes` | OPTIONAL | PQXDH signed last-resort ML-KEM encapsulation key; present under `suite = 0x02`. |
 | `okems` | 7 | `[* bytes]` | OPTIONAL | PQXDH one-time ML-KEM encapsulation keys, consumed by `DeniableInit.kem_ref`. |
 | `version` | 8 | `u64` | MUST | Monotonic; a verifier MUST reject a bundle whose `version` is older-or-equal to one already seen (rollback defense, same rule as `Identity.version`). |
 | `ts` | 9 | `ts` | MUST | Publication time. |
 | `sig` | 10 | `sig-val` | MUST | Signature by an `IK`-authorized device key over the body (§18.9.10, DS-tag `DMTAP-v0/deniable-prekeys`). Authenticates the *bundle*; an invalid signature or an exhausted bundle is `ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED` (`0x040B`). |
+
+### 18.4.9 `SignedTreeHead` (KT, §3.5)
+
+The **signed tree head (STH)** of a key-transparency log — the wire object §3.5 REQUIRES but did
+not previously give a CBOR form. DMTAP's KT is an **RFC 6962-profiled** append-only Merkle log;
+this is the STH a verifier fetches, gossips (§3.5.2(a)), and checks freshness on. It is the KT
+analog of `MixDirectory` (§18.5.3): signed by the log's own key, versioned by `tree_size`.
+
+```cddl
+SignedTreeHead = {
+  1 => suite,           ; suite       signature/hash suite of this log
+  2 => bytes,           ; log_id      the log's identity = its signing public key (no central log registry, §21.19)
+  3 => u64,             ; tree_size   number of log entries (the RFC 6962 tree size)
+  4 => ts,              ; timestamp   STH issuance time (freshness / MMD, §3.5.2(a))
+  5 => hash,            ; root_hash   Merkle tree hash of the first `tree_size` entries (prefix ‖ digest)
+  6 => sig-val,         ; sig         the LOG's signature over the head (DS-tag DMTAP-v0/kt-sth, §18.9.13)
+}
+```
+
+| Field | Key | Type | Presence | Meaning & constraints |
+|-------|----:|------|----------|-----------------------|
+| `suite` | 1 | `suite` | MUST | Suite governing `sig` and the tree hash. |
+| `log_id` | 2 | `bytes` | MUST | The log's public signing key — the log **is** its key (§21.19); a verifier MUST have pinned it (the `kt=` DNS/SVCB anchor, §3.2) and MUST reject an STH not signed by it. |
+| `tree_size` | 3 | `u64` | MUST | Count of leaves. Two validly-signed STHs of one `log_id` with **equal `tree_size` but differing `root_hash`** are transferable proof of equivocation (`0x0110`/`0x0107`, §3.5.2(d)). |
+| `timestamp` | 4 | `ts` | MUST | Issuance time; an STH older than the STH-freshness window (§16.2) is stale (`ERR_KT_STH_STALE`, `0x0112`) — the freeze-attack defense. |
+| `root_hash` | 5 | `hash` | MUST | The RFC 6962 Merkle Tree Hash over the first `tree_size` leaves, using the log's suite hash with the §18.9.5 domain-separated leaf/node prefixes. |
+| `sig` | 6 | `sig-val` | MUST | The log's signature over the head (§18.9.13). Signature failure ⇒ `ERR_KT_PROOF_INVALID` (`0x0108`). |
+
+**Identity-entry leaf-hash rule (normative).** A KT log leaf for a DMTAP identity event commits to
+the **exact bytes** of that event so a leaf can never be reinterpreted. The leaf **data** for an
+`Identity` (§18.4.1) publication is the deterministic CBOR of a fixed 4-tuple
+`KTLeaf = [ name, ik, version, identity_id ]` — the primary `name` (tstr), the identity key `ik`
+(`ik-pub`), the `Identity.version` (u64), and `identity_id` (the content address of the signed
+`Identity`, §18.9.4) — and the **leaf hash** is:
+
+```
+leaf_data = det_cbor([ name, ik, version, identity_id ])
+leaf_hash = 0x1e ‖ BLAKE3-256( 0x00 ‖ leaf_data )      ; RFC 6962 leaf prefix 0x00 (cf. §18.9.5)
+```
+
+A verifier recomputes `leaf_hash` from the pinned/resolved `Identity` and MUST reject a proof whose
+committed leaf does not equal it (`ERR_KT_LEAF_HASH_MISMATCH`, `0x0117`) — the log **indexes**
+bindings, it does not get to redefine them. `RecoveryPolicy`/`KeyRotation`/`MoveRecord` leaves use
+the same rule with their own content address in place of `identity_id`.
+
+### 18.4.10 `InclusionProof` (KT, §3.5)
+
+An RFC 6962 **Merkle audit path** proving a specific `leaf_hash` (§18.4.9) is the `leaf_index`-th
+leaf of the tree committed by an STH's `root_hash`. Carries **no signature** — it is verified
+*against* the STH root, not signed on its own (like `ProvenanceRecord`, §18.9.12).
+
+```cddl
+InclusionProof = {
+  1 => u64,             ; tree_size    the STH tree_size this proof is relative to
+  2 => u64,             ; leaf_index   0-based index of the leaf in the tree
+  3 => hash,            ; leaf_hash    the leaf being proven (§18.4.9 rule)
+  4 => [* hash],        ; audit_path   sibling hashes bottom-to-top (RFC 6962 audit path; MAY be empty for a size-1 tree)
+}
+```
+
+| Field | Key | Type | Presence | Meaning & constraints |
+|-------|----:|------|----------|-----------------------|
+| `tree_size` | 1 | `u64` | MUST | The `SignedTreeHead.tree_size` this path reconstructs to; MUST match the STH the verifier holds. |
+| `leaf_index` | 2 | `u64` | MUST | 0-based leaf position; `< tree_size`. |
+| `leaf_hash` | 3 | `hash` | MUST | The leaf being proven, computed by the §18.4.9 Identity-entry rule. |
+| `audit_path` | 4 | `[* hash]` | MUST (MAY be empty) | The RFC 6962 sibling hashes; the verifier folds them (with the §18.9.5 node prefix `0x01`) up to a root and MUST equal the STH `root_hash`, else `ERR_KT_PROOF_INVALID` (`0x0108`). |
+
+### 18.4.11 `ConsistencyProof` (KT, §3.5)
+
+An RFC 6962 **consistency proof** that the tree of an earlier STH (`first_size`) is a **prefix
+(append-only extension)** of a later STH (`second_size`) of the **same** `log_id` — the object the
+gossip cross-check of §3.5.2(a) requests to detect a rewrite/rollback. Unsigned (verified against
+the two STH roots).
+
+```cddl
+ConsistencyProof = {
+  1 => u64,             ; first_size    tree_size of the earlier STH
+  2 => u64,             ; second_size   tree_size of the later STH (>= first_size)
+  3 => [* hash],        ; proof_path    RFC 6962 consistency proof nodes
+}
+```
+
+| Field | Key | Type | Presence | Meaning & constraints |
+|-------|----:|------|----------|-----------------------|
+| `first_size` | 1 | `u64` | MUST | Earlier tree size; `≤ second_size`. |
+| `second_size` | 2 | `u64` | MUST | Later tree size. |
+| `proof_path` | 3 | `[* hash]` | MUST (MAY be empty when `first_size ∈ {0, second_size}`) | The RFC 6962 consistency nodes; the verifier checks that the `first_size` root is a prefix of the `second_size` root (both from the two STHs). A proof that does not verify — or the demonstrable **absence** of any valid proof between two heads of one log — is an append-only violation, `ERR_KT_STH_INCONSISTENT` (`0x0110`) → equivocation response (§3.5.2(d)). |
 
 ---
 
@@ -956,6 +1051,69 @@ MixDirectory = {
 | `prev` | 6 | `hash` | MUST | Content-address of the previous `MixDirectory`, chaining the fleet history (genesis = all-zero digest with the v0 prefix); the root is KT-anchored (§3.5) so equivocation over the fleet is detectable exactly like a split-view (`0x0107`). |
 | `ts` | 7 | `ts` | MUST | Publication time. |
 | `sig` | 8 | `sig-val` | MUST | Directory-authority signature (§18.9.9). |
+
+### 18.5.4 `SphinxCell` — packet, β routing-command, SURB & fragment framing (§4.4.1)
+
+Sphinx is a **fixed-length binary** packet, **not** deterministic CBOR — so, unlike every object
+above, `SphinxCell` and its sub-structures are pinned as **byte layouts** (they are on the mixnet
+wire, not in a CBOR MOTE, and MUST be constant-length at every hop). This subsection gives the
+DMTAP-specific field pinning §4.4.1 requires: the per-hop routing/delay command in `β`, the SURB
+layout, and the cell fragment/reassembly framing across the `{2,8,32,64}` KiB ladder. All
+multi-byte integers are **big-endian** (§18.1.3). Cryptographic construction (`α` re-randomization,
+`β` stream-cipher onion, `γ` header MAC, `δ` LIONESS wide-block PRP) is per §4.4.1 and is not
+re-specified here.
+
+**`SphinxCell` (fixed length).**
+
+| Part | Bytes | Meaning |
+|------|------:|---------|
+| `α` | 32 | header group element (X25519 point, v0), re-randomized per hop (§4.4.1). |
+| `β` | `r_max · 48` = **240** | the routing onion: `r_max = 5` per-hop `RoutingCommand` blocks (48 B each, below), zero-padded for shorter paths so a 3-hop and 5-hop cell are byte-identical (§4.4.1). |
+| `γ` | 16 | Poly1305 header MAC over `β` for this hop (§4.4.1). |
+| `δ` | **2048** | the constant-length payload cell (LIONESS-permuted per hop); its plaintext at the exit is a `SphinxFragmentHeader` (below) followed by fragment bytes. |
+
+The total on-wire cell is `32 + 240 + 16 + 2048 = 2336` bytes, **identical for every cell of every
+profile** (padding hides both path length and true payload length).
+
+**`RoutingCommand` (per-hop, fixed 48 bytes, inside `β`).** Each hop peels exactly one:
+
+| Field | Offset | Bytes | Meaning |
+|-------|-------:|------:|---------|
+| `cmd` | 0 | 1 | `0x00` forward-to-mix; `0x01` deliver-to-recipient (exit); `0x02` SURB-reply hop. Unknown ⇒ drop (`ERR_MIX_PACKET_MALFORMED`, `0x0307`). |
+| `flags` | 1 | 1 | bit0 = last-hop; other bits reserved (MUST be 0). |
+| `delay_ms` | 2 | 4 | the hop's **Poisson-sampled** hold in milliseconds (the sender draws it `exp(mean)` per §16.3 and writes it here; the hop MUST honor it — memoryless mixing, §4.4.6). |
+| `next_hop` | 6 | 32 | for `cmd=0x00`/`0x02`, the next node's routing id (`peer-id`/mix id per `substrate`, §21.24); for `cmd=0x01`, all-zero (the recipient is the local node). |
+| `reserved` | 38 | 10 | MUST be zero; reserved for a future substrate/PQ field, capability-gated (§10.2). |
+
+**`SURB` (Single-Use Reply Block, §4.4.1/§4.4.5).** Lets a recipient (or a loop, §4.4.7) reply
+without learning the sender's location. Layout:
+
+| Field | Bytes | Meaning |
+|-------|------:|---------|
+| `first_hop` | 32 | routing id of the SURB's first mix (where the replier injects). |
+| `header` | 288 | a **pre-built** Sphinx header `(α ‖ β ‖ γ)` = `32 + 240 + 16` for the return path, opaque to the replier. |
+| `key_seed` | 32 | the seed the replier uses to LIONESS-wrap its `δ` so only the SURB's creator can peel the reply (the creator holds the matching per-hop keys). |
+
+A replier treats `SURB` as opaque: it sets `δ` to its (padded, single-cell) reply, wraps it under
+`key_seed`, prepends `header`, and sends to `first_hop`. A SURB is **single-use** — reusing one is
+a replay and is dropped by the per-epoch replay cache (§4.4.6).
+
+**`SphinxFragmentHeader` (fixed 16 bytes, at the front of each cell's `δ` plaintext).** A MOTE is
+padded to a bucket rung and split into `frag_count` cells (§4.4.1); each cell's payload begins with:
+
+| Field | Offset | Bytes | Meaning |
+|-------|-------:|------:|---------|
+| `msg_id` | 0 | 8 | random per-MOTE id linking this MOTE's fragments at the recipient (unlinkable to identity; fresh per MOTE). |
+| `frag_index` | 8 | 2 | 0-based fragment number. |
+| `frag_count` | 10 | 2 | total fragments for this MOTE (`∈ {1,4,16,32}`, the ladder). |
+| `total_len` | 12 | 4 | true `Envelope` length in bytes before bucket padding, so the recipient strips padding after reassembly. |
+
+The remaining `2048 − 16 = 2032` bytes of each cell carry fragment data. The recipient buffers by
+`msg_id`, reassembles in `frag_index` order once all `frag_count` cells arrive (each over an
+independent path, §4.4.3), truncates to `total_len`, and then runs `deliver` (§19.3.1) on the
+recovered `Envelope`. A reassembly that never completes within the sender's retry window is simply
+dropped (the sender re-sends, §4.7); a fragment with an out-of-range `frag_index`/`frag_count`, or
+mixing `msg_id`s, is discarded (`0x0307`).
 
 ---
 
@@ -1100,6 +1258,69 @@ Assertion = {
 | `sig` | 7 | `sig-val` | MUST | Signature by `from` over the origin-bound preimage **including `cnf`** (§18.9.8). A captured assertion cannot be replayed with an attacker-chosen session key because `cnf` is inside the signed preimage (session-hijack defense, §13.3). |
 | `cnf` | 8 | `hash` | MUST | Confirmation key = `H(session_pubkey)` (RFC 7800 style, §13.3 step 4). The client generates the per-RP, per-device session keypair **before** signing and commits it here; the RP MUST bind the session **only** to `cnf` (proof-of-possession, §13.4). Present on every native assertion, and embedded verbatim in a bridged ID Token (§13.6). |
 
+### 18.7.3 `CapabilityToken` and `CapabilityRevocation` (§13.5, §3.10.4)
+
+The normative wire form of the delegated **capability token** §13.5/§13.5.1 previously described
+only informally ("UCAN-style"). A `CapabilityToken` is a **profile of UCAN v1.0** with the fields
+below: a signed, offline-verifiable, **attenuable** grant of a *specific, least-privilege* right,
+from an issuer key to an audience key, chainable so each link may only **narrow** its parent. It is
+the object minted/checked by `delegate-capability`/`revoke-capability` (§19.6.6) and by the org-
+admin roles (§13.5.1). Delegation is verified **without contacting any server**; revocation is a
+separately published, KT-logged object (below).
+
+```cddl
+CapabilityToken = {
+  1 => suite,           ; suite       signature/hash suite
+  2 => ik-pub,          ; iss         issuer (delegator) key — IK, device key, or a parent token's `aud`
+  3 => ik-pub,          ; aud         audience (delegatee) key this grant is FOR
+  4 => [+ Capability],  ; caps        the granted capabilities (resource + ability + caveats)
+  5 => u64,             ; nbf         not-before (ms epoch)
+  6 => u64,             ; exp         expiry (ms epoch); MUST be present — no non-expiring capability
+  7 => bytes,           ; nonce       uniqueness / anti-replay salt
+  ? 8 => hash,          ; prnt        content-address of the PARENT CapabilityToken (absent ⇒ this link is rooted at `iss`)
+  9 => sig-val,         ; sig         `iss` signature over the token body (DS-tag DMTAP-v0/cap-token, §18.9.14)
+}
+Capability = {
+  1 => tstr,            ; resource    the scoped resource (e.g. "mailbox:calendar", "domain:abc.com/members")
+  2 => tstr,            ; ability     the verb (e.g. "read", "send", "provision", "directory/write")
+  ? 3 => { * tstr => ext-value },  ; caveats  attenuating conditions (e.g. {"before": ts, "label": "work"})
+}
+
+; Published, KT-logged revocation of a previously issued token (§13.4 revocation, §13.5.1).
+CapabilityRevocation = {
+  1 => suite,           ; suite
+  2 => ik-pub,          ; iss         the revoker — MUST be the token's `iss` or an ancestor issuer in its chain
+  3 => hash,            ; token       content-address of the revoked CapabilityToken (or a chain root it descends from)
+  4 => ts,              ; ts          revocation time
+  5 => sig-val,         ; sig         `iss` signature (DS-tag DMTAP-v0/cap-revocation, §18.9.14)
+}
+```
+
+| Object | Field | Key | Type | Presence | Meaning & constraints |
+|--------|-------|----:|------|----------|-----------------------|
+| `CapabilityToken` | `iss` | 2 | `ik-pub` | MUST | The delegator. For the **root** link (`prnt` absent) `iss` MUST be an authority the verifier already trusts for `caps` — the user's `IK`/device key (§13.5) or the **domain authority** for org roles (§13.5.1). |
+| | `aud` | 3 | `ik-pub` | MUST | The delegatee this grant empowers; to **invoke**, a party proves possession of `aud` (via the session/DPoP key, §13.4). |
+| | `caps` | 4 | `[+ Capability]` | MUST | The granted rights. **Attenuation invariant:** each `Capability` MUST be **≤** a capability granted by the parent (`prnt`) — same-or-narrower `resource`, same `ability`, and caveats only **added/tightened**. A token granting anything its parent did not is invalid (`ERR_CAPABILITY_DELEGATION_INVALID`, `0x0508`). |
+| | `nbf`/`exp` | 5/6 | `u64` | MUST | Validity window; `exp` is REQUIRED (no eternal capability). Outside the window ⇒ `0x0508`. |
+| | `nonce` | 7 | `bytes` | MUST | Uniqueness salt so two otherwise-identical grants have distinct content addresses (needed for precise revocation). |
+| | `prnt` | 8 | `hash` | OPTIONAL | Content-address of the parent token in the delegation chain. **Absent ⇒ rooted at `iss`.** A verifier MUST validate the **whole chain** to a trusted root, checking the attenuation invariant at every link and that each link's `iss` equals its parent's `aud`. |
+| | `sig` | 9 | `sig-val` | MUST | `iss` signature over the body (§18.9.14). Invalid ⇒ `0x0508`. |
+| `Capability` | `resource` | 1 | `tstr` | MUST | The scoped object/namespace the ability applies to. |
+| | `ability` | 2 | `tstr` | MUST | The permitted verb; an invocation whose requested ability/resource is not covered is rejected (`0x0508`). |
+| | `caveats` | 3 | map | OPTIONAL | Attenuating conditions; a child MAY add caveats, never remove a parent's. |
+| `CapabilityRevocation` | `iss` | 2 | `ik-pub` | MUST | MUST be the token's own `iss` or an **ancestor** issuer in its chain — only an issuer (or someone it delegated *from*) may revoke; a stranger cannot. |
+| | `token` | 3 | `hash` | MUST | Content-address of the revoked `CapabilityToken` (revoking a chain root revokes all descendants). A verified revocation makes any invocation of that token (or descendant) fail `ERR_CAPABILITY_REVOKED` (`0x050B`). |
+| | `ts`/`sig` | 4/5 | | MUST | Revocation time and `iss` signature (§18.9.14). Revocations are **published to the transparency log / status endpoint** (§13.4, §13.5.1) and MUST be routed through the owner's/domain's KT self-monitoring path so a silent grant/revoke is owner-visible (§13.5). |
+
+**Verification (normative).** To honor an invocation a verifier MUST: (1) validate the token's
+signature and, if `prnt` present, the **entire chain** to a trusted root; (2) check the
+**attenuation invariant** at every link (each narrows its parent); (3) check `nbf ≤ now ≤ exp` at
+every link; (4) confirm the requested `(resource, ability)` is covered by the leaf `caps` and all
+caveats are satisfied; (5) confirm the invoker proves possession of the leaf `aud` key; (6) check
+**no** `CapabilityRevocation` (from the token's `iss` or an ancestor) covers the token or any chain
+link. Any failure of (1)–(4) is `0x0508`; a revocation hit at (6) is `0x050B`. Verification is
+otherwise **offline** — no issuer round-trip — matching §13.5.
+
 ## 18.8 Client-facing transport-path provenance (§7.8, §8.6, §19.9)
 
 ### 18.8.1 `ProvenanceRecord`
@@ -1181,8 +1402,14 @@ every signature is over `DS-tag ‖ det_cbor(object∖sig)`, where:
 | `Vouch` | `sig` (k5) | `DMTAP-v0/vouch` | `det_cbor(Vouch ∖ {5})` |
 | `GatewayAttestation` | `sig` (k7) | `DMTAP-v0/gateway-attest` | §18.9.11 (`det_cbor(GatewayAttestation ∖ {7})`) |
 | `Assertion` | `sig` (k7) | `DMTAP-v0/auth-assertion` | §18.9.8 |
+| `SignedTreeHead` | `sig` (k6) | `DMTAP-v0/kt-sth` | `det_cbor(SignedTreeHead ∖ {6})`, signed by `log_id` (§18.9.13) |
+| `InclusionProof`/`ConsistencyProof` | — (none) | — | **no signature** — verified against the STH `root_hash` (§18.9.13) |
+| `CapabilityToken` | `sig` (k9) | `DMTAP-v0/cap-token` | `det_cbor(CapabilityToken ∖ {9})` (§18.9.14) |
+| `CapabilityRevocation` | `sig` (k5) | `DMTAP-v0/cap-revocation` | `det_cbor(CapabilityRevocation ∖ {5})` (§18.9.14) |
+| `SphinxCell` & sub-structures | — (none) | — | **no DMTAP sig** — Sphinx per-hop MAC / wide-block PRP (§18.5.4, §18.9.9) |
 | `DeniablePrekeyBundle` | `sig` (k10) | `DMTAP-v0/deniable-prekeys` | `det_cbor(DeniablePrekeyBundle ∖ {10})` (§18.9.10) |
 | `DeniablePrekeyBundle` | `spk_sig` (k4) | `DMTAP-v0/deniable-spk` | the raw `spk` bytes (field 3) (§18.9.10) |
+| `DeniablePrekeyBundle` / `DeniableInit` | `idk_sig` (k12) / `idk_a_cert` (k10) | `DMTAP-v0/deniable-idk` | the raw `idk` / `idk_a` bytes (§18.9.10) |
 | `DeniableInit`/`DeniableMessage`/`DeniablePayload` | — (none) | — | **no signature** — authenticated by the Double-Ratchet AEAD MAC (§18.9.10) |
 
 For `Identity` (`sig` is a **list**, one entry per suite): the **same** preimage
@@ -1342,6 +1569,16 @@ what would destroy deniability:
   `Sign(sk_device, "DMTAP-v0/deniable-spk" ‖ 0x00 ‖ spk_bytes)` over the raw `spk` public key
   (field 3). It proves the prekey was published by the identity; it signs **no** content and
   binds **no** transcript, so it does not make any conversation attributable (§5.2.1(a)).
+- **`DeniablePrekeyBundle.idk_sig`** (key 12) and the identical **`DeniableInit.idk_a_cert`**
+  (key 10) are the **deniable-identity DH-key certification**:
+  `Sign(sk_device, "DMTAP-v0/deniable-idk" ‖ 0x00 ‖ idk_bytes)` over the raw X25519 `idk` /
+  `idk_a` public key. This is what **replaces the retired XEdDSA-from-`IK` derivation**: instead
+  of `IK` *being* the long-term identity DH key, a **dedicated X25519 `idk`** is certified once by
+  an `IK`-authorized device key. Like `spk_sig` it signs a *public DH key*, never any message, so
+  deniability is unchanged — no long-term signature ever covers content or a transcript. Keeping
+  the DH key separate from `IK` also lets `IK` live in a usage-fixed hardware keystore that only
+  signs (Secure Enclave P-256 / TPM / StrongBox), which cannot perform both signing and DH on one
+  key.
 - **`DeniableInit`, `DeniableMessage`, and `DeniablePayload` carry NO DMTAP signature at all.**
   Their integrity/authentication is the **Double Ratchet AEAD tag** — a **shared-key MAC** under a
   per-message key that *both* parties can derive from the X3DH/PQXDH shared secret. Because either
@@ -1387,6 +1624,43 @@ node-local, client-facing assembly served only to the owner's own devices (§8.6
 record itself needs no signature because it never crosses a trust boundary — it is authenticated
 by the authenticated client channel it is delivered on (§8.1), exactly like a `Mailbox` CRDT view
 (§5.6). Adding a signature would serve nothing and is not defined.
+
+### 18.9.13 Key-transparency STH (`SignedTreeHead.sig`)
+
+The STH is signed **by the log's own key** (`log_id`, field 2), not by any DMTAP identity, using
+the general rule:
+
+```
+preimage = "DMTAP-v0/kt-sth" ‖ 0x00 ‖ det_cbor(SignedTreeHead ∖ {6})
+SignedTreeHead.sig = Sign(sk_log, preimage)          ; sk_log ↔ log_id (field 2)
+```
+
+A verifier reconstructs the preimage and checks `sig` under `log_id`; failure is
+`ERR_KT_PROOF_INVALID` (`0x0108`). `InclusionProof` and `ConsistencyProof` (§18.4.10/§18.4.11)
+carry **no** signature — they are verified *arithmetically against* an STH's `root_hash` (folding
+the RFC 6962 audit/consistency path with the §18.9.5 domain-separated node prefix), so their
+integrity derives from the signed head, not a signature of their own (like `ProvenanceRecord`,
+§18.9.12). The **leaf hash** they commit to is computed by the Identity-entry rule of §18.4.9
+(`0x1e ‖ BLAKE3-256(0x00 ‖ det_cbor([name, ik, version, identity_id]))`); a leaf that does not
+recompute is `ERR_KT_LEAF_HASH_MISMATCH` (`0x0117`).
+
+### 18.9.14 Capability token & revocation (`CapabilityToken.sig`, `CapabilityRevocation.sig`)
+
+Both use the general rule under the **issuer** key:
+
+```
+CapabilityToken.sig       = Sign(sk_iss, "DMTAP-v0/cap-token"      ‖ 0x00 ‖ det_cbor(CapabilityToken ∖ {9}))
+CapabilityRevocation.sig  = Sign(sk_iss, "DMTAP-v0/cap-revocation" ‖ 0x00 ‖ det_cbor(CapabilityRevocation ∖ {5}))
+```
+
+`sk_iss` is the issuer's `IK` or an `IK`-authorized device key (for a root link, §13.5), or — for a
+delegated link — the key that is the parent token's `aud` (the chain binds each link's `iss` to its
+parent's `aud`, §18.7.3). A signature/attenuation/expiry failure anywhere in the chain is
+`ERR_CAPABILITY_DELEGATION_INVALID` (`0x0508`); a covering revocation is `ERR_CAPABILITY_REVOKED`
+(`0x050B`). The `Capability` sub-map has no signature of its own — it is covered by the enclosing
+token's `sig`. **`SphinxCell` and its sub-structures (§18.5.4) carry no DMTAP `sig-val`** — their
+integrity is the Sphinx per-hop MAC / wide-block PRP (§4.4.1, §18.9.9), the same
+"security-from-a-different-proof-system" case as `ArcToken`/deniable frames.
 
 ---
 
@@ -1466,7 +1740,8 @@ Body = tstr / bytes
 ; ── deniable 1:1 mode (§5.2.1); kind = 0x0b; NO sig-val anywhere (repudiable) ───────
 DeniableFrame   = DeniableInit / DeniableMessage
 DeniableInit    = {
-  0 => 1, 1 => suite, 2 => ik-pub, 3 => bytes, 4 => hash,
+  0 => 1, 1 => suite, 2 => ik-pub, 9 => bytes, 10 => sig-val,   ; 9=idk_a (X25519 identity DH key), 10=idk_a_cert
+  3 => bytes, 4 => hash,
   ? 5 => hash, ? 6 => bytes, ? 7 => hash, 8 => DeniableMessage,
 }
 DeniableMessage = { 0 => 2, 1 => bytes, 2 => u32, 3 => u32, 4 => bytes }   ; 4 = AEAD ct; tag IS the shared-key MAC
@@ -1506,9 +1781,12 @@ key-protection = "software" / "tpm" / "secure-enclave" / "strongbox" / "tee"
 KeyPackageBundleRef = { 1 => tstr, 2 => hash, ? 3 => [+ u8] }
 
 ; Published X3DH/PQXDH prekeys for the deniable mode (§5.2.1); located via Identity.deniable_prekeys.
-; spk_sig (key 4) signs the PUBLIC prekey only; sig (key 10) signs the bundle. No message is signed.
+; idk (key 11) is a DEDICATED long-term X25519 identity-DH key (NOT derived from IK), certified by
+; idk_sig (key 12); spk_sig (key 4) signs the PUBLIC prekey only; sig (key 10) signs the bundle.
+; No message is ever signed. ik (key 2) is the Ed25519 IK, used for AD binding only, never for DH.
 DeniablePrekeyBundle = {
-  1 => suite, 2 => ik-pub, 3 => bytes, 4 => sig-val, 5 => [* bytes],
+  1 => suite, 2 => ik-pub, 11 => bytes, 12 => sig-val,          ; 11=idk (X25519), 12=idk_sig (DMTAP-v0/deniable-idk)
+  3 => bytes, 4 => sig-val, 5 => [* bytes],
   ? 6 => bytes, ? 7 => [* bytes], 8 => u64, 9 => ts, 10 => sig-val,
 }
 
@@ -1543,6 +1821,13 @@ DirEntry       = { 1 => tstr, 2 => ik-pub, 3 => hash, 4 => member-custody, ? 5 =
 dir-visibility = "public" / "members-only"
 member-custody = "sovereign" / "org-managed"
 
+; ── key transparency (§3.5); RFC 6962-profiled. STH signed by the LOG's key (log_id).
+; InclusionProof/ConsistencyProof are UNSIGNED — verified against an STH root_hash (§18.9.13).
+; Identity leaf-hash = 0x1e ‖ BLAKE3-256(0x00 ‖ det_cbor([name, ik, version, identity_id])) (§18.4.9).
+SignedTreeHead = { 1 => suite, 2 => bytes, 3 => u64, 4 => ts, 5 => hash, 6 => sig-val }  ; 2=log_id
+InclusionProof   = { 1 => u64, 2 => u64, 3 => hash, 4 => [* hash] }   ; tree_size, leaf_index, leaf_hash, audit_path
+ConsistencyProof = { 1 => u64, 2 => u64, 3 => [* hash] }              ; first_size, second_size, proof_path
+
 ; ── transport layer (§4) ───────────────────────────────────────────
 LocationRecord = {
   1 => ik-pub, 2 => peer-id, 3 => [* maddr],
@@ -1561,6 +1846,9 @@ MixDirectory = {
   1 => suite, 2 => ik-pub, 3 => u64, 4 => u64, 5 => [+ MixNodeDescriptor],
   6 => hash, 7 => ts, 8 => sig-val,                          ; 3=epoch 4=version 6=prev-directory hash
 }
+; NOTE: the Sphinx SphinxCell / RoutingCommand / SURB / SphinxFragmentHeader (§18.5.4) are
+; FIXED-LENGTH BYTE LAYOUTS on the mixnet wire, NOT deterministic CBOR, so they are specified as
+; byte tables in §18.5.4 and are deliberately not encoded as CDDL rules here.
 
 ; ── group layer (§5.8) ─────────────────────────────────────────────
 GroupState = {
@@ -1587,6 +1875,15 @@ Assertion = {
   1 => tstr, 2 => bytes, 3 => ts, 4 => ts, 5 => tstr,
   6 => ik-pub, 7 => sig-val, 8 => hash,
 }
+
+; Delegated capability (§13.5, §13.5.1) — a profile of UCAN v1.0. Chained via `prnt`; each link
+; MUST only narrow its parent (attenuation). Verified OFFLINE; revoked by a KT-logged CapabilityRevocation.
+CapabilityToken = {
+  1 => suite, 2 => ik-pub, 3 => ik-pub, 4 => [+ Capability],
+  5 => u64, 6 => u64, 7 => bytes, ? 8 => hash, 9 => sig-val,   ; 2=iss 3=aud 5=nbf 6=exp 8=prnt
+}
+Capability = { 1 => tstr, 2 => tstr, ? 3 => { * tstr => ext-value } }   ; resource, ability, caveats
+CapabilityRevocation = { 1 => suite, 2 => ik-pub, 3 => hash, 4 => ts, 5 => sig-val }  ; 3=revoked token addr
 
 ; ── client-facing provenance (§7.8, §8.6, §19.9) ───────────────────
 ; NODE-LOCAL: assembled by the recipient node, served only to the owner's own devices; NOT
@@ -1671,21 +1968,49 @@ resolves each explicitly rather than picking one silently; each SHOULD be reconc
     registered in §21.21 and the existing errors `0x0601`/`0x0602`; no new error code or registry
     is introduced.
 
+11. **Key-transparency objects were prose-only (newly formalized).** §3.5 REQUIRED signed tree
+    heads and inclusion/consistency proofs but gave no CBOR — a core-required object left
+    undefined. This appendix adds `SignedTreeHead` (§18.4.9, signed by the log's `log_id`,
+    DS-tag `DMTAP-v0/kt-sth`), `InclusionProof` (§18.4.10) and `ConsistencyProof` (§18.4.11) as an
+    **RFC 6962 profile**, with the Identity-entry **leaf-hash rule** (§18.4.9) pinning what a leaf
+    commits to. The two proofs are **unsigned** (verified against an STH root). One new error code
+    `0x0117` (`ERR_KT_LEAF_HASH_MISMATCH`) is added; the existing KT codes `0x0107`/`0x0108`/
+    `0x0110`–`0x0112` cover the rest. SHOULD get a KAT vector pass.
+
+12. **Delegated capability token & the Sphinx cell were prose/reference-only (newly formalized).**
+    §13.5/§13.5.1 described the capability token as "UCAN-style (informative)" with no grammar;
+    this appendix adds the normative `CapabilityToken`/`Capability`/`CapabilityRevocation`
+    (§18.7.3, a **profile of UCAN v1.0**) with signing preimages (§18.9.14), the chain-attenuation
+    invariant, and the KT-logged revocation object, plus `delegate-capability`/`revoke-capability`
+    ops (§19.6.6) and error `0x050B` (`ERR_CAPABILITY_REVOKED`; delegation failures stay `0x0508`).
+    Separately, the Sphinx packet — previously "specified by reference" — now has its DMTAP-specific
+    **byte layout** pinned as `SphinxCell` with the per-hop `RoutingCommand`, `SURB`, and
+    `SphinxFragmentHeader` framing (§18.5.4); these are **fixed-length binary**, not CBOR, so they
+    are deliberately **not** added to the CDDL grammar. All SHOULD get KAT vectors.
+
 **Object count:** this appendix gives a normative CDDL rule and a per-field semantics table for
-**33 wire objects** — `Envelope`, `DeliveryTag`, `ChallengeResponse`, `KeyPackageRef`, `Payload`,
+**39 wire objects** — `Envelope`, `DeliveryTag`, `ChallengeResponse`, `KeyPackageRef`, `Payload`,
 `Headers`, `Body`, `Attachment`, `ManifestRef`, `Manifest`, `DeniableFrame`, `DeniablePayload`,
 `GatewayAttestation`, `Identity`, `DeviceCert`, `KeyPackageBundleRef`, `DeniablePrekeyBundle`,
-`RecoveryPolicy`, `RecoveryMethod`, `Threshold`, `KeyRotation`, `MoveRecord`, `DomainDirectory`,
-`DirEntry`, `LocationRecord`, `MixNodeDescriptor`, `MixDirectory`, `GroupState`, `RosterEntry`,
-`GroupEvent`, `Challenge`, `Assertion`, `ProvenanceRecord` — plus their tagged sub-variants
-(`KeyTag`/`GroupTag`/`BlindedTag`; `ArcToken`/`PowSolution`/`PostageStamp`/`Vouch`;
-`DeniableInit`/`DeniableMessage`; `PhraseMethod`/`DeviceMethod`/`SocialMethod`; `MethodPredicate`;
-`MixKeyEntry`) and the shared scalar prelude (§18.1.7). Counting the five choice-variant families,
-`MethodPredicate`, and `MixKeyEntry` as distinct encodable structures brings the total to
-**48 CDDL-defined structures**, all collected in §18.10. (`GatewayAttestation` is the §7.2a/§7.8
-transport-path binding, sealed in `Payload`; `ProvenanceRecord` is the §8.6/§19.9 client-facing
-assembly — node-local, not mesh-transmitted, not signed, §18.9.12.) (The two mixnet objects `MixNodeDescriptor`/`MixDirectory` plus
-`MixKeyEntry` are the §4.4 mixnet binding; the deniable `DeniableFrame`/`DeniableInit`/
-`DeniableMessage`/`DeniablePayload`/`DeniablePrekeyBundle` are the §5.2.1 binding; the Sphinx
-packet and the Double-Ratchet/X3DH/PQXDH cryptographic cores are specified by reference — Sphinx
-in §4.4.1, Signal's designs in §5.2.1 — not re-encoded as CDDL objects here.)
+`SignedTreeHead`, `InclusionProof`, `ConsistencyProof`, `RecoveryPolicy`, `RecoveryMethod`,
+`Threshold`, `KeyRotation`, `MoveRecord`, `DomainDirectory`, `DirEntry`, `LocationRecord`,
+`MixNodeDescriptor`, `MixDirectory`, `SphinxCell`, `GroupState`, `RosterEntry`, `GroupEvent`,
+`Challenge`, `Assertion`, `CapabilityToken`, `CapabilityRevocation`, `ProvenanceRecord` — plus
+their tagged sub-variants (`KeyTag`/`GroupTag`/`BlindedTag`;
+`ArcToken`/`PowSolution`/`PostageStamp`/`Vouch`; `DeniableInit`/`DeniableMessage`;
+`PhraseMethod`/`DeviceMethod`/`SocialMethod`; `MethodPredicate`; `MixKeyEntry`; `Capability`) and
+the shared scalar prelude (§18.1.7). Counting every distinct CBOR map/group rule in §18.10 — the
+**48 map definitions** plus the **four choice-variant families** (`DeliveryTag`,
+`ChallengeResponse`, `DeniableFrame`, `RecoveryMethod`) — gives **52 CDDL-defined structures**, all
+collected in §18.10. (`Body` is a scalar type alias, not a structure; `SphinxCell` and its
+sub-structures `RoutingCommand`/`SURB`/`SphinxFragmentHeader` are **fixed-length byte layouts**,
+§18.5.4 — a mesh wire object each, but **not** CBOR, so counted among the 39 wire objects yet **not**
+among the 52 CDDL structures.) (`GatewayAttestation` is the §7.2a/§7.8 transport-path binding,
+sealed in `Payload`; `ProvenanceRecord` is the §8.6/§19.9 client-facing assembly — node-local, not
+mesh-transmitted, not signed, §18.9.12; `SignedTreeHead`/`InclusionProof`/`ConsistencyProof` are the
+§3.5 RFC-6962 KT binding; `CapabilityToken`/`Capability`/`CapabilityRevocation` are the §13.5
+delegation binding.) (The mixnet objects `MixNodeDescriptor`/`MixDirectory`/`MixKeyEntry` plus the
+byte-layout `SphinxCell` are the §4.4 mixnet binding; the deniable `DeniableFrame`/`DeniableInit`/
+`DeniableMessage`/`DeniablePayload`/`DeniablePrekeyBundle` are the §5.2.1 binding; the
+Double-Ratchet/X3DH/PQXDH cryptographic cores are specified by reference — Signal's designs in
+§5.2.1 — not re-encoded as CDDL objects here.)

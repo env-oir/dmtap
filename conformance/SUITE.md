@@ -50,16 +50,24 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Legacy** (`LEG`) | 2 | 0 | 0 | 2 |
 | **Clients** (`CLI`) | 1 | 0 | 0 | 1 |
 | **Auth** (`AUTH`) | 5 | 0 | 0 | 5 |
-| **Total** | **84** | **33** | **6** | **45** |
+| **Private** — deniable 1:1 mode (`DENIABLE`) | 5 | 0 | 0 | 5 |
+| **Core** — org administration (`ORG`) | 5 | 0 | 0 | 5 |
+| **Private** — KT-v1 hardening (`KTV1`) | 4 | 0 | 0 | 4 |
+| **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 |
+| **Total** | **100** | **33** | **6** | **61** |
 
 The 33 vectored + 6 self-contained cases (**39**) are fully machine-runnable **today** from
 `vectors.json` + the inline bytes here, with **no reference implementation required**. They pin the
 entire deterministic, security-critical Core spine — canonical CBOR, content addressing, the two
 MOTE signature preimages (§18.9.1/§18.9.2), Ed25519 (with RFC 8032 cross-checks), the 8-word
-key-name, safety numbers, and suite fail-closed. The 45 `construction-todo` cases give the exact
+key-name, safety numbers, and suite fail-closed. The 61 `construction-todo` cases give the exact
 recipe and expected §21 error for every remaining normative branch (the full §2.7 pipeline,
-identity/KT fail-closed, and the higher levels); each becomes byte-backed when the corresponding
-subsystem gains a fixed-input KAT in `vectors.json` (see README "Coverage vs. deferred").
+identity/KT fail-closed, the higher levels, and the wave-2 hardening families —
+`DENIABLE`/`ORG`/`KTV1`/`ATTEST`); each becomes byte-backed when the corresponding subsystem gains
+a fixed-input KAT in `vectors.json` (see README "Coverage vs. deferred"). **Sync note:** the
+wave-2 additions (this `.md`) still need to be mirrored into the machine-readable
+[`suite.json`](suite.json) so the two carry the same case ids — a follow-up alongside re-vectoring
+the changed deniable objects (§5.2.1 dedicated-`idk`).
 
 > All 39 byte-backed cases correspond one-for-one to entries in `vectors.json`
 > (**32 vectors**, several driving more than one case). No case references a `vectors.json`
@@ -262,6 +270,59 @@ Core + DMTAP-Auth login ceremony with origin binding + key-bound sessions; OIDC 
 | DMTAP-AUTH-03 | MUST | §13.3 | a replayed `nonce` is rejected | reject → `ERR_NONCE_REPLAYED` (0x0502) | construction-todo |
 | DMTAP-AUTH-04 | MUST | §13.3 | an expired `Challenge` is rejected | reject → `ERR_CHALLENGE_EXPIRED` (0x0503) | construction-todo |
 | DMTAP-AUTH-05 | MUST | §18.9.8, §13.3 | the session is bound **only** to `cnf` (not the signing key), and MUST reject on `cnf` mismatch | accept (bound to `cnf`) | construction-todo |
+
+---
+
+## Deniable 1:1 mode (§5.2.1) — `DENIABLE`
+
+The optional repudiable mode's fail-closed guards and the dedicated-`idk` handshake. The mode is
+capability-negotiated (Private-level optional); the reject guards below are MUST **when the mode is
+implemented**. No byte-exact vectors yet (Double Ratchet / X3DH use fresh randomness — the
+dedicated `idk` change is flagged for re-vectoring, see README "deferred").
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-DENIABLE-01 | MUST | §5.2.1(c), §18.3.10 | a `DeniablePayload` carrying **any** signature field is rejected (a signature would defeat repudiation) | reject → `ERR_DENIABLE_SIGNATURE_PRESENT` (0x040F), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-DENIABLE-02 | MUST | §5.2.1(d), §10.2 | a deniable session to a peer that has **not** advertised `deniable-1:1` is refused; the client surfaces the choice, never silently downgrades | reject → `ERR_DENIABLE_MODE_UNAVAILABLE` (0x040E), REJECT_NOTIFY | construction-todo |
+| DMTAP-DENIABLE-03 | MUST | §5.2.1(b), §18.9.10 | a `DeniableMessage` whose Double-Ratchet AEAD tag (shared-key MAC) fails is dropped; substitutes for `Payload.sig` (§20.2 fork) | reject → `ERR_DENIABLE_RATCHET_AUTH_FAILED` (0x040D), DROP_SILENT | construction-todo |
+| DMTAP-DENIABLE-04 | MUST | §5.2.1(a), §18.4.8 | an invalid/exhausted `DeniablePrekeyBundle` (`sig`/`spk_sig`/`idk_sig` fail, or no unspent prekey) is rejected | reject → `ERR_DENIABLE_PREKEY_INVALID_OR_EXHAUSTED` (0x040B), REJECT_NOTIFY | construction-todo |
+| DMTAP-DENIABLE-05 | MUST | §5.2.1(a), §18.3.9 | X3DH/PQXDH over the **dedicated `idk`** (NOT XEdDSA-from-`IK`): a `DeniableInit` whose `idk_a_cert` does not certify `idk_a` under `ik_a`, or whose key agreement fails, is rejected; last-resort-only first-message replay is caught | reject → `ERR_DENIABLE_X3DH_FAILED` (0x040C) | construction-todo |
+
+---
+
+## Organization administration (§3.10, §13.5.1) — `ORG`
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-ORG-01 | MUST | §3.10.2, §18.4.7 | an org-managed (escrowed-key) account presented **without** its `org-managed` custody marker is rejected — undisclosed escrow | reject → `ERR_ORG_MANAGED_UNDISCLOSED` (0x0115), HALT_ALERT | construction-todo |
+| DMTAP-ORG-02 | MUST | §3.10.3, §3.9.4 | a `DirEntry` whose `name → ik` does not forward-verify against DNS+KT is rendered unverified, never used to address mail | reject → `ERR_DIRECTORY_ENTRY_UNVERIFIED` (0x0114), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-ORG-03 | MUST | §3.10.3, §18.4.7 | a `DomainDirectory` not signed by the pinned domain authority is rejected | reject → `ERR_DOMAIN_DIRECTORY_SIG_INVALID` (0x0113), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-ORG-04 | MUST | §13.5.1, §18.7.3 | a `CapabilityToken` whose link grants more than its parent (attenuation broken), is expired, or is invoked beyond its rights is rejected | reject → `ERR_CAPABILITY_DELEGATION_INVALID` (0x0508), DENY_POLICY | construction-todo |
+| DMTAP-ORG-05 | MUST | §13.5.1, §18.7.3 | a validly-formed `CapabilityToken` covered by a published `CapabilityRevocation` (from its issuer/ancestor) is denied | reject → `ERR_CAPABILITY_REVOKED` (0x050B), DENY_POLICY | construction-todo |
+
+---
+
+## KT-v1 hardening (§3.5.2) — `KTV1`
+
+Optional (log-type `0x02`, negotiated); the equivocation/quorum guards are MUST **when v1 is
+implemented**. RFC 6962-profiled objects (`SignedTreeHead`/`InclusionProof`/`ConsistencyProof`,
+§18.4.9–§18.4.11).
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-KTV1-01 | MUST | §3.5.2(a),(d), §18.4.9 | two validly-signed STHs of one log with equal `tree_size` but differing `root_hash` (or no consistency proof) ⇒ equivocation: HALT + alert + publish evidence | reject → `ERR_KT_STH_INCONSISTENT` (0x0110) + `ERR_KT_EQUIVOCATION` (0x0107), HALT_ALERT | construction-todo |
+| DMTAP-KTV1-02 | MUST | §3.5.2(b), §18.4.10 | a `name → ik` binding not attested by a `> n/2` quorum of the pinned log set fails closed → OOB | reject → `ERR_KT_LOG_QUORUM_UNMET` (0x0111), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-KTV1-03 | MUST | §3.5.2(a), §16.2 | a `SignedTreeHead` older than the freshness window (freeze attack) is treated as stale and refreshed | reject → `ERR_KT_STH_STALE` (0x0112), HOLD_RESYNC | construction-todo |
+| DMTAP-KTV1-04 | MUST | §18.4.9, §18.4.10 | an `InclusionProof` whose committed leaf ≠ the recomputed Identity-entry leaf-hash `0x1e‖BLAKE3-256(0x00‖det_cbor([name,ik,version,identity_id]))` is rejected | reject → `ERR_KT_LEAF_HASH_MISMATCH` (0x0117), FAIL_CLOSED_BLOCK | construction-todo |
+
+---
+
+## Device attestation (§1.2a) — `ATTEST`
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-ATTEST-01 | MUST | §1.2a, §18.4.2 | an attestation-gated context rejects a device whose `key_protection`/`attestation` is absent or fails against the platform root (advisory — never overrides §1.4 authority) | reject → `ERR_DEVICE_ATTESTATION_INVALID` (0x0116), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-ATTEST-02 | MUST | §1.2a, §18.4.2, §16.9 | evidence older than the re-attestation cadence (≤ 90 d), past its window, or chaining only to a retired root is treated as expired → re-attest | reject → `ERR_DEVICE_ATTESTATION_EXPIRED` (0x0118), FAIL_CLOSED_BLOCK | construction-todo |
 
 ---
 

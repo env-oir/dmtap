@@ -92,13 +92,38 @@ platform supports them, all three are buildable from this text:
   attestation is absent or invalid (`ERR_DEVICE_ATTESTATION_INVALID`, `0x0116`). Attestation is an
   **advisory hardening hook**, never a substitute for the KT/quorum authority of §1.4 — a device
   the owner did not authorize is rejected regardless of how well-attested its keystore is.
-- **Per-device sealing / compartmentalization (MUST).** A device's keys **MUST NOT** decrypt
-  content beyond what that device legitimately holds. This is enforced by the existing model, not
-  a new mechanism: each device is its **own MLS leaf** (§5.1, §5.6) with its own leaf secret, so a
-  seized device's key material decrypts only the epochs that device was a member for — not other
-  devices' independent sessions, and not group content after the device is removed. Deniable 1:1
-  sessions (§5.2.1) are already per-device-pair, so one seized device exposes only its own pairwise
-  ratchets.
+  **Trust dependency (disclosed).** Verifying key-attestation evidence trusts the platform
+  **attestation root** — a **vendor certificate authority** (Google/Apple/a TPM manufacturer / a
+  FIDO metadata service). This is a genuine **trusted-third-party dependency**, honestly the same
+  class of TTP as a CA in the WebPKI: a context that requires attestation trusts that root to
+  vouch that the keystore is genuine. DMTAP confines the dependency to the *advisory* attestation
+  gate — it never lets a vendor root override the owner's §1.4 authorization — but the dependency
+  exists and is disclosed, not hidden.
+  **Attestation lifecycle (normative).** Attestation evidence is **not** verify-once-forever. A
+  `DeviceCert.attestation` carries or references the platform evidence's validity window; a
+  relying context MUST treat evidence **older than the re-attestation cadence** (a §16-profile
+  value; default **≤ 90 days**) or past the evidence's own expiry as **expired**
+  (`ERR_DEVICE_ATTESTATION_EXPIRED`, `0x0118`) and require the device to **re-attest** (produce
+  fresh evidence over the same non-exportable key) before it is accepted for the attestation-gated
+  context. **Attestation-root rotation** is handled like any trust-anchor change: the accepted set
+  of platform roots is configuration a deployment MAY update additively; a `DeviceCert` whose
+  evidence chains only to a **retired** root is treated as expired (re-attest under a current
+  root), never silently accepted. Re-attestation changes **no** authorization — the device's §1.4
+  authority is unaffected; only the advisory hardware-backing claim is refreshed.
+- **Per-device sealing / compartmentalization (MUST — cross-cluster / post-removal session
+  isolation).** A device's keys **MUST NOT** decrypt content beyond what that device legitimately
+  holds **across a trust boundary**: not **other identities'** sessions, not sessions/epochs the
+  device was **never** admitted to, and not group content **after the device is removed**. This is
+  the property enforced by each device being its **own MLS leaf** (§5.1, §5.6) with its own leaf
+  secret and by post-removal epoch advancement (PCS). **Scope, stated honestly:** within a single
+  owner's **personal cluster**, the device group's shared mailbox is a **full replica by design**
+  (§5.6) — every cluster device legitimately holds the owner's whole mailbox CRDT, so the MUST is
+  **not** an intra-cluster "each device sees less than the mailbox" claim; it is **cross-cluster and
+  post-removal session isolation**. Seizing one cluster device therefore exposes that owner's
+  replicated mailbox (the §6.6 item 3 live-endpoint floor), but **not** other identities'
+  sessions and **not** any group's content after that device is evicted. Deniable 1:1 sessions
+  (§5.2.1) are per-device-pair, so a seized device exposes only its own pairwise ratchets — and
+  those are torn down and re-established on eviction (§5.2.1(f), §6.7).
 - **Compromise healing via revocation (MUST, PCS).** Removing/rotating a compromised device
   **heals the cluster forward**: an MLS Remove + `IK`-authorized device-key rotation (§1.5)
   advances every group's epoch so the evicted key decrypts nothing further (post-compromise

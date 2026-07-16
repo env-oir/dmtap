@@ -190,7 +190,12 @@ detection paths carry codes `0x0107`, `0x0110`–`0x0112` (§21.3).
   MUST re-publish the signed head it saw — the tuple `(log signing key, tree_size, root_hash,
   timestamp, log signature)` — to a set of gossip peers (other verifiers, the owner's monitor
   devices, and any configured auditor) over the mesh (§4). It SHOULD route this gossip through
-  the mixnet (§6, §3.7) so auditing does not leak *who audits whom*.
+  the mixnet (§6, §3.7) so auditing does not leak *who audits whom*. **Bootstrap caveat
+  (disclosed):** before the mixnet is available to a node (initial bring-up, or a deployment
+  without a live fleet, §4.4.11), gossip MAY be sent **directly**, which **leaks the
+  who-audits-whom graph** to a network observer. This is a disclosed bootstrap limit, not the
+  steady state — a node SHOULD migrate its gossip onto the mixnet as soon as a `private` path is
+  buildable, exactly as other control traffic defaults to `private` (§4.6).
 - **Cross-check (the detection step).** On receiving a gossiped STH for a log it also follows, a
   verifier MUST request a **consistency proof** between its own latest STH and the gossiped one
   and verify that the smaller tree is a **prefix of** the larger (a genuine append-only
@@ -460,7 +465,7 @@ a member is publishing a `name → key` binding (§3.9); the directory is a sign
 projection of those bindings; org groups are §5.8 group-identities; admin roles are §13.5
 capabilities; offboarding is removing a name and revoking capabilities. The sovereignty ethic is
 held throughout by one honest invariant: **the org controls names and operations, never a
-sovereign member's key** — and where it *does* hold a key, that is disclosed (§3.10.2b).
+sovereign member's key** — and where it *does* hold a key, that is disclosed (§3.10.2(b)).
 
 ### 3.10.1 Domain authority (what it means to control `@abc.com`)
 
@@ -468,7 +473,7 @@ Controlling `abc.com` means controlling its DNS zone and the `_dmtap` / `kt=` an
 state which key each `name@abc.com` points to. That control is the **root of authority for names
 under the domain — and only for names, never for keys.** The authority can say *which key a name
 points to* and can add or remove names, but it cannot forge, read, or impersonate anything a key
-protects, because members hold their own keys (§3.10.2a) and KT makes every binding auditable
+protects, because members hold their own keys (§3.10.2(a)) and KT makes every binding auditable
 (§3.5).
 
 - **Who holds it.** The domain authority is an ordinary DMTAP identity (§1.3) whose `IK` is
@@ -567,7 +572,7 @@ Removing `alice@abc.com`:
      (`MoveRecord`, §1.6) and her existing correspondents follow her by key automatically. The org
      retains nothing of hers it did not already hold, and it cannot read a mailbox it never had the
      key to. Offboarding is a **name revocation, not a mailbox seizure**.
-   - **Org-managed member (b):** because the org holds/escrows the key (§3.10.2b), it CAN retain,
+   - **Org-managed member (b):** because the org holds/escrows the key (§3.10.2(b)), it CAN retain,
      transfer, or archive the mailbox for continuity/compliance — the disclosed cost of that model.
      A conformant client MUST have shown the user this was possible (the `org-managed` marker,
      §18.4.7) at provisioning, so retention is not a surprise.

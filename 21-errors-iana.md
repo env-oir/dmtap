@@ -105,6 +105,8 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x0114` | `ERR_DIRECTORY_ENTRY_UNVERIFIED` | `DirEntry` forward-binding check (§3.10.3, §3.9.4) | A directory entry's `name → ik` does not match the forward DNS + KT binding — the directory indexes, it does not attest. | No | FAIL_CLOSED_BLOCK — render the entry unverified; MUST NOT be used to address mail |
 | `0x0115` | `ERR_ORG_MANAGED_UNDISCLOSED` | Member-custody disclosure check (§3.10.2, §18.4.7) | An org-managed (escrowed-key) account is presented without its `org-managed` custody marker — undisclosed org access to a member's mailbox. | No | HALT_ALERT — MUST NOT present as a sovereign identity; surface the escrow honestly |
 | `0x0116` | `ERR_DEVICE_ATTESTATION_INVALID` | `DeviceCert` hardware-attestation check (§1.2a, §18.4.2) | A context that **requires** a hardware-backed, non-exportable device key finds the `DeviceCert`'s `key_protection`/`attestation` absent or failing to verify against the platform attestation root. Advisory hardening only — never overrides the §1.4 authorization authority. | Conditional (re-enroll on an attested keystore) | FAIL_CLOSED_BLOCK — reject the device for the attestation-gated context; a non-gated context is unaffected |
+| `0x0117` | `ERR_KT_LEAF_HASH_MISMATCH` | KT inclusion-proof leaf check (§3.5, §18.4.9, §18.4.10) | The leaf a KT `InclusionProof` commits to does not equal the leaf hash recomputed by the Identity-entry rule (`0x1e ‖ BLAKE3-256(0x00 ‖ det_cbor([name, ik, version, identity_id]))`) — the log presents a binding whose leaf does not match the resolved identity. | No | FAIL_CLOSED_BLOCK — the log indexes, it does not redefine; MUST NOT pin on the mismatched leaf (escalate to HALT_ALERT if it evidences equivocation, §3.5.2(d)) |
+| `0x0118` | `ERR_DEVICE_ATTESTATION_EXPIRED` | `DeviceCert` attestation-freshness check (§1.2a, §18.4.2, §16.9) | An attestation-gated context finds the `DeviceCert.attestation` evidence older than the re-attestation cadence (≤ 90 days), past its own validity window, or chaining only to a **retired** attestation root. Advisory hardening only — never overrides the §1.4 authorization authority. | Conditional (re-attest over the same non-exportable key under a current root) | FAIL_CLOSED_BLOCK — reject for the attestation-gated context until re-attested; a non-gated context is unaffected |
 
 ## 21.4 Delivery & Validation — the MOTE object (`0x02xx`)
 
@@ -153,7 +155,7 @@ to a MOTE) is a distinct concept scoped to the Auth ceremony; see `0x0502` (§21
 | `0x030D` | `ERR_MIX_PATH_UNBUILDABLE` | Stratified path selection (§4.4.3) | Cannot build a conformant 3-hop stratified path — a layer has no live/reachable mix in the current directory. | Yes (later directory epoch may repopulate) | ROTATE_RETRY; REJECT_NOTIFY once the sender's retry budget (§4.7) is exhausted |
 | `0x030E` | `ERR_MIX_REPLAY_DETECTED` | Per-epoch mix replay cache (§4.4.6) | A mix received a Sphinx packet whose per-hop tag is already in its current-epoch replay cache — a replayed packet (correlation / n−1 replay attempt). | No | DROP_SILENT — a content-blind mix has no channel to notify; the duplicate is simply dropped |
 | `0x030F` | `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` | Loop-cover detection (§4.4.7) | A node's loop-cover return fraction fell below the loss threshold (or latency inflated beyond the delay budget), inferring an active drop/delay/flooding attack on its paths. | Yes (after rotation) | HALT_ALERT — rotate away from implicated mixes/guards, alert the user, and **fail closed for `private`** (MUST NOT auto-downgrade to `fast`, §4.4.9) |
-| `0x0310` | `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` | Minimum-viable-path check (§4.4.9) | No minimum-viable `private` path (≥ 3 hops, 1/layer, ≥ 3 disjoint operators, current-epoch keys) is buildable — an adversary DoSing mixes to force a downgrade, or genuine outage. | Yes (hold + retry until a viable path exists) | FAIL_CLOSED_BLOCK — hold the MOTE in the sender queue (§4.7), never silently route it over `fast` or a shorter/non-diverse path; surface to the user if it persists past the retry deadline |
+| `0x0310` | `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` | Minimum-viable-path check (§4.4.9) | No path meeting the **in-force profile's** bar is buildable (Standard: ≥ 3 hops, 1/layer, ≥ 3 disjoint operators; **High-security: ≥ 5 hops, ≥ 5 disjoint operators**), all current-epoch keys — an adversary DoSing mixes to force a downgrade, or genuine outage. **Covers both a tier downgrade (`private → fast`) and a profile downgrade (High-security → Standard):** a high-security message that can only build a lesser-bar path fails here rather than silently shipping over Standard strength. | Yes (hold + retry until a viable path exists) | FAIL_CLOSED_BLOCK — hold the MOTE in the sender queue (§4.7), never silently route it over `fast`, a shorter/non-diverse path, or a lower profile's bar; surface to the user if it persists past the retry deadline |
 
 ## 21.6 Messaging & Group errors — MLS (`0x04xx`)
 
@@ -189,6 +191,7 @@ to a MOTE) is a distinct concept scoped to the Auth ceremony; see `0x0502` (§21
 | `0x0508` | `ERR_CAPABILITY_DELEGATION_INVALID` | Delegated-capability check (§13.5) | The UCAN-style token is invalid, expired, or the invoked right exceeds what was attenuated. | No | DENY_POLICY |
 | `0x0509` | `ERR_OIDC_ISSUER_MISMATCH` | OIDC bridge / self-issued discovery (§13.6) | The ID Token's issuer does not match the discovered/pinned issuer for the claimed identity. | No | FAIL_CLOSED_BLOCK |
 | `0x050A` | `STATUS_SESSIONS_INVALIDATED_ON_RECOVERY` | `IK` recovery completion (§13.4) | All prior session authorizations are invalidated as a consequence of a completed identity recovery. | N/A | REJECT_NOTIFY — force re-authentication on every RP |
+| `0x050B` | `ERR_CAPABILITY_REVOKED` | Delegated-capability invocation vs. revocation check (§13.5, §13.5.1, §18.7.3) | A structurally-valid `CapabilityToken` (or a chain ancestor) is covered by a published `CapabilityRevocation` from its issuer or an ancestor issuer — the capability was explicitly revoked. Distinct from `0x0508` (`ERR_CAPABILITY_DELEGATION_INVALID`, the token being malformed/expired/over-attenuated): `0x050B` is a *validly-formed but revoked* grant. | No | DENY_POLICY — deny the invocation; the delegatee must be re-granted. The revocation is KT-logged and owner-visible (§13.5) |
 
 ## 21.8 Gateway errors (`0x06xx`)
 
@@ -303,6 +306,10 @@ auditability:
 | Deniable mode not advertised | `0x040E` |
 | Deniable payload carries a signature (forbidden) | `0x040F` |
 | Device hardware-attestation invalid | `0x0116` |
+| Device attestation evidence expired / root retired | `0x0118` |
+| KT inclusion-proof leaf-hash mismatch | `0x0117` |
+| Capability delegation invalid (malformed/expired/over-attenuated) | `0x0508` |
+| Capability revoked (valid grant, explicitly revoked) | `0x050B` |
 | Session-revoked | `0x0504` |
 | Session-expired | `0x0505` |
 | Origin-mismatch (auth) | `0x0501` |
@@ -344,7 +351,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 104 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 107 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -434,8 +441,8 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Mix Parameters |
 | **Reference** | §4.4 (§4.4.1 packet format, §4.4.3 path, §4.4.4 epochs, §4.4.12 PQ), §16.3 |
 | **Allocation policy** | **Mix suite** values (the `suite` on `MixNodeDescriptor`/`MixKeyEntry`, §18.5.2): `0x01`–`0x1F` Standards Action, `0x20`–`0xDF` Specification Required, `0xE0`–`0xFE` Private Use, `0x00`/`0xFF` Reserved — mirroring the Algorithm Suites registry (§21.15), because a mix packet format is a network-wide interoperability and security floor. Individual numeric parameters (path length, cell size, delay/cover means, epoch length) are **profile values fixed in §16.3**, tuned within the protocol version, not separately code-point-allocated. |
-| **Initial contents** | **Mix suite `0x01` (v0 REQUIRED):** classical **Sphinx** (Danezis–Goldberg 2009) — header group **X25519**, `β` stream cipher **ChaCha20**, per-hop MAC **Poly1305**, KDF **BLAKE3**, cell payload `δ` **2 KiB**, path length **3**, stratified topology, Poisson per-hop delay (§4.4.1, §4.4.3, §16.3). **Mix suite `0x02` (RESERVED, PQ frontier):** a post-quantum / hybrid Sphinx packet format — **not yet specified**, tracked per §4.4.12 and §11.3; reserved so the agility seam (`suite` on descriptors + capability negotiation §10.2) is ready when a PQ mix format is standardized. |
-| **Registration requirements** | A new mix suite MUST specify its full packet construction (group element, per-hop KDF, `β` stream cipher, `γ` MAC, `δ` AEAD, constant-length invariant) and a security analysis; MUST preserve Sphinx's constant-length, unlinkable-per-hop, tagging-resistant properties; MUST state its cell size and how it composes with the bucket ladder (§4.4.1); and MUST NOT be accepted by a node until published here (unknown mix suites rejected fail-closed, mirroring §1.1). PQ mix formats MUST disclose their metadata-only exposure honestly (§4.4.12). |
+| **Initial contents** | **Mix suite `0x01` (v0 REQUIRED):** classical **Sphinx** (Danezis–Goldberg 2009) — header group **X25519**, `β` stream cipher **ChaCha20**, per-hop header MAC **Poly1305** (over `β` only), **`δ` payload wide-block PRP LIONESS** (Anderson–Biham, over the whole cell — **not** a stream cipher or AEAD; this is what gives payload tagging-resistance, §4.4.1/§4.4.6), KDF **BLAKE3**, cell payload `δ` **2 KiB**, path length **3**, stratified topology, Poisson per-hop delay (§4.4.1, §4.4.3, §16.3). **Mix suite `0x02` (RESERVED, PQ frontier):** a post-quantum / hybrid Sphinx packet format — **not yet specified**, tracked per §4.4.12 and §11.3; reserved so the agility seam (`suite` on descriptors + capability negotiation §10.2) is ready when a PQ mix format is standardized. |
+| **Registration requirements** | A new mix suite MUST specify its full packet construction (group element, per-hop KDF, `β` stream cipher, `γ` header MAC, and a **`δ` payload transform that is a wide-block PRP / SPRP over the whole cell** — never a stream cipher or an AEAD-over-`δ`, since a malleable payload transform reintroduces active payload tagging — plus the constant-length invariant) and a security analysis; MUST preserve Sphinx's constant-length, unlinkable-per-hop, tagging-resistant properties (**header** integrity via `γ`, **payload** tagging-resistance via the wide-block `δ` transform); MUST state its cell size and how it composes with the bucket ladder (§4.4.1); and MUST NOT be accepted by a node until published here (unknown mix suites rejected fail-closed, mirroring §1.1). PQ mix formats MUST disclose their metadata-only exposure honestly (§4.4.12). |
 
 ## 21.24 Transport Substrates Registry (§4.1)
 
@@ -503,22 +510,27 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 104 (`0x0101`–`0x0116`: 22, incl. the KT-v1 detection codes
-  `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), and `0x0116`
-  device-attestation (§1.2a); `0x0201`–`0x020F`: 15, incl. `0x020F` suite-downgrade (§1.3);
+- **Error/status codes defined:** 107 (`0x0101`–`0x0118`: 24, incl. the KT-v1 detection codes
+  `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
+  device-attestation and `0x0118` attestation-expired (§1.2a), and `0x0117` KT leaf-hash mismatch
+  (§3.5, §18.4.9); `0x0201`–`0x020F`: 15, incl. `0x020F` suite-downgrade (§1.3);
   `0x0301`–`0x0310`: 16, incl. `0x030A` capability-announce
   rollback (§10.2) and the mixnet codes `0x030B`–`0x0310` — directory/descriptor/path (`0x030B`–`0x030D`),
-  replay (`0x030E`), active-attack detection (`0x030F`), and no-downgrade fail-closed (`0x0310`) (§4.4);
+  replay (`0x030E`), active-attack detection (`0x030F`), and no-downgrade fail-closed — now covering
+  both tier and profile downgrade (`0x0310`, §4.4.9);
   `0x0401`–`0x040F`: 15, incl. the deniable-mode codes `0x040B`–`0x040F` (§5.2.1) — prekey
   invalid/exhausted, X3DH/PQXDH failure, ratchet-MAC failure, mode-unavailable, and the
   signature-forbidden guard;
-  `0x0501`–`0x050A`: 10; `0x0601`–`0x0604`: 4, plus the informative SMTP mapping table of §21.9;
+  `0x0501`–`0x050B`: 11, incl. `0x050B` capability-revoked (§13.5, §18.7.3); `0x0601`–`0x0604`: 4,
+  plus the informative SMTP mapping table of §21.9;
   `0x0701`–`0x070E`: 14; `0x0801`–`0x0808`: 8, incl. `0x0808` manifest-key-present (§5.5)),
   spanning the 8 requested subsystems, with every code resolving to exactly one of the 13
   defined responder actions (§21.2) — no undefined behavior remains.
-- **IANA registries defined:** 12 — the 8 requested (Algorithm Suites, Message Kinds, Challenge
-  Types, Name Backends, KT Log Types, `Headers.ext` Keys, DNS Parameters, Capability Tokens),
-  the **Mix Parameters** registry (§21.23) and **Transport Substrates** registry (§21.24) added
-  for the mixnet and substrate seams (§4.4, §4.1), plus the DMTAP Error/Status Code Registry
-  itself (§21.14, needed to make Part 1 durable against future extension) and the
-  extension/versioning procedure (§21.25) that governs all of them.
+- **IANA registries defined:** **11 registries + 1 extension/versioning procedure** — the 8
+  requested registries (Algorithm Suites, Message Kinds, Challenge Types, Name Backends, KT Log
+  Types, `Headers.ext` Keys, DNS Parameters, Capability Tokens), the **Mix Parameters** registry
+  (§21.23) and **Transport Substrates** registry (§21.24) added for the mixnet and substrate seams
+  (§4.4, §4.1), and the DMTAP Error/Status Code Registry itself (§21.14, needed to make Part 1
+  durable against future extension) = **11 registries**; plus the **extension/versioning procedure**
+  (§21.25) that governs all of them — a procedure, **not** a registry. (Earlier drafts stated "12
+  registries," conflating the §21.25 procedure with the registries; it is corrected here.)

@@ -133,11 +133,12 @@ Payload {
 }
 
 Headers {
-  thread:   ?bytes,         // stable thread/conversation id
-  subject:  ?tstr,          // mail only
-  mime:     ?tstr,          // content type of `body`
-  cc:       [* bytes],      // additional recipient keys (fan-out is per-recipient MOTEs)
-  ext:      { * tstr => any },   // extension headers (§10)
+  thread:    ?bytes,        // stable thread/conversation id
+  subject:   ?tstr,         // mail only
+  mime:      ?tstr,         // content type of `body`
+  cc:        [* bytes],     // additional recipient keys (fan-out is per-recipient MOTEs)
+  ext:       { * tstr => ext-value },  // extension headers (§10); typed, NOT `any` — see §18.3.6
+  sensitive: ?bool,         // key 6: no-persist / ephemeral-view (§6.7); §18.3.6 is authoritative
 }
 
 Body = tstr / bytes         // text or opaque MIME
@@ -226,11 +227,23 @@ in order:
 6. **For cold senders, enforce anti-abuse policy (§9) NOW, before decryption**, using the
    `challenge` field (ARC token / PoW / stamp / vouch) — all checkable without decrypting.
    Reject or defer per §9.2 / §2.7a if the challenge is absent or insufficient.
-7. Decrypt `ciphertext` (MLS epoch key or HPKE to recipient key); drop on failure.
+7. Decrypt `ciphertext` (MLS epoch key or HPKE to recipient key); drop on failure. **Deniable
+   fork (`kind = 0x0b`, §5.2.1):** if the envelope `kind` is `0x0b`, the `ciphertext` is a
+   `DeniableFrame` (§18.3.9), **not** an MLS/HPKE-sealed `Payload`. Decryption is the **Double
+   Ratchet** decrypt (a `DeniableInit` first establishes the X3DH/PQXDH session; a `DeniableMessage`
+   advances the ratchet); the plaintext is a `DeniablePayload` (§18.3.10). A decrypt/ratchet
+   failure is `ERR_DENIABLE_RATCHET_AUTH_FAILED` (`0x040D`, drop/hold-for-resync), never an
+   MLS/HPKE decrypt attempt.
 8. Verify `Payload.sig` under `Payload.from`; **on failure, discard silently and do not `ack`**
    (fail closed, matching steps 1–3). Otherwise verify `from` matches the pinned identity for a
    known contact, or TOFU-pin on first contact (§3.4). For a cold sender whose `from` is now
-   revealed, re-apply block/allow lists. **Suite-ratchet check:** now that the sender identity is
+   revealed, re-apply block/allow lists. **Deniable fork (`kind = 0x0b`):** a `DeniablePayload`
+   carries **no** `sig` — the substitute authenticator is the **Double-Ratchet AEAD tag** (the
+   shared-key MAC) already checked at step 7, so at this step the recipient verifies that tag
+   *instead of* `Payload.sig`, binds `DeniablePayload.from` to the X3DH-authenticated `IK` (matching
+   the pinned identity, §3.4), and **MUST reject any `DeniablePayload` that carries a signature
+   field** (`ERR_DENIABLE_SIGNATURE_PRESENT`, `0x040F`) — a present signature would defeat the
+   mode. **Suite-ratchet check:** now that the sender identity is
    known, verify `Envelope.suite` is **not below** this contact's pinned suite high-water-mark
    (§1.3); a below-water-mark suite is a downgrade attempt → reject to the requests area with a
    security warning (`ERR_SUITE_DOWNGRADE`, §21.4), never accept. (This must occur here, not at

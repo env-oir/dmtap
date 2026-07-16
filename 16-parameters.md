@@ -44,10 +44,11 @@ above and for ordering hints.
 | Sphinx cell size (`δ`) | 2 KiB | Sphinx constant-length payload cell after padding (§4.4.1) |
 | Payload bucket ladder | {2, 8, 32, 64} KiB = {1, 4, 16, 32} cells | a MOTE is padded up to the next rung, then fragmented into that many 2 KiB cells (§4.4.1); only ladder sizes appear on the wire |
 | Mix key epoch | 24 h | Sphinx mix-key rotation; advertise current+next, delete old key at `valid_until` (§4.4.4) |
-| Sphinx group / stream / MAC (v0) | X25519 / ChaCha20 / Poly1305 | header DH group, `β` stream cipher, per-hop MAC (§4.4.1); PQ variant §4.4.12 |
-| Mix replay-cache window | 1 epoch + skew (≈ 24 h + 120 s) | per-mix Sphinx-tag replay cache; flush at epoch end (§4.4.6, `0x030E`) |
+| Sphinx group / `β` stream / header MAC (v0) | X25519 / ChaCha20 / Poly1305 | header DH group, `β` stream cipher, per-hop header MAC over `β` (§4.4.1); PQ variant §4.4.12 |
+| Sphinx `δ` payload transform (v0) | LIONESS (wide-block PRP) | keyed permutation over the whole 2 KiB cell — payload tagging-resistance; NOT a stream cipher / AEAD (§4.4.1, §4.4.6) |
+| Mix replay-cache window | lifetime of every still-usable mix key + skew (current epoch + next-key overlap, ≈ up to 2 epochs + 120 s) | per-mix Sphinx-tag replay cache; retain until each key's `valid_until` passes — **no hard flush at the epoch boundary** while the overlap key is still usable (§4.4.6, `0x030E`) |
 | Loop-cover rate (λ_loop) | Poisson, mean 30 s | client + mix loops for active-attack detection (§4.4.7) |
-| Loop-loss detection threshold | > 20% loss (sliding window) or latency ≫ delay budget | infer active drop/delay attack → `0x030F`, rotate + `HALT_ALERT` + fail-closed (§4.4.7) |
+| Loop-loss detection threshold | > 20% loss (sliding window) or latency ≫ delay budget | infer active drop/delay attack → `0x030F`, rotate + `HALT_ALERT` + fail-closed (§4.4.7). Note: **sub-threshold** selective dropping (< 20% loss) is **bounded, not eliminated** — an adversary dropping a small fraction stays under detection but also achieves little; the **High-security profile's** faster loop rate (mean 5 s, §4.4.10) **tightens** this floor (detects smaller/faster loss) |
 | Entry-guard set size (G) | 2 | pinned entry-layer mixes per sender (§4.4.8) |
 | Entry-guard rotation period | 30 days | Tor-style guard rotation; intersection-attack bound (§4.4.8) |
 | Path operator-diversity | ≥ 3 disjoint operators (one per hop) | no two hops share `operator` (§4.4.8); relaxed only while single-operator (§4.4.11) |
@@ -117,9 +118,12 @@ above and for ordering hints.
 | Deniable OPK replenish threshold | ≤ 20 remaining | owner's node republishes the bundle before exhaustion (§5.2.1) |
 | Deniable last-resort prekey use | rate-limited (signed prekey / last-resort KEM) | fallback when OPKs exhausted; reused, so rate-limited to bound reuse (§5.2.1, `0x040B`) |
 | Deniable signed-prekey rotation | ≤ 7 days | rotate `spk` (and PQ last-resort KEM key) on this cadence; old kept briefly for in-flight inits (§5.2.1) |
+| Deniable-identity DH key (`idk`) rotation | on device revocation / recovery only | the dedicated long-term X25519 identity DH key is otherwise stable; rotated (fresh `idk` + `idk_sig`) when a holding device is lost (§5.2.1(a),(f), §6.7) |
+| Deniable last-resort init replay cache | signed-prekey lifetime + overlap (≈ 7 d + skew) | responder cache of consumed initiator `ek_a`/`idk_a` for signed-prekey-only (no-OPK) first messages, to bound X3DH first-message replay (§5.2.1(a), `0x040C`) |
 | Double-Ratchet skipped-message keys (MAX_SKIP) | 1000 | max out-of-order message keys cached before a gap is irrecoverable (`0x040D`, §5.2.1) |
 | At-rest key relock timeout | ≤ 5 min inactivity (client policy) | evict the unlock-released at-rest key from memory after this idle period (§6.7); shorter on mobile |
 | `sensitive` message persistence | never written at rest | ephemeral-view only; MUST NOT be persisted by a compliant recipient (§6.7, §18.3.6) |
+| Device re-attestation cadence | ≤ 90 days (or the evidence's own expiry) | attestation-gated contexts treat older evidence as expired (`0x0118`) and require fresh evidence over the same non-exportable key (§1.2a, §18.4.2) |
 
 All numeric values here are v0 defaults; a future protocol version MAY revise them, and
 capability negotiation (§10.2) carries any non-default profile.

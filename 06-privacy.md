@@ -91,7 +91,7 @@ hostile-buffer scenarios.
 
 | Tier | Path | Latency | Graph privacy | Default for |
 |------|------|---------|---------------|-------------|
-| `private` | full mixnet + cover | minutes | full (global passive) | mail, all control MOTEs, **normal-size files** |
+| `private` | full mixnet + cover | minutes | strong (global passive) — quantified, see §6.4/§4.4.11 | mail, all control MOTEs, **normal-size files** |
 | `fast` | direct / few-hop | sub-second | content only | live chat (both online), **large-file bulk** |
 
 - Default is `private`. `fast` is opt-in. Because *choosing* `fast` is itself a signal, clients
@@ -127,6 +127,11 @@ hostile-buffer scenarios.
    at *some* latency/cost point. DMTAP **approaches** that mathematical floor as the high-security
    profile's latency/overhead grows; it does **not** pretend to defeat an omnipotent adversary at
    zero cost. This is the honest floor *after* the maximal defense, not a substitute for it.
+   One concrete edge of that residual: **sub-threshold selective dropping** — an adversary dropping
+   fewer than the loop-loss detection threshold (< 20%, §16.3) of a target's packets — stays under
+   the §4.4.7 detector, so it is **bounded, not eliminated**; the trade is that so little is dropped
+   it accomplishes little, and the **High-security profile** (faster loops, §4.4.10) tightens the
+   detectable floor further.
 2. **Large-file bulk metadata.** Onion-routing + padding + swarming makes it *strong*, not
    *free* and not *perfect* — the fact and approximate volume of a large transfer may remain
    partially observable at high adversary capability.
@@ -200,9 +205,14 @@ anonymous."
   device from every group (§5.8.2) and, for a personal cluster, from the device group (§5.6);
   (2) a **device-key rotation** (§1.5) re-keying any identity/recovery material the device held;
   (3) **session revocation** of all that device's auth sessions (§13.4, which a device-key
-  rotation triggers wholesale). Steps (1)–(2) advance every affected epoch, so the evicted key
-  has **post-compromise** — it decrypts no message sent after the eviction Commit. This reuses
-  existing machinery (§1.5, §5.8.2, §13.4); no new revocation protocol is introduced.
+  rotation triggers wholesale); and (4) **deniable-session teardown** — because the pairwise
+  Double Ratchet lies **outside** MLS, an MLS Remove does not reach it, so the owner MUST also run
+  the §5.2.1(f) flow: withdraw/rotate the deniable prekeys (`idk`/`spk`/`opks`) the device could
+  have held, tear down its in-flight ratchets, and **re-establish** any deniable conversation to
+  restore post-compromise security. Steps (1)–(2) advance every affected MLS epoch and step (4)
+  reboots each deniable ratchet, so the evicted key has **post-compromise** — it decrypts no
+  message sent after the eviction. This reuses existing machinery (§1.5, §5.8.2, §13.4, §5.2.1(f));
+  no new revocation protocol is introduced.
 - Messages get MLS **forward secrecy**; files use **per-file keys** (blast radius = one file)
   delivered over the forward-secret channel. Persistent, re-readable data cannot ratchet like
   ephemeral messages — this is a property of files, not a DMTAP flaw (§5.5).
