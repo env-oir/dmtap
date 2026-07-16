@@ -2,7 +2,7 @@
   "format": "dmtap-conformance-vectors/1",
   "suite": "0x01 (classical): Ed25519 / X25519-HPKE / ChaCha20-Poly1305 / BLAKE3-256",
   "generated_by": "dmtap-core (reference crate) — examples/gen_vectors.rs",
-  "methodology": "All values computed from FIXED seeds/inputs by the reference crate. Ed25519 is deterministic (RFC 8032); BLAKE3 and CBOR are deterministic. Non-deterministic ops (HPKE ephemeral, keygen) are excluded; their deterministic sub-operations are vectored. CBOR here is the reference crate's serde/ciborium encoding (text field-name keys); the §18 integer-keyed canonical form is a separate target — see README.",
+  "methodology": "All values computed from FIXED seeds/inputs by the reference crate. Ed25519 is deterministic (RFC 8032); BLAKE3 and CBOR are deterministic. Non-deterministic ops (HPKE ephemeral, keygen) are excluded; their deterministic sub-operations are vectored. CBOR here is the §18 canonical, INTEGER-KEYED (COSE/CWT-style) deterministic encoding (RFC 8949 §4.2, spec §18.1.1/§18.1.2/§18.3.x); signing preimages and content addresses follow §18.9. A second implementer following §18 alone reproduces these bytes.",
   "vectors": [
     {
       "name": "content_address_empty",
@@ -165,13 +165,13 @@
       "name": "ed25519_domain_separated",
       "operation": "ed25519_sign",
       "input": {
-        "domain_hex": "646d7461702d7061796c6f61642d7369672d7630",
+        "domain_hex": "444d5441502d76302f7061796c6f616400",
         "msg_hex": "636f6e666f726d616e6365206d65737361676520666f7220646f6d61696e2d736570617261746564207369676e696e67",
         "seed_hex": "1111111111111111111111111111111111111111111111111111111111111111"
       },
       "expected": {
         "pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-        "sig_hex": "064679c7fa84e3e12155b0eff8ab2b7bc627afeb9138815ff936d7159fe11bfcc43d53ce624db2e29ed114f70946f80595e45491a0e1fc6481db3fe9b09c660b"
+        "sig_hex": "6ef6a7e40078dd292a7d4c8ed2d09cb2a23adefe5c0703f1265482efed2dba071615d76f641622326c41f6bc9e9e0fc69762dacd612808bdf73e54dd5fed580d"
       },
       "note": "Ed25519 over (domain || msg) — how dmtap-core signs (sign_domain)"
     },
@@ -179,10 +179,10 @@
       "name": "ed25519_verify_ok",
       "operation": "ed25519_verify",
       "input": {
-        "domain_hex": "646d7461702d7061796c6f61642d7369672d7630",
+        "domain_hex": "444d5441502d76302f7061796c6f616400",
         "msg_hex": "636f6e666f726d616e6365206d65737361676520666f7220646f6d61696e2d736570617261746564207369676e696e67",
         "pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-        "sig_hex": "064679c7fa84e3e12155b0eff8ab2b7bc627afeb9138815ff936d7159fe11bfcc43d53ce624db2e29ed114f70946f80595e45491a0e1fc6481db3fe9b09c660b"
+        "sig_hex": "6ef6a7e40078dd292a7d4c8ed2d09cb2a23adefe5c0703f1265482efed2dba071615d76f641622326c41f6bc9e9e0fc69762dacd612808bdf73e54dd5fed580d"
       },
       "expected": {
         "valid": true
@@ -193,10 +193,10 @@
       "name": "ed25519_verify_tampered_msg",
       "operation": "ed25519_verify",
       "input": {
-        "domain_hex": "646d7461702d7061796c6f61642d7369672d7630",
+        "domain_hex": "444d5441502d76302f7061796c6f616400",
         "msg_hex": "626f6e666f726d616e6365206d65737361676520666f7220646f6d61696e2d736570617261746564207369676e696e67",
         "pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-        "sig_hex": "064679c7fa84e3e12155b0eff8ab2b7bc627afeb9138815ff936d7159fe11bfcc43d53ce624db2e29ed114f70946f80595e45491a0e1fc6481db3fe9b09c660b"
+        "sig_hex": "6ef6a7e40078dd292a7d4c8ed2d09cb2a23adefe5c0703f1265482efed2dba071615d76f641622326c41f6bc9e9e0fc69762dacd612808bdf73e54dd5fed580d"
       },
       "expected": {
         "valid": false
@@ -207,10 +207,10 @@
       "name": "ed25519_verify_tampered_sig",
       "operation": "ed25519_verify",
       "input": {
-        "domain_hex": "646d7461702d7061796c6f61642d7369672d7630",
+        "domain_hex": "444d5441502d76302f7061796c6f616400",
         "msg_hex": "636f6e666f726d616e6365206d65737361676520666f7220646f6d61696e2d736570617261746564207369676e696e67",
         "pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-        "sig_hex": "074679c7fa84e3e12155b0eff8ab2b7bc627afeb9138815ff936d7159fe11bfcc43d53ce624db2e29ed114f70946f80595e45491a0e1fc6481db3fe9b09c660b"
+        "sig_hex": "6ff6a7e40078dd292a7d4c8ed2d09cb2a23adefe5c0703f1265482efed2dba071615d76f641622326c41f6bc9e9e0fc69762dacd612808bdf73e54dd5fed580d"
       },
       "expected": {
         "valid": false
@@ -221,50 +221,50 @@
       "name": "cbor_identity",
       "operation": "cbor_encode",
       "input": {
-        "note": "created via Identity::create_classical, seed 0x11*32, version 0",
+        "note": "created via Identity::create_classical, seed 0x11*32, version 0; §18.4.1 integer-keyed",
         "type": "Identity"
       },
       "expected": {
-        "cbor_hex": "aa66737569746573810163696b73a101982018d0184a18b218321874182b18b418ab183a13186818bd18461518e418e618d01822184a18b7181a01186b18af1885182018a3183218c91877188718376776657273696f6e00676465766963657380676b6579706b677358211e4f242fb78e0942ca9cd96887ed930511386f7729427e9b7435ba23370e610052687265636f7665727958211e08a744bb9a1b09722cc94f3794fa5d44251da66ecdb0ad52dce7c0df241736be656e616d65738171616c696365406578616d706c652e636f6d6470726576f66274731b0000018bcfe5680063736967819840182518581836183b18891818189918ee181a18d018581834182c04188818cb18a318c2187c151318ed188b185e18a11882189518781118b018d418611826189018df0718450a184118e90a18ba1863186b18bc185b183f181818e718d018f418a518ac185318a918f1187a1890183518bf141861187a06",
-        "content_id_hex": "1e00696c449eb99c2a3ad373585be2d73b3e2de669a180c957eebc673cbe73b955"
+        "cbor_hex": "a901810102a1015820d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c97787370300048005a2016d2f6d6573682f6b6579706b67730258211e4f242fb78e0942ca9cd96887ed930511386f7729427e9b7435ba23370e6100520658211e08a744bb9a1b09722cc94f3794fa5d44251da66ecdb0ad52dce7c0df241736be078171616c696365406578616d706c652e636f6d091b0000018bcfe568000a8158406e9471b42c493099e51def8f326d6d22ad08af43f50385f8f033baa33f8a5067f1d54779ab8df4b7b5ffa52ee1d7d241c1cad7bb4f9f0a727d44ab653e8b4908",
+        "content_id_hex": "1e2b8b83df16578e8357b6bfac5378f0e9cb6980f06d1181b0772811c5bbe34dc1"
       },
-      "note": "deterministic CBOR of a signed single-suite Identity; also its content address"
+      "note": "§18-canonical integer-keyed CBOR of a signed single-suite Identity; also its §18.9.4 content address"
     },
     {
       "name": "cbor_device_cert",
       "operation": "cbor_encode",
       "input": {
-        "note": "IK seed 0x11*32 signs device key seed 0x22*32",
+        "note": "IK seed 0x11*32 signs device key seed 0x22*32; §18.4.2 integer-keyed",
         "type": "DeviceCert"
       },
       "expected": {
-        "cbor_hex": "a86573756974650162696b982018d0184a18b218321874182b18b418ab183a13186818bd18461518e418e618d01822184a18b7181a01186b18af1885182018a3183218c91877188718376a6465766963655f6b6579982018a0189a18a518f4187a186718591880182f18f9185518f818dc182d182a1418a518c9189d182318be189718f8186412187f18f918381834185518a418f0656c6162656c68686f6d652d626f7867637265617465641b0000018bcfe568006765787069726573f66463617073836453656e6464526563766552656c6179637369679840188d189018a901187b186118ae18f618fa183e189d1852188004184f18f418a5182018aa18e818eb0318d01826189918271895185118e618b118bc18b3185a18341718e018841855188c186118f618c218d6186118a71884189918a6187918fc18ab18e015187e18d018ba18381718e118e0181a1819189601"
+        "cbor_hex": "a70101025820d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737035820a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f00468686f6d652d626f78051b0000018bcfe5680007836473656e6464726563766572656c61790858406f00580684430a29519dad174679c91dd34d806da1582b59cc516bd77cc9c20df0ce8ad2cb8447a7e4ef630cd2c88cc31b0146e4a5ef1f0c7edd1b682c78ce06"
       },
-      "note": "deterministic CBOR of an IK-signed DeviceCert"
+      "note": "§18-canonical integer-keyed CBOR of an IK-signed DeviceCert"
     },
     {
       "name": "cbor_payload",
       "operation": "cbor_encode",
       "input": {
-        "note": "fixed fields; sig is a fixed 64-byte placeholder",
+        "note": "fixed fields; sig is a fixed 64-byte placeholder; §18.3.5 integer-keyed",
         "type": "Payload"
       },
       "expected": {
-        "cbor_hex": "a76466726f6d982018d0184a18b218321874182b18b418ab183a13186818bd18461518e418e618d01822184a18b7181a01186b18af1885182018a3183218c9187718871837637369679840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006768656164657273a4667468726561648218aa18bb677375626a6563746568656c6c6f646d696d657819746578742f706c61696e3b20636861727365743d7574662d386263638064626f64798b18681865186c186c186f18201864186d18741861187064726566738158211e81cc03f0e1003bb942ed82565acd2c1a635c7f3169ea9bf75ca9f158f210ce0166617474616368806765787069726573f6"
+        "cbor_hex": "a6015820d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c97787370258400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003a40142aabb026568656c6c6f037819746578742f706c61696e3b20636861727365743d7574662d380480044b68656c6c6f20646d746170058158211e81cc03f0e1003bb942ed82565acd2c1a635c7f3169ea9bf75ca9f158f210ce010680"
       },
-      "note": "deterministic CBOR of a MOTE Payload"
+      "note": "§18-canonical integer-keyed CBOR of a MOTE Payload"
     },
     {
       "name": "cbor_envelope",
       "operation": "cbor_encode",
       "input": {
-        "note": "fixed ciphertext (48 bytes) + fixed sig placeholders; id = content address of ciphertext",
+        "note": "fixed ciphertext (48 bytes) + fixed sig placeholders; to = KeyTag; id = content address of ciphertext; §18.3.1 integer-keyed",
         "type": "Envelope"
       },
       "expected": {
-        "cbor_hex": "ac6176006573756974650162696458211e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac0062746f982018a0189a18a518f4187a186718591880182f18f9185518f818dc182d182a1418a518c9189d182318be189718f8186412187f18f918381834185518a418f06565706f6368f66274731b0000018bcfe56800646b696e6400666b6579706b67f6696368616c6c656e6765f66a6369706865727465787498300b18301855187a189f18c418e90e18331858187d18a218c718ec111836185b188018a518ca18ef141839185e188318a818cd18f217183c1861188618ab18d018f5181a183f1864188918ae18d318f8181d18421867188c18b118d66a73656e6465725f7369679840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006a73656e6465725f65706898201718cb187918fb182b1841182018f218b118ec186518e41819188d186e0818b2188e1881183f18eb0118e418a4001883189b188518e11880188018ce"
+        "cbor_hex": "a9010002010358211e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac0004a20001015820a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f0061b0000018bcfe5680007000a58300b30557a9fc4e90e33587da2c7ec11365b80a5caef14395e83a8cdf2173c6186abd0f51a3f6489aed3f81d42678cb1d60b5840000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c582017cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce"
       },
-      "note": "deterministic CBOR of a MOTE Envelope; round-trip-checked in the self-test"
+      "note": "§18-canonical integer-keyed CBOR of a MOTE Envelope; round-trip-checked in the self-test"
     },
     {
       "name": "suite_reject_0x00",
@@ -360,44 +360,44 @@
       "name": "mote_sender_sig",
       "operation": "ed25519_sign",
       "input": {
-        "domain_hex": "646d7461702d73656e6465722d7369672d7630",
-        "msg_hex": "1e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac00a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f00000018bcfe5680000",
+        "domain_hex": "444d5441502d76302f656e76656c6f70652d73656e64657200",
+        "msg_hex": "1e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac00a20001015820a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f00000018bcfe5680000f6",
         "seed_hex": "3333333333333333333333333333333333333333333333333333333333333333"
       },
       "expected": {
         "pubkey_hex": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
-        "sig_hex": "d52f825d2655d429425570f0561699803c58134888afb32ded682118556558c2a2eb7bf8bc9bc5b4fa59f79c0ae82990128aa091f37d6d3705f22f6091bb0702"
+        "sig_hex": "c6f9a763628f47adb59e11187449d51e6f9707212a15651a0c0085fcc03fdf9a9e60faf9bc043a30c3fb0ca82dc252aaec4c3e30631feaf8424a7a468461f20b"
       },
-      "note": "envelope sender_sig preimage = id||to||ts_be64||kind (challenge absent); ephemeral key seed 0x33*32"
+      "note": "§18.9.1 sender_sig body = id||det_cbor(to)||ts_be64||kind||0xf6 (challenge absent); DS-tag 'DMTAP-v0/envelope-sender\\0'; ephemeral key seed 0x33*32"
     },
     {
       "name": "mote_sender_sig_verify",
       "operation": "ed25519_verify",
       "input": {
-        "domain_hex": "646d7461702d73656e6465722d7369672d7630",
-        "msg_hex": "1e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac00a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f00000018bcfe5680000",
+        "domain_hex": "444d5441502d76302f656e76656c6f70652d73656e64657200",
+        "msg_hex": "1e7a557d4e4985f6e3c0b01ad253a8d7ffe2db61c090e9588e0e3cb6f6fdb5ac00a20001015820a09aa5f47a6759802ff955f8dc2d2a14a5c99d23be97f864127ff9383455a4f00000018bcfe5680000f6",
         "pubkey_hex": "17cb79fb2b4120f2b1ec65e4198d6e08b28e813feb01e4a400839b85e18080ce",
-        "sig_hex": "d52f825d2655d429425570f0561699803c58134888afb32ded682118556558c2a2eb7bf8bc9bc5b4fa59f79c0ae82990128aa091f37d6d3705f22f6091bb0702"
+        "sig_hex": "c6f9a763628f47adb59e11187449d51e6f9707212a15651a0c0085fcc03fdf9a9e60faf9bc043a30c3fb0ca82dc252aaec4c3e30631feaf8424a7a468461f20b"
       },
       "expected": {
         "valid": true
       },
-      "note": "the sender_sig above MUST verify under the ephemeral key"
+      "note": "the sender_sig above MUST verify under the ephemeral key (sender_key, §18.3.1 key 12)"
     },
     {
       "name": "mote_payload_sig",
       "operation": "ed25519_sign",
       "input": {
-        "domain_hex": "646d7461702d7061796c6f61642d7369672d7630",
-        "msg_hex": "716fab6c26806a675aedc5629548cad61660e3c60f1cdc70111a8a83e6940a3a",
-        "payload_hash_hex": "716fab6c26806a675aedc5629548cad61660e3c60f1cdc70111a8a83e6940a3a",
+        "domain_hex": "444d5441502d76302f7061796c6f616400",
+        "msg_hex": "11c2d36c9cee6fad59624184af7e8afdb372ddbee0defec77b94d5691d6f76be",
+        "payload_hash_hex": "11c2d36c9cee6fad59624184af7e8afdb372ddbee0defec77b94d5691d6f76be",
         "seed_hex": "1111111111111111111111111111111111111111111111111111111111111111"
       },
       "expected": {
         "pubkey_hex": "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737",
-        "sig_hex": "dbbd61b4c596afc546cf03e24ca0b0f14c559f057397997aee1b16170551f3294de6ca89996ed0f4718e8d93e28b296b19327c53c5154f0684b962345cf33a07"
+        "sig_hex": "38350f0b682ae7ab9d6f2497c83db330b95144a7b6014dc36e37068dbf9a9b45c675dc03df2f1fc3531f9da7a361b5d67bbae7bb1250a6af54ae63d781f14f05"
       },
-      "note": "payload signature preimage = BLAKE3-256(CBOR(payload with sig cleared)); IK seed 0x11*32"
+      "note": "§18.9.2 payload signature: BLAKE3-256(det_cbor(Payload ∖ {sig})) under DS-tag 'DMTAP-v0/payload\\0'; IK seed 0x11*32"
     }
   ]
 }
