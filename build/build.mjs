@@ -76,10 +76,9 @@ const tocHtml = `<nav class="toc"><h2>Table of Contents</h2><ol>` +
 const coverHtml = `
 <div class="cover">
   <div class="wg-block">
-    ${meta.workgroup}<span class="r">${meta.author}</span><br>
-    Internet-Draft<span class="r">${meta.org}</span><br>
-    Intended status: ${meta.intendedStatus}<span class="r">${meta.date}</span><br>
-    Expires: ${meta.expires}
+    ${meta.workgroup}<span class="r">${meta.org}</span><br>
+    Internet-Draft<span class="r">${meta.date}</span><br>
+    Intended status: ${meta.intendedStatus}
   </div>
   <div class="title-wrap">
     <h1 class="doctitle">${meta.title.replace(/\((DMTAP)\)/, "<br>($1)")}</h1>
@@ -140,7 +139,7 @@ await page.waitForFunction("window.__mermaidDone === true", { timeout: 120000 })
 await new Promise((r) => setTimeout(r, 300)); // settle fonts/svg layout
 
 const foot = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:7pt;color:#8a93a8;padding:0 14mm;display:flex;justify-content:space-between;">
-  <span>Paruk</span><span>Expires ${meta.expires}</span><span>Page <span class="pageNumber"></span></span></div>`;
+  <span>${meta.draftId}</span><span></span><span>Page <span class="pageNumber"></span></span></div>`;
 const head = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:7pt;color:#8a93a8;padding:0 14mm;display:flex;justify-content:space-between;">
   <span>Internet-Draft</span><span>DMTAP</span><span>${meta.date}</span></div>`;
 
