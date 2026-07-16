@@ -193,33 +193,32 @@ Formalizes the §2.7 ordered validation pipeline as a state machine, with the dr
 
 ### Diagram
 
-```
-RECEIVED─check_version:fail──────────────────────────────────────────▶ DROPPED
-   │ ok
-   ▼
-VERSION_OK─verify_address:fail────────────────────────────────────────▶ DROPPED
-   │ ok
-   ▼
-ADDR_OK──check_duplicate:duplicate────────────────────────────────────▶ ACKED
-   │ not_duplicate
-   ├─verify_sender_sig:fail──────────────────────────────────────────▶ DROPPED
-   │ ok
-   ▼
-SIG_OK──resolve_to:fail────────────────────────────────────────────────▶ DROPPED
-   │ ok
-   ▼
-RESOLVED──classify_sender:cold──▶ COLD_GATE ──invalid_or_forged───────▶ DROPPED
-   │ known                          │  absent_or_below_threshold ─────▶ DEFERRED
-   │                                │  valid_and_sufficient
-   ▼                                ▼
-PRE_DECRYPT ◀───────────────────────┘
-   │ decrypt:fail ─────────────────────────────────────────────────────▶ DROPPED
-   │ ok
-   ▼
-DECRYPTED──verify_payload:{fail,revealed_from_blocked}────────────────▶ DROPPED
-   │ ok
-   ▼
-PAYLOAD_OK──apply_and_store──▶ STORED──ack──▶ ACKED
+```mermaid
+stateDiagram-v2
+  [*] --> RECEIVED
+  RECEIVED --> DROPPED : check_version fail
+  RECEIVED --> VERSION_OK : ok
+  VERSION_OK --> DROPPED : verify_address fail
+  VERSION_OK --> ADDR_OK : ok
+  ADDR_OK --> ACKED : duplicate
+  ADDR_OK --> DROPPED : verify_sender_sig fail
+  ADDR_OK --> SIG_OK : not_duplicate + sig ok
+  SIG_OK --> DROPPED : resolve_to fail
+  SIG_OK --> RESOLVED : ok
+  RESOLVED --> PRE_DECRYPT : known sender
+  RESOLVED --> COLD_GATE : cold sender
+  COLD_GATE --> DROPPED : invalid_or_forged
+  COLD_GATE --> DEFERRED : absent_or_below_threshold
+  COLD_GATE --> PRE_DECRYPT : valid_and_sufficient
+  PRE_DECRYPT --> DROPPED : decrypt fail
+  PRE_DECRYPT --> DECRYPTED : ok
+  DECRYPTED --> DROPPED : verify_payload fail / revealed_from_blocked
+  DECRYPTED --> PAYLOAD_OK : ok
+  PAYLOAD_OK --> STORED : apply_and_store
+  STORED --> ACKED : ack
+  DROPPED --> [*]
+  DEFERRED --> [*]
+  ACKED --> [*]
 ```
 
 ---
@@ -300,30 +299,29 @@ pinned-follow-chain path for key rotation (§1.5) and name migration (§1.6).
 
 ### Diagram
 
-```
-UNRESOLVED──begin_resolve──▶ RESOLVING ──dns_fail──▶ UNRESOLVED (loop)
-                                │ dns_ok
-                                ▼
-                            KT_VERIFY ──kt_reachable_but_superseded──▶ RESOLVING
-                                │
-                    ┌───────────┼───────────────────┐
-       kt_reachable_confirmed   │ kt_unreachable      │ kt_unreachable
-                    │        (policy=block)          (policy=warn)
-                    ▼           ▼                     ▼
-          FETCHING_IDENTITY  FAIL_CLOSED_BLOCKED   OOB_REQUIRED
-             │        │         │    ▲               │   │   │
-   fetch_ok_ │   sig_chain_     │    │ user_          │   │   └─oob_verify_ok──▶ PINNED
-   chain_valid  invalid         │    │ provides_oob    │   └─user_declines──────▶ FAIL_CLOSED_BLOCKED
-             │        │         │    │                └─user_accepts_with_warning─▶ PINNED
-             ▼        ▼         └────┘
-           PINNED  FAIL_CLOSED_BLOCKED    (fetch_fail ─▶ RESOLVING, not drawn)
-             │  ▲
-   rotation_ │  │ chain_valid / oob_verify_ok / name_reresolve_requested (self-loop)
-   or_move_  │  │
-   seen      ▼  │
-      VERIFYING_CHAIN ──chain_invalid──▶ SECURITY_ALERT ──user_overrides_with_oob──▶ PINNED
-                                              │        └─user_blocks_contact──▶ FAIL_CLOSED_BLOCKED
-                                              └─user_dismisses (self-loop, routes on OLD key)
+```mermaid
+stateDiagram-v2
+  [*] --> UNRESOLVED
+  UNRESOLVED --> RESOLVING : begin_resolve
+  RESOLVING --> UNRESOLVED : dns_fail
+  RESOLVING --> KT_VERIFY : dns_ok
+  KT_VERIFY --> RESOLVING : kt_reachable_but_superseded
+  KT_VERIFY --> FETCHING_IDENTITY : kt_reachable_confirmed
+  KT_VERIFY --> FAIL_CLOSED_BLOCKED : kt_unreachable (policy=block)
+  KT_VERIFY --> OOB_REQUIRED : kt_unreachable (policy=warn)
+  FETCHING_IDENTITY --> PINNED : fetch_ok_chain_valid
+  FETCHING_IDENTITY --> FAIL_CLOSED_BLOCKED : sig_chain_invalid
+  FETCHING_IDENTITY --> RESOLVING : fetch_fail
+  FAIL_CLOSED_BLOCKED --> PINNED : user_provides_oob
+  OOB_REQUIRED --> PINNED : oob_verify_ok
+  OOB_REQUIRED --> PINNED : user_accepts_with_warning
+  OOB_REQUIRED --> FAIL_CLOSED_BLOCKED : user_declines
+  PINNED --> VERIFYING_CHAIN : rotation_or_move_seen
+  VERIFYING_CHAIN --> PINNED : chain_valid / oob_verify_ok / name_reresolve_requested
+  VERIFYING_CHAIN --> SECURITY_ALERT : chain_invalid
+  SECURITY_ALERT --> PINNED : user_overrides_with_oob
+  SECURITY_ALERT --> FAIL_CLOSED_BLOCKED : user_blocks_contact
+  SECURITY_ALERT --> SECURITY_ALERT : user_dismisses (routes on OLD key)
 ```
 
 ---
@@ -391,16 +389,20 @@ by §20.1 for the `fast` tier and by §20.7 on reconnect.
 
 ### Diagram
 
-```
-IDLE──start_dial──▶TRY_DIRECT──direct_fail──▶TRY_HOLEPUNCH──holepunch_fail──▶TRY_RELAY
-       ▲                │ direct_ok               │ holepunch_ok               │relay_ok │relay_fail
-       │                ▼                         ▼                           ▼         ▼
-       │            CONNECTED◀──────────────────────────────────────────────────    UNREACHABLE
-       │             │    │  ▲                                                          │
-       │  disconnect │    │  │republish_ok / republish_fail                    retry_request
-       │             │    ▼  │                                                          │
-       └─────────────┘  REPUBLISHING◀── local_addr_changed / ttl_near_expiry            │
-       └──────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> TRY_DIRECT : start_dial
+  TRY_DIRECT --> CONNECTED : direct_ok
+  TRY_DIRECT --> TRY_HOLEPUNCH : direct_fail
+  TRY_HOLEPUNCH --> CONNECTED : holepunch_ok
+  TRY_HOLEPUNCH --> TRY_RELAY : holepunch_fail
+  TRY_RELAY --> CONNECTED : relay_ok
+  TRY_RELAY --> UNREACHABLE : relay_fail
+  CONNECTED --> REPUBLISHING : local_addr_changed / ttl_near_expiry
+  REPUBLISHING --> CONNECTED : republish_ok / republish_fail
+  CONNECTED --> IDLE : disconnect
+  UNREACHABLE --> IDLE : retry_request
 ```
 
 ---
@@ -474,27 +476,37 @@ re-enters `ACTIVE` under the new committer identity). `HALT` is shared with §20
 
 ### Diagram
 
-```
-                                            propose
-STABLE(N) ──────────────────────────────────────────▶ PROPOSALS_PENDING ──commit_received_
-   │▲ application_message (loop)                        │  ▲                fork_evidence
-   │└─────────────────────────────                       │  │additional_proposal   │
-   │                              fork_detected           │  (loop)               ▼
-   └───────────────────────────────────────────▶ HALT ◀──┼──────────────────────HALT
-                                                    ▲      │ commit_received_valid
-                                          election_fork    ▼
-                                                     COMMIT_APPLIED ──applied_locally_ok──▶ STABLE(N+1)
-                                                          │ apply_local_fail
-                                                          ▼
-                                                     RESYNCING ──external_commit_ok──▶ STABLE
-                                                          └──external_commit_fail (loop)
+Epoch-advancement sub-machine (§20.5.1):
 
-  Committer:  ACTIVE ──liveness_timeout_exceeded──▶ UNREACHABLE_TIMEOUT ──election_triggered──▶ ELECTION
-                 ▲│                                    │committer_returns                        │
-                 │└────────voluntary_step_down─────────┼─────────────────────────────────────────┘
-                 │                                     ▼                        election_commit_agreed
-                 └─────────────────ROTATED◀─────────────────────────────────────────┘
-                                                     ELECTION──election_fork──▶ HALT
+```mermaid
+stateDiagram-v2
+  [*] --> STABLE
+  STABLE --> STABLE : application_message
+  STABLE --> PROPOSALS_PENDING : propose
+  STABLE --> HALT : fork_detected
+  PROPOSALS_PENDING --> PROPOSALS_PENDING : additional_proposal
+  PROPOSALS_PENDING --> HALT : commit_received_fork_evidence
+  PROPOSALS_PENDING --> COMMIT_APPLIED : commit_received_valid
+  COMMIT_APPLIED --> STABLE : applied_locally_ok (epoch N+1)
+  COMMIT_APPLIED --> RESYNCING : apply_local_fail
+  RESYNCING --> STABLE : external_commit_ok
+  RESYNCING --> RESYNCING : external_commit_fail
+  HALT --> STABLE : recovery_commit_agreed (>n/2, §5.1)
+```
+
+Committer-lifecycle sub-machine (§20.5.2) — couples into the epoch machine at
+`election_commit_agreed` (processed as an ordinary `commit_received_valid`):
+
+```mermaid
+stateDiagram-v2
+  [*] --> ACTIVE
+  ACTIVE --> UNREACHABLE_TIMEOUT : liveness_timeout_exceeded (5 min, 2 misses)
+  ACTIVE --> ELECTION : voluntary_step_down
+  UNREACHABLE_TIMEOUT --> ACTIVE : committer_returns
+  UNREACHABLE_TIMEOUT --> ELECTION : election_triggered
+  ELECTION --> ROTATED : election_commit_agreed (>n/2 quorum)
+  ELECTION --> HALT : election_fork
+  ROTATED --> ACTIVE : new committer bound
 ```
 
 ---
@@ -577,24 +589,22 @@ session lifecycle (§13.4).
 
 ### Diagram
 
-```
-NO_SESSION──login_started──▶CHALLENGE_ISSUED
-                                 │        │
-                    webauthn_ok  │        │ node_signing_requested
-                    +rp_verify_ok        ▼
-                       │           APPROVAL_GATE──channel_unattributable/user_denies/
-                       │              │  │          approval_timeout/rate_limited───▶NO_SESSION
-                       │  user_approves+rp_verify_ok
-                       ▼              ▼
-                  ASSERTION_VERIFIED◀──┘
-                       │ establish_session
-                       ▼
-                  SESSION_ACTIVE ──dpop_proof_ok/fail (loop)
-                   │   │    │  │
-   session_key_    │   │    │  └─session_timeout──▶EXPIRED
-   rotation         │   │    └─revoke_requested/device_key_rotated/ik_recovered──▶REVOKED
-                    ▼   │
-                REFRESHED┘ (immediate return to SESSION_ACTIVE)
+```mermaid
+stateDiagram-v2
+  [*] --> NO_SESSION
+  NO_SESSION --> CHALLENGE_ISSUED : login_started
+  CHALLENGE_ISSUED --> ASSERTION_VERIFIED : webauthn_ok + rp_verify_ok
+  CHALLENGE_ISSUED --> APPROVAL_GATE : node_signing_requested
+  APPROVAL_GATE --> ASSERTION_VERIFIED : user_approves + rp_verify_ok
+  APPROVAL_GATE --> NO_SESSION : channel_unattributable / user_denies / approval_timeout / rate_limited
+  ASSERTION_VERIFIED --> SESSION_ACTIVE : establish_session
+  SESSION_ACTIVE --> SESSION_ACTIVE : dpop_proof_ok / fail
+  SESSION_ACTIVE --> REFRESHED : session_key_rotation
+  REFRESHED --> SESSION_ACTIVE : (immediate)
+  SESSION_ACTIVE --> EXPIRED : session_timeout (TTL 24h / idle 30m, §16.8)
+  SESSION_ACTIVE --> REVOKED : revoke_requested / device_key_rotated / ik_recovered
+  REVOKED --> [*]
+  EXPIRED --> [*]
 ```
 
 ---
@@ -660,20 +670,17 @@ buffering), as one machine with two operating profiles.
 
 ### Diagram
 
-```
-ONLINE──connectivity_lost──▶OFFLINE
-   ▲                          │  │  │
-   │                push_wake_│  │  └─inactive_account_purge_reached (loop)
-   │                received  │  └─buffer_ttl_expired_no_reconnect (loop)
-   │                          │
-   │              manual_reconnect
-   │                          ▼
-   │                     RECONNECTING──reachability_failed/push_wake_but_no_connectivity──▶OFFLINE
-   │                          │ reachability_established
-   │                          ▼
-   │                      DRAINING──fetch_ok_more_remaining/fetch_partial_fail (loop)
-   │                          │  └─connection_dropped_mid_drain──▶RECONNECTING
-   └──────fetch_ok_queue_empty┘
+```mermaid
+stateDiagram-v2
+  [*] --> ONLINE
+  ONLINE --> OFFLINE : connectivity_lost
+  OFFLINE --> OFFLINE : buffer_ttl_expired_no_reconnect / inactive_account_purge_reached
+  OFFLINE --> RECONNECTING : push_wake_received / manual_reconnect
+  RECONNECTING --> OFFLINE : reachability_failed / push_wake_but_no_connectivity
+  RECONNECTING --> DRAINING : reachability_established
+  DRAINING --> DRAINING : fetch_ok_more_remaining / fetch_partial_fail
+  DRAINING --> RECONNECTING : connection_dropped_mid_drain
+  DRAINING --> ONLINE : fetch_ok_queue_empty
 ```
 
 ---
