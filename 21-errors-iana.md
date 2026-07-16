@@ -250,6 +250,7 @@ loss window is disclosed and irreducible; here it is fully closed by never `250`
 | `0x0805` | `ERR_FILE_KEY_MISSING_OR_REVOKED` | Post-removal file access (§6.7) | A former group member's file key has been rotated out after removal from a shared folder. | No | DENY_POLICY — the member must be re-added and re-shared |
 | `0x0806` | `ERR_STORAGE_QUOTA_EXCEEDED` | Operator storage `Policy` (§12.2) | Hosted-operator storage cap reached. Self-host default is unlimited. | Yes | DENY_POLICY |
 | `0x0807` | `ERR_ATTACHMENT_KEY_INVALID` | Attachment/chunk decryption (§2.5) | The per-file content `key` fails to decrypt the referenced inline blob or chunk. | No | DROP_SILENT |
+| `0x0808` | `ERR_MANIFEST_KEY_PRESENT` | Manifest decode (§5.5, §18.3.8) | A received `Manifest` carries an embedded content key (reserved-forbidden field `5`). A manifest is a swarm-distributed blob, so an embedded key would leak to every holder that serves it. | No | FAIL_CLOSED_BLOCK — reject the manifest, MUST NOT use the embedded key; the legitimate key travels only in `Attachment.key` inside the sealed MOTE (§18.3.7) |
 
 ## 21.12 Traceability matrix
 

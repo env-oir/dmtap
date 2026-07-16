@@ -146,8 +146,8 @@ Manifest {
   size:      u64,
   chunk_sz:  u32,          // e.g. 1 MiB
   chunks:    [+ bytes],    // ordered chunk hashes
-  key:       bytes,        // file content key (delivered inside the MOTE, §2.5)
   suite:     u8,
+  // NO key field. The content key is NOT part of the manifest — see below.
 }
 ```
 
@@ -160,6 +160,14 @@ Properties:
 - **Streamable** — consume in manifest order before full download.
 - **Integrity** — every chunk self-verifies against its hash; the manifest self-verifies
   against `id`.
+- **Key is never in the manifest (confidentiality).** The manifest is itself a
+  content-addressed blob a fetcher pulls from the swarm to learn the chunk list, so any node
+  serving it would also learn an embedded key and could decrypt the whole file. The file content
+  key therefore travels **only inside the sealed MOTE** (`Attachment.key`, §2.5/§18.3.7), never
+  in the manifest and never alongside the chunks. Chunks are served **blind** — a holder can
+  relay encrypted chunks and the manifest without ever being able to read the file. A manifest
+  received with a key embedded MUST be rejected as a leak (`ERR_MANIFEST_KEY_PRESENT`, §21), not
+  used.
 
 **Availability tiers** (files reintroduce storage economics):
 

@@ -403,7 +403,9 @@ Manifest = {
   2 => u64,             ; size      total plaintext size
   3 => u32,             ; chunk_sz  fixed chunk size (e.g. 1 MiB, §16.4)
   4 => [+ hash],        ; chunks    ordered chunk hashes (list, ≥ 1)
-  5 => enc-key,         ; key       file content key (delivered inside the MOTE, §2.5)
+  ; NOTE: NO key field — the content key travels ONLY in Attachment.key inside the
+  ;       sealed MOTE (§18.3.7). A Manifest is a swarm-distributed content-addressed
+  ;       blob; embedding the key here would leak it to every holder that serves it.
   6 => suite,           ; suite     suite for chunk encryption + hashing
 }
 ```
@@ -414,7 +416,7 @@ Manifest = {
 | `size` | 2 | `u64` | MUST | Total plaintext file size in bytes. |
 | `chunk_sz` | 3 | `u32` | MUST | Fixed chunk size; every chunk except possibly the last is exactly this many plaintext bytes. v0 default 1 MiB (§16.4). |
 | `chunks` | 4 | `[+ hash]` | MUST | **Ordered list** of per-chunk content addresses `h_i = prefix ‖ BLAKE3-256(encrypted_chunk_i)` (§18.9.5). At least one. Enables resumable/parallel/swarmed/deduplicated transfer (§5.5). |
-| `key` | 5 | `enc-key` | MUST | File content key; used to encrypt/decrypt each chunk. Delivered only in the MOTE, never with the chunks. |
+| ~~`key`~~ | ~~5~~ | — | **FORBIDDEN** | The file content key MUST NOT appear in a `Manifest`. A `Manifest` is a content-addressed blob fetched from the swarm to obtain the chunk list (§5.5, §19.8.2); any holder that serves it would then also learn the key and could decrypt every chunk, defeating blind chunk-serving. The key travels **only** in `Attachment.key` (§18.3.7, key 6) inside the **sealed** MOTE. A decoder that receives a `Manifest` containing key `5` MUST reject it (`ERR_MANIFEST_KEY_PRESENT`, §21) as a leak/malformation, never use the embedded key. Key `5` is reserved-unused for this object so an old sender's leaky manifest is detected, not silently honored. |
 | `suite` | 6 | `suite` | MUST | Suite governing chunk AEAD and the digest algorithm of each `h_i` and of `id`. |
 
 ---
