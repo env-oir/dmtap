@@ -2,7 +2,18 @@
 
 ## 10.1 Protocol versioning
 
-- Every wire object carries a format version (`v`) and algorithm suite (`suite`).
+- Every wire object is **version-discriminable**, but not all via an in-band field. `Envelope`
+  carries an explicit format-version field (`v`, §18.3.1). The other top-level signed objects
+  (`Identity`, `DeviceCert`, `RecoveryPolicy`, `KeyRotation`, `MoveRecord`, `LocationRecord`, and
+  the group/auth objects) derive their format version from their **domain-separation tag**
+  (`"DMTAP-v0/…"`, §18.9) together with the `v=dmtap<N>` anchor published in DNS (§3.2): the
+  DS-tag is part of every signing preimage, so a verifier reconstructs the preimage under a
+  definite structural version and a mismatch simply fails signature verification (fail closed) —
+  it never guesses. A future structural revision increments **both** the DS-tag (`"DMTAP-v1/…"`)
+  and the DNS `v=` anchor in lockstep, giving an unambiguous discriminator without bloating every
+  object with a redundant `v` byte.
+- Every wire object also carries an algorithm `suite` (or inherits the enclosing object's, per
+  §18.1.4).
 - Unknown `v`/`suite` MUST be rejected (fail closed), never guessed.
 - New message kinds use the reserved `0x40–0x7f` range (§2.3); a node ignores unknown kinds it
   is not required to process, but MUST NOT ack a kind it cannot validate.
@@ -28,6 +39,17 @@ An implementation is **DMTAP-conformant** at a level if it passes the correspond
 | **Legacy** | Core + gateway inbound/outbound + DKIM delegation (§7) |
 | **Clients** | Core + JMAP; IMAP/POP/SMTP-submission compat RECOMMENDED (§8) |
 | **Auth** | Core + DMTAP-Auth login ceremony with origin binding + key-bound sessions (§13); OIDC bridge RECOMMENDED (§13.6) |
+
+**Core is an interoperability floor, not a production target.** Because the standing default
+privacy tier for mail (and for every control MOTE) is `private` (§4.6), a Core-only node cannot
+operate at the protocol's own default without also implementing **Private**. Therefore a
+**production** node that carries user mail **MUST** implement **Private** as well as Core;
+`fast`-tier-only operation is a deliberate, user-surfaced downgrade (§4.6, §6), never the silent
+default. Core exists so a minimal or special-purpose implementation (e.g. a gateway, a test
+harness) can interoperate on the message spine, not so a shipping mail client can skip metadata
+privacy. Privacy is a first-class requirement of the protocol, not an optional add-on level — the
+Private level is the *normal* baseline, and the mixnet it depends on is fully specified in §4.4 /
+§6.3 (Sphinx/Loopix, with the parameters of §16.3) rather than left to implementations.
 
 The **conformance test suite** (in `conformance/`, TBD) is the *operational definition* of
 compatibility. "DMTAP-compatible" means "passes the suite," not "resembles the reference." This
