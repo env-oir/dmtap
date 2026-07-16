@@ -63,13 +63,17 @@ for (const f of files) {
   body += `<section class="section">\n${md.render(src)}\n</section>\n`;
 }
 
-const tocHtml = `<nav class="toc"><h2>Table of Contents</h2><ol>` +
+const tocHtml = `<nav class="toc"><h2 class="toc-title">Table of Contents</h2><ol>` +
   toc.map((t) => {
     const cls = t.level === 1 ? "toc-h1" : "toc-h2";
     const parts = t.text.match(/^(\d+(?:\.\d+)*\.?)\s+(.*)$/);
-    const num = parts ? `<span class="num">${parts[1]}</span>` : "";
+    const num = parts ? parts[1] : "";
     const label = parts ? parts[2] : t.text;
-    return `<li class="${cls}"><a href="#${t.slug}">${num}${md.utils.escapeHtml(label)}</a></li>`;
+    // num / label / dotted-leader inside the <a>; paged.js appends the page number via ::after
+    return `<li class="${cls}"><a href="#${t.slug}">` +
+      `<span class="num">${md.utils.escapeHtml(num)}</span>` +
+      `<span class="label">${md.utils.escapeHtml(label)}</span>` +
+      `<span class="lead"></span></a></li>`;
   }).join("") +
   `</ol></nav>`;
 
@@ -134,13 +138,14 @@ const browser = await puppeteer.launch({
   args: ["--no-sandbox", "--font-render-hinting=none"],
 });
 const page = await browser.newPage();
-await page.goto("file://" + htmlPath, { waitUntil: "networkidle0", timeout: 120000 });
-await page.waitForFunction("window.__mermaidDone === true", { timeout: 120000 });
-await new Promise((r) => setTimeout(r, 300)); // settle fonts/svg layout
+await page.goto("file://" + htmlPath, { waitUntil: "networkidle0", timeout: 240000 });
+await page.waitForFunction("window.__mermaidDone === true", { timeout: 240000 });
+await new Promise((r) => setTimeout(r, 400)); // settle fonts/svg layout
 
-const foot = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:7pt;color:#8a93a8;padding:0 14mm;display:flex;justify-content:space-between;">
+// classic Internet-Draft running head + foot (draft-id left, page number right)
+const foot = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:8pt;color:#6b6b6b;padding:0 20mm;display:flex;justify-content:space-between;">
   <span>${meta.draftId}</span><span></span><span>Page <span class="pageNumber"></span></span></div>`;
-const head = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:7pt;color:#8a93a8;padding:0 14mm;display:flex;justify-content:space-between;">
+const head = `<div style="width:100%;font-family:Helvetica Neue,Arial,sans-serif;font-size:8pt;color:#6b6b6b;padding:0 20mm;display:flex;justify-content:space-between;">
   <span>Internet-Draft</span><span>DMTAP</span><span>${meta.date}</span></div>`;
 
 const outPath = join(specDir, "dmtap.pdf");
@@ -151,8 +156,8 @@ await page.pdf({
   displayHeaderFooter: true,
   headerTemplate: head,
   footerTemplate: foot,
-  margin: { top: "22mm", bottom: "20mm", left: "18mm", right: "18mm" },
-  timeout: 120000,
+  margin: { top: "22mm", bottom: "20mm", left: "20mm", right: "20mm" },
+  timeout: 240000,
 });
 await browser.close();
 console.log(`wrote ${outPath}`);
