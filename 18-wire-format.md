@@ -2003,9 +2003,10 @@ the shared scalar prelude (§18.1.7). Counting every distinct CBOR map/group rul
 **48 map definitions** plus the **four choice-variant families** (`DeliveryTag`,
 `ChallengeResponse`, `DeniableFrame`, `RecoveryMethod`) — gives **52 CDDL-defined structures**, all
 collected in §18.10. (`Body` is a scalar type alias, not a structure; `SphinxCell` and its
-sub-structures `RoutingCommand`/`SURB`/`SphinxFragmentHeader` are **fixed-length byte layouts**,
-§18.5.4 — a mesh wire object each, but **not** CBOR, so counted among the 39 wire objects yet **not**
-among the 52 CDDL structures.) (`GatewayAttestation` is the §7.2a/§7.8 transport-path binding,
+sub-structures `RoutingCommand`/`SURB`/`SphinxFragmentHeader` are **fixed-length byte layouts**
+internal to `SphinxCell` (§18.5.4) — **not** CBOR and **not** separately counted; only `SphinxCell`
+itself is among the 39 wire objects, and (being byte-layout, not CBOR) it is **not** among the 52
+CDDL structures.) (`GatewayAttestation` is the §7.2a/§7.8 transport-path binding,
 sealed in `Payload`; `ProvenanceRecord` is the §8.6/§19.9 client-facing assembly — node-local, not
 mesh-transmitted, not signed, §18.9.12; `SignedTreeHead`/`InclusionProof`/`ConsistencyProof` are the
 §3.5 RFC-6962 KT binding; `CapabilityToken`/`Capability`/`CapabilityRevocation` are the §13.5

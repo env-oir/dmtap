@@ -281,7 +281,9 @@ reach**: strong against a global *passive* adversary, *bounded* (not defeated) a
 - *Holds by:* MLS group encryption / HPKE sealing of `Payload` into `Envelope.ciphertext` (§2.4,
   §2.1, §5.1); every intermediary is content-blind (§6.1, §6.2).
 - *Against:* network eavesdropper, malicious relay/mix, curious directory/KT, and a global
-  **passive and active** adversary alike (confidentiality does not degrade with global reach).
+  **passive and active** adversary alike (confidentiality does not degrade with global reach
+  *once the name→key binding is established* — a first-contact MITM before KT/OOB is the disclosed
+  residual below).
 - *Residual:* the endpoint floor — a device compromised while unlocked and in use reads its own
   plaintext (§6.6 item 3); the legacy-gateway leg is plaintext by construction (§7 opening); a
   first-contact MITM before KT/OOB can substitute the encryption key (§6.6 item 4). Harvest-now:
@@ -441,7 +443,7 @@ reach**: strong against a global *passive* adversary, *bounded* (not defeated) a
 | SP-8 | Downgrade resistance | §1.3, §4.4.9, §10.2, §10.1 | active DoS / MITM | weakest-link §6.6 item 5 (full set §10.7) |
 | SP-9 | KT / equivocation detection | §3.5.2 (v1) / §3.5.1 (v0) | malicious KT log | **v0 not equivocation-proof §6.6 item 6** |
 | SP-10 | Recoverability from compromise | §1.4, §1.5, §6.7, §13.4 | loss / partial compromise | `IK`+quorum takeover; content needs backup §1.4 |
-| SP-11 | Anti-abuse without deanonymization | §9.3–§9.5, §2.7.6, §9.2a | deanonymizing recipient/operator | issuer-layer only §9.3.2; committer vouch §9.9 |
+| SP-11 | Anti-abuse without deanonymization | §9.3–§9.5, §2.7 step 6, §9.2a | deanonymizing recipient/operator | issuer-layer only §9.3.2; committer vouch §9.9 |
 
 An implementation or a formal model that exhibits a counterexample to any SP-*n* **claim line
 above** — without invoking its stated residual — has found a spec-level defect, and it MUST be

@@ -423,7 +423,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Initial contents** | Under `<name>._dmtap.<domain>` TXT: `v=` (format version), `suite=` (algorithm suite, §1.1), `ik=` (base64url identity public key), `id=` (hash of the current `Identity`, §1.3), `kt=` (KT log URL), `keypkgs=` (KeyPackage bundle locator, §5.3). Under `_dmtap.<domain>` SVCB: reserved service parameters and KT anchors. Under `<sel>._dmtap-gw.<domain>` TXT (§7.2a): `v=` (attestation scheme version), `k=` (gateway attestation public key). Under `<sel>._dmtap-mix.<domain>` TXT (§4.4.8, analogous to `_dmtap-gw`): `v=` (attestation scheme version), `k=` (mix-operator attestation public key), binding a `MixNodeDescriptor.operator` to an accountable domain for path operator-diversity (§4.4.8). Under `_dmtap.<domain>` a `mix=` locator (§4.4.2) points to the `MixDirectory` authority. |
 | **Registration requirements** | A new TXT/SVCB key MUST specify its grammar and whether it is required or optional for a conformant resolver; unrecognized keys in an existing record MUST be ignored by resolvers (same forward-compat rule as §21.20). |
 
-## 21.22 Capability Tokens Registry (negotiation, §10.2)
+## 21.22 Capability Negotiation Registry (§10.2)
 
 | | |
 |---|---|

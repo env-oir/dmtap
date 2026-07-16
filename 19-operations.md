@@ -654,7 +654,7 @@ A: reachability established via rung 2 (hole-punch)
 A: proceed to deliver() over this connection
 ```
 
-### 19.2.4 Mixnet operations (§4.4) — `publish-mix-descriptor` / `publish-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`
+### 19.2.4 Mixnet operations (§4.4) — `publish-mix-descriptor` / `publish-mix-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`
 
 **Purpose.** The `private`-tier metadata-privacy operations (§4.4): how a mix advertises itself,
 how the directory is published and fetched, and how a sender builds a fail-closed path and sends,
@@ -680,7 +680,7 @@ directory authority (`publish-directory`), or a sender (`fetch-directory`, `buil
 1. **`publish-mix-descriptor`** — a mix signs and publishes its `MixNodeDescriptor` (current + next
    epoch Sphinx keys, layer, `operator`). Its **operator control MUST be attested** by a
    `_dmtap-mix` DNS/KT record (§4.4.8) or it does not count as a distinct operator.
-2. **`publish-directory`** — the (threshold-held / `> n/2`-quorum, §4.4.2) authority signs a
+2. **`publish-mix-directory`** — the (threshold-held / `> n/2`-quorum, §4.4.2) authority signs a
    versioned `MixDirectory` of attested mixes, ≥ 1 per stratified layer, and appends its root to KT.
    Not authority-signed ⇒ `ERR_MIX_DIRECTORY_SIG_INVALID` (`0x030B`); a directory split view is
    detectable to the degree the KT profile allows (v1 gossip; v0 only after-the-fact, §4.4.2, M4).
@@ -719,7 +719,7 @@ with no silent downgrade; or a held+alerted fail-closed state under attack/outag
 
 **Idempotency / retry.** Path building and sending are **not** idempotent at the path level (each
 cell MUST take a fresh, independent path, §4.4.3); MOTE delivery is idempotent end-to-end via
-content-address dedup at the recipient (§2.6). `publish-directory`/`publish-mix-descriptor` are
+content-address dedup at the recipient (§2.6). `publish-mix-directory`/`publish-mix-descriptor` are
 monotonic-version publishes (older-or-equal rejected).
 
 ## 19.3 Delivery operations (§2.6, §2.7, §2.7a)
@@ -2411,8 +2411,8 @@ outcome rather than silence — per this appendix's own normative charter.
 
 ## 19.11 Operation count
 
-This appendix specifies **60** operations (plus the JMAP mapping table, §19.9, which maps
-existing JMAP methods onto them rather than defining new ones):
+This appendix specifies **53** operations (the per-family counts below sum to 53; plus the JMAP
+mapping table, §19.9, which maps existing JMAP methods onto them rather than defining new ones):
 
 - Naming (§19.1): 3 — `resolve`, `publish-identity`, `publish-move` — **plus** the KT-v1 family
   (§19.1.4): 6 — `gossip-sth`, `verify-consistency`, `quorum-resolve`, `monitor`, `auditor`,
@@ -2420,7 +2420,7 @@ existing JMAP methods onto them rather than defining new ones):
   `publish-directory`, `query-directory`, `offboard`; device attestation (§19.1.6): 2 —
   `attest-enroll`, `attest-verify`
 - Reachability (§19.2): 3 — `publish-location`, `lookup-location`, reachability-ladder attempt —
-  **plus** the mixnet family (§19.2.4): 7 — `publish-mix-descriptor`, `publish-directory`,
+  **plus** the mixnet family (§19.2.4): 7 — `publish-mix-descriptor`, `publish-mix-directory`,
   `fetch-directory`, `build-path`, `send-over-mixnet`, `emit-loop`, `detect-active-attack`
 - Delivery (§19.3): 3 — `deliver`, `ack`, sender-retry state machine
 - Async init (§19.4): 3 — `fetch-keypackage`, `add-member`/`Welcome`, `external-commit` — **plus**
@@ -2435,11 +2435,12 @@ existing JMAP methods onto them rather than defining new ones):
 - Gateway (§19.7): 2 — `smtp-inbound`, `smtp-outbound`
 - Files (§19.8): 2 — `offer-file`, `fetch-chunk`
 
-(The original 27 top-level spec blocks → **34** counting the four §19.5.2 group sub-ops; the
-wave-2 hardening pass adds **6** new spec blocks (§19.1.4/.5/.6, §19.2.4, §19.4.4, §19.6.6)
-covering **26** further sub-operations — KT-v1 6, org-admin 4, device-attestation 2, mixnet 7,
-deniable-session 5, capability delegation 2 — bringing the total to **60**. `resolve` (§19.1.1) now
-covers both the v0 single-log and the v1 `> n/2`-quorum/gossip KT path.)
+(The 53 counts the per-family entries above across **33 operation spec blocks** — the original 27
+blocks, with §19.5.2's four Commit-management ops and §19.5.5's committer-elect/rotate each
+grouped as one block, plus the **6** wave-2 hardening blocks (§19.1.4/.5/.6, §19.2.4, §19.4.4,
+§19.6.6) adding KT-v1 6, org-admin 4, device-attestation 2, mixnet 7, deniable-session 5,
+capability delegation 2. `resolve` (§19.1.1) now covers both the v0 single-log and the v1
+`> n/2`-quorum/gossip KT path.)
 
 
 
