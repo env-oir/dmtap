@@ -126,3 +126,81 @@ and spec disagree, the spec governs (or the discrepancy is filed as a bug).
   migration; optional self-sovereign naming backend.
 - **Later research:** stronger private contact discovery; scalable private retrieval for
   hostile-buffer scenarios; deniable-group properties; metadata-privacy for very large files.
+
+## 10.7 Downgrade & fail-closed invariants (the auditable set)
+
+DMTAP's downgrade-resistance and fail-closed rules are deliberately scattered across the layers
+that own them — the suite ratchet lives with identity (§1.3), the tier/profile floor with the
+mixnet (§4.4.9), the ack-before-`250` rule with the gateway (§7.4). **Scattering hides gaps:** a
+reviewer checking one section cannot see whether the *posture as a whole* is fail-closed, and it was
+exactly two such scattered gaps — the recipient-side **suite high-water-mark** (§1.3) and the
+**in-force-profile floor** for High-security paths (§4.4.9) — that a hardening review surfaced,
+because each looked complete in isolation while the set had a hole. This subsection therefore
+collects **every** downgrade and fail-closed invariant into one table so the property "DMTAP never
+*silently* accepts a weaker security posture" is checkable as a **set**, not rule-by-rule.
+
+**Reading the table.** Each row is an invariant, the clause that defines it (authoritative — this
+table indexes, it does not restate), the trigger that fires it, and the required behavior/error on
+violation. Codes are the §21 registry values. Where a row has no code, the failure is a
+signature/decoder rejection with no dedicated status. Every "behavior" is a **MUST** unless the
+owning clause says otherwise.
+
+### 10.7.1 Version, suite & capability downgrades
+
+| Invariant | Clause | Trigger | Behavior / error on violation |
+|-----------|--------|---------|-------------------------------|
+| Unknown `v`/`suite` → reject | §10.1, §2.7 step 1, §1.1 | any object decoded under an unknown format version or algorithm suite | fail closed — reject, **never guess**; a signed object's DS-tag/`suite` mismatch simply fails verification |
+| Highest-mutual-suite send | §1.3 | empty suite intersection with recipient | delivery fails closed — no silent weak-suite fallback |
+| **Suite high-water-mark ratchet** | §1.3, §2.7 step 8 | inbound `Envelope.suite` **below** the pinned contact's high-water-mark | reject to requests + security warning, `0x020F`; the mark ratchets **up** only, lowered solely by an `IK`-authorized retirement (§1.5) |
+| Capability-announce anti-rollback | §10.2 | `caps_version` older-than-or-equal-to the last accepted from that peer | reject the announcement, retain the higher set, `0x030A` |
+| Signed-object extension gating | §10.2, §18.1.2 | an unknown integer key in a **signed** object | decoder fails closed; a reserved `≥ 64` field is sent **only** toward a peer that advertised support |
+
+### 10.7.2 Metadata-privacy (tier/profile/mixnet) downgrades
+
+| Invariant | Clause | Trigger | Behavior / error on violation |
+|-----------|--------|---------|-------------------------------|
+| **No `private → fast` / in-force-profile floor** | §4.4.9 | no path meeting the **in-force profile's** bar (Standard ≥ 3 hops/≥ 3 operators; High-security ≥ 5/≥ 5) is buildable | hold in the retry queue; **never** silently route over `fast`, fewer hops, fewer operators, or a lower profile's bar; `0x0310`; surface to user past the retry deadline |
+| Active-attack fail-closed | §4.4.7 | loop-cover return fraction below the loss threshold (§16.3) | rotate away + `HALT_ALERT` + **fail closed** for the `private` tier — never silently continue on a weaker path, `0x030F` |
+| Per-epoch mix replay drop | §4.4.6 | a Sphinx per-hop tag already in the epoch replay cache | `DROP_SILENT`, `0x030E` (cache spans every still-usable key, no hard epoch-boundary flush) |
+| Mix operator-diversity **MUST be attested** | §4.4.8 | a mix whose `operator` is absent/un-attested is counted as fresh diversity | it MUST NOT count as its own operator — excluded or counted shared; keeps the ≈ *a*² compromised-path bound (else one Sybil operator collapses it to ≈ *a*) |
+| Mix directory authority-signed + rollback | §4.4.2 | directory not signed by the pinned authority, or an older-or-equal `version` | reject, `0x030B` (a directory split-view is a KT equivocation, `0x0107`) |
+| Cover traffic is not optional | §4.4.5, §6.2 | (posture) a `private`-tier node omitting loop/drop/recipient cover | non-conformant — cover is load-bearing, MUST be emitted |
+
+### 10.7.3 Trust-binding (KT / identity / group) fail-closed
+
+| Invariant | Clause | Trigger | Behavior / error on violation |
+|-----------|--------|---------|-------------------------------|
+| KT fail-closed on unreachable | §3.3, §3.5.1 | KT log unreachable/partitioned/censored at first-contact pinning | MUST NOT silently TOFU-pin — block or hard-warn + explicit acceptance, `0x0106` |
+| KT equivocation → HALT | §3.5.2(d) | split view / append-only violation / stale-frozen head / sub-quorum | `HALT_ALERT`, publish evidence, evict the log, fail closed below quorum — `0x0107` / `0x0110` / `0x0111` / `0x0112` |
+| Committer / co-committer fork → HALT | §5.1, §5.1.1 | two Commits at one log position with the same predecessor | `HALT_ALERT`; out-of-band fork recovery on the `> n/2` (or 2-party) quorum, `0x0404` |
+| `from`-pin mismatch | §2.7 step 8, §3.4 | decrypted `Payload.from` ≠ the pinned identity for a known contact | `HALT_ALERT`, **never silently re-pin**, `0x0209` |
+| Keyset-change re-verification | §3.4.1 | a verified pin's `iks`/`Identity` content-address changes | downgrade the pin to **unverified**, prompt OOB re-verify — never carry verified status across the change |
+| Device attestation freshness (gated only) | §1.2a | attestation absent/invalid/expired/retired-root in an **attestation-gated** context | `FAIL_CLOSED_BLOCK` for that context, `0x0116` / `0x0118`; advisory — **never** overrides §1.4 authorization |
+| **Org-managed-undisclosed** fail-closed | §3.10.2, §18.4.7 | an escrowed-key account presented **without** its `custody = "org-managed"` marker | `HALT_ALERT`; MUST NOT present as a sovereign identity, `0x0115` |
+| **Recovery-weakening quorum + veto** | §1.4 rules 3–4 | a `RecoveryPolicy` change that drops/weakens a factor | requires `rotate_threshold` **even when signed by `IK`**; takes effect only after the **72 h** asymmetric veto window (§16); a non-conforming weakening is vetoable |
+
+### 10.7.4 Delivery, gateway & anti-abuse fail-closed
+
+| Invariant | Clause | Trigger | Behavior / error on violation |
+|-----------|--------|---------|-------------------------------|
+| **Deferred cold MOTE = no-ack** | §2.7a, §19.3.1 step 9 | cold sender with absent/below-threshold challenge | hold in the rate-limited **requests** area, never the inbox, never silent-drop, and **not acked** (an ack would confirm existence + falsely signal delivered) |
+| Invalid/forged proof or bad `sender_sig`/`id` | §2.7, §2.7a | forged challenge, failed ephemeral signature, or `id` mismatch | discard **silently**, do not ack (except a duplicate `id`, which is acked) |
+| Payload-signature fail-closed | §2.7 step 8 | `Payload.sig` fails under `from` | discard silently, do **not** ack (fail closed, matching steps 1–3) |
+| **Gateway ack-before-`250`** | §7.4, §19.7.1 | inbound SMTP; recipient node has not durably `ack`ed within the transaction window | return SMTP **`451`** (defer to the legacy sender's queue); MUST NOT return `250` on mere hand-off — no post-`250` silent-loss window |
+| Gateway attestation mandatory + key-bound | §7.2a, §19.3.1 step 8a | a legacy-origin MOTE is unattested, or its key is not under the recipient's own `_dmtap-gw` | `DROP_SILENT`, `0x0601` / `0x0602`; every *accepted* message is thus either attested (gateway-touched) or attestation-free (**provably** pure-mesh) — no unmarked third state |
+| GatewayAuthz fail-**safe**, not fail-open | §12.2 | hosted operator unreachable | permit legacy egress only to **established contacts** + senders with operator-independent **PoW**; **deny** cold/unproven egress; postage excluded (needs online redemption) |
+| Postage issuer-unreachable = unverified | §9.5.1 | stamp redemption endpoint unreachable | treat the stamp as *unverified*, fall back to token/PoW policy — **never** accept real-money bearer value on faith |
+| Unvetted token = zero budget | §9.3.1 | token from an unknown/self issuer | counts as **no token** — forces fallback to PoW/postage; self-issuance buys anonymity, not cost relief |
+| **Deniable-mode no-silent-downgrade** | §5.2.1(d) | recipient has not advertised the `deniable-1:1` capability | `REJECT_NOTIFY` — the client MUST surface the choice (non-deniable send, or not at all); **never** silently downgrade the user's *expectation* of deniability, `0x040E` |
+| Deniable payload signature forbidden | §5.2.1(c) | a `DeniablePayload` carries a signature field | `FAIL_CLOSED_BLOCK`, `0x040F` — the missing signature is the property |
+
+### 10.7.5 The one governing rule
+
+Across all four groups the invariant is identical: **a security-relevant downgrade is either
+*refused* (fail closed) or an *explicit, user-surfaced choice* — never an automatic, silent
+reaction to adversary pressure or component unavailability.** The seam's `GatewayAuthz` is the sole
+place this interacts with the operator model, and even there it fails **safe**, not open (§12.2,
+distinct from the fail-*open*-to-function stance of metering/quota). A conformant implementation
+satisfies §10.7 iff it enforces **every** MUST row above; the conformance suite (§10.3) carries a
+case per row, and a new downgrade-resistance or fail-closed rule added anywhere in the spec MUST be
+mirrored here so the set stays complete.

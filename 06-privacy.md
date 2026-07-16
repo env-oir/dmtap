@@ -259,3 +259,190 @@ crossings the recipient can already infer, and nothing more** — it MUST NOT we
 
 This keeps provenance consistent with the §12.3 inviolable rule: it is a **transparency** feature
 over boundaries the design already makes visible, not a metadata-privacy regression.
+
+## 6.9 Security properties (falsifiable claims → mechanism → adversary → residual)
+
+The prose above states the threat model; this subsection states, in one place, **each security
+property DMTAP claims as a falsifiable statement** — a claim an auditor or a formal tool (Tamarin,
+ProVerif, a symbolic model) can attempt to **refute**. Every property is mapped to the mechanism
+(§) that provides it, the adversary it holds against, and the **disclosed residual** (the §6.6 item
+or the mechanism's own honest-limit clause). Nothing here is claimed *beyond* its residual: where a
+property has a caveat, the caveat is part of the statement.
+
+Two structural facts frame the whole table. **Confidentiality and authenticity (SP-1, SP-2) hold
+against a global *active* adversary** — breaking them requires a signing/decryption key, which
+adversary reach does not confer. **The metadata properties (SP-3–SP-5) degrade with adversary
+reach**: strong against a global *passive* adversary, *bounded* (not defeated) against a global
+*active* one (§6.6 item 1). This asymmetry is the honest core of DMTAP's posture.
+
+**SP-1 — Message confidentiality (end-to-end).**
+- *Claim (falsifiable):* No party other than the intended recipient(s) — no relay, mix, gateway,
+  directory, KT log, or hosted operator — can recover `Payload` plaintext.
+- *Holds by:* MLS group encryption / HPKE sealing of `Payload` into `Envelope.ciphertext` (§2.4,
+  §2.1, §5.1); every intermediary is content-blind (§6.1, §6.2).
+- *Against:* network eavesdropper, malicious relay/mix, curious directory/KT, and a global
+  **passive and active** adversary alike (confidentiality does not degrade with global reach).
+- *Residual:* the endpoint floor — a device compromised while unlocked and in use reads its own
+  plaintext (§6.6 item 3); the legacy-gateway leg is plaintext by construction (§7 opening); a
+  first-contact MITM before KT/OOB can substitute the encryption key (§6.6 item 4). Harvest-now:
+  content is PQ-migratable (suite `0x02`, §1.1) but v0 classical-suite ciphertext recorded today is
+  exposed to a future quantum break until the identity migrates (§4.4.12 content note).
+
+**SP-2 — Content authenticity & integrity.**
+- *Claim:* A recipient accepts a `Payload` as authored by identity `IK` only if `IK` actually
+  signed it, and detects any bit-flip of a MOTE.
+- *Holds by:* `Payload.sig` verified under `Payload.from` at §2.7 step 8; content-address `id`
+  (BLAKE3-256 of `ciphertext`) checked at §2.7 step 2 (§2.2); canonical signing/hashing preimages
+  (§18.9); name→`IK` binding via pinning + KT (§3.4, §3.5).
+- *Against:* all adversaries incl. global active (forgery needs the signing key).
+- *Residual:* authenticity of the *name→key binding* is only as strong as the KT profile in force
+  (SP-9, §6.6 item 6); deniable-mode messages deliberately carry **no** content signature — their
+  authenticator is a shared-key MAC (SP-7, §5.2.1(c)).
+
+**SP-3 — Sender anonymity against a GLOBAL PASSIVE adversary (the headline property).**
+- *Claim:* A global passive adversary observing all links and all timing cannot learn who sent a
+  `private`-tier MOTE to whom, beyond the disclosed residual.
+- *Holds by:* sealed sender (identity + authenticating signature sealed inside the payload, §2.2,
+  §6.2); Sphinx onion routing + memoryless Poisson mixing (§4.4.1, §4.4.6); mandatory cover traffic
+  + size-bucket padding (§4.4.5, §6.3); mixnet-routed lookups (§3.7).
+- *Against:* the global **passive** adversary — DMTAP's primary/headline target (§6.1).
+- *Residual:* metadata *reduction*, not elimination — sealed sender is statistically eroded by
+  receipt/timing side channels (Martiny et al., NDSS 2021), which is why cover traffic is
+  load-bearing, not optional (§6.2); last-hop delivery observability remains (§6.4 items 1–3);
+  long-term intersection is bounded, not eliminated (§6.6 item 5, §4.4.8); while the fleet is small
+  the guarantee is Tor-with-few-relays, not a strong global mixnet (§4.4.11); the v0 onion is not PQ
+  — a harvest-now adversary could retroactively deanonymize the recorded social graph (§4.4.12).
+
+**SP-4 — Sender anonymity against a GLOBAL ACTIVE adversary (reduced and disclosed).**
+- *Claim:* A global *active* adversary (inject/drop/delay at will) is forced to pay latency and/or
+  bandwidth to correlate, and its drop/delay/flooding is **detected and responded to** — but it is
+  **not fully defeated**.
+- *Holds by:* per-epoch replay caches, tagging-resistant Sphinx (header MAC `γ` + wide-block LIONESS
+  payload PRP), memoryless Poisson mixing (§4.4.6); loop-cover active-attack detection →
+  rotate + `HALT_ALERT` + fail-closed (§4.4.7); entry guards + **attested** operator-diversity
+  (§4.4.8); fail-closed no-downgrade (§4.4.9); the user-selectable High-security profile (§4.4.10).
+- *Against:* the global **active** adversary.
+- *Residual (bounded, not eliminated):* the Anonymity Trilemma floor (§6.6 item 1, Das et al.,
+  IEEE S&P 2018) — strong anonymity provably cannot be free; sub-threshold selective dropping stays
+  under the §4.4.7 detector (§6.6 item 1, §16.3). DMTAP *approaches* the mathematical floor as the
+  profile's latency/overhead grows; it does not claim to defeat an omnipotent active adversary.
+
+**SP-5 — Recipient unlinkability (blinded delivery tags).**
+- *Claim:* An observer cannot link successive `private`-tier deliveries to the same recipient *by
+  the routing tag*, nor tie that tag to the recipient's persistent identity key.
+- *Holds by:* blinded delivery tag `BT = HKDF(shared_secret, epoch_day)`, recognized by the
+  recipient but unlinkable across time and across observers (§2.2a); network/human identity
+  decoupling and recipient-side cover (§6.4).
+- *Against:* a global passive adversary / final mix, for the *tag-linkage* property.
+- *Residual (stated, not overclaimed):* blinding removes the persistent-key linkage in the envelope;
+  it does **not** hide *that a packet was delivered to a particular always-on node* — a stable
+  network presence is itself a fingerprint (§6.4 item 1, §2.2a). Recipient-side cover (§4.4.5) blurs
+  receipt *timing* but does not erase last-hop observability. Implementations MUST NOT present
+  blinded tags as full recipient anonymity (§2.2a). This is a *reduction*, not a solved property.
+
+**SP-6 — Forward secrecy & post-compromise security.**
+- *Claim:* Compromise of a party's current keys does not expose its past messages (FS), and after a
+  Commit/epoch advance an evicted key cannot decrypt future messages (PCS).
+- *Holds by:* MLS TreeKEM epoch advancement (§5.1, §5.2); mix-key epoch rotation + deletion at
+  `valid_until` gives the mixnet FS against later node seizure (§4.4.4); per-file keys for at-rest
+  blobs (§6.7); the optional deniable mode adds *per-message* FS/PCS via the Double Ratchet
+  (§5.2.1(b)).
+- *Against:* an adversary that later seizes a device or mix (FS), and a bounded-duration endpoint
+  compromise that is subsequently revoked (PCS).
+- *Residual:* MLS PCS is **per-epoch/per-Commit**, coarser than Double-Ratchet per-message healing —
+  a deliberate simplicity trade, not a strict improvement (§5.2); persistent files cannot ratchet
+  (§6.7); deniable-mode PCS needs *bidirectional* traffic — a send-only channel retains only FS
+  (§5.2.1(b)); PCS heals only *after* the evict/rotate flow runs (§6.7).
+
+**SP-7 — Deniability / repudiation (optional 1:1 mode).**
+- *Claim:* In the opt-in deniable 1:1 mode, neither party — nor a third party — can produce a
+  *cryptographic* proof, from ciphertext and keys alone, that the *other* party authored a given
+  message.
+- *Holds by:* a separate pairwise X3DH/PQXDH + Double-Ratchet channel authenticated by a
+  **shared-key MAC** (either party could forge it) run beside the 2-member MLS group; every
+  long-term signature covers only a *public key*, never content; a `DeniablePayload` carrying a
+  signature is rejected (`0x040F`) (§5.2.1(a)–(c)).
+- *Against:* a judge given only the cryptographic transcript.
+- *Residual (bounds):* the **default MLS path is non-repudiable** — deniability is opt-in, 1:1 only;
+  groups (n ≥ 3) stay attributable (§5.2, §5.2.1(d)). It is **not** endpoint protection — a
+  logged/coerced endpoint's plaintext still discloses content (§5.2.1(e) item 1 = §6.6 item 3). X3DH
+  *online/interactive* deniability is weaker than its offline form (Vatandas et al., ACNS 2020);
+  DMTAP claims **no more than Signal's proven guarantees** (§5.2.1(e) item 2).
+
+**SP-8 — Downgrade resistance.**
+- *Claim:* An adversary cannot **silently** force a party onto a weaker suite, tier, profile, or
+  capability set; every downgrade is either refused (fail-closed) or a deliberate, user-surfaced
+  choice.
+- *Holds by:* unknown `v`/`suite` rejected fail-closed (§10.1); per-contact suite high-water-mark
+  ratchet (§1.3, `0x020F`); fail-closed no `private → fast` and no High-security → Standard
+  downgrade (§4.4.9, `0x0310`); monotonic capability announcements (§10.2, `0x030A`); deniable-mode
+  no-silent-downgrade (§5.2.1(d), `0x040E`). These rules are collected and audited as a **set** in
+  §10.7.
+- *Against:* a global active adversary (DoS-to-downgrade) and an on-path MITM.
+- *Residual:* enforcement is per-recipient and local, so it is only as good as the implementation —
+  "metadata privacy is weakest-link" (§6.6 item 5); a suite high-water-mark lowers **only** through
+  an explicit `IK`-authorized retirement the owner performs (§1.3), never via an inbound message.
+
+**SP-9 — Key transparency / equivocation detection (profile-dependent — stated honestly).**
+- *Claim:* Under **v1-hardening KT** (log-type `0x02`, §3.5.2) a log that shows different
+  `name → ik` histories to different observers (split view) is **detected, attributed, and responded
+  to** — HALT_ALERT + evict, fail-closed below a `> n/2` quorum. Under **v0-minimal KT** (log-type
+  `0x01`, §3.5.1) equivocation is only **tamper-evident-after-the-fact and deterred — NOT reliably
+  detected.**
+- *Holds by:* v1 STH gossip + consistency proofs, multi-log `> n/2` quorum, monitor/auditor roles,
+  equivocation halt (§3.5.2, `0x0107`/`0x0110`/`0x0111`/`0x0112`); v0 fail-closed-on-unreachable +
+  owner self-monitoring (§3.3, §3.5.1, `0x0106`).
+- *Against:* a malicious or split-view KT log (v1: detected; v0: only deterred).
+- *Residual:* **v0 KT is not equivocation-proof (§6.6 item 6)** — the honest core limit; this is the
+  one property whose strength is *gated on the negotiated profile*, and the spec does **not** claim
+  v0 delivers it. High-value contacts, and every DMTAP-Auth login RP, MUST require multi-log
+  consistency or an OOB-verified pin even in v0 (§3.4.1, §13.7).
+
+**SP-10 — Recoverability from key/device compromise.**
+- *Claim:* An owner can recover identity **and all relationships** after losing or having a
+  device/factor compromised, and a *partial* compromise cannot silently escalate to an
+  owner-evicting takeover.
+- *Holds by:* versioned signed `RecoveryPolicy` with distinct `recover_threshold`/`rotate_threshold`
+  (§1.4); weakening-needs-quorum-even-under-`IK` + an asymmetric **72 h** veto window (§1.4 rules
+  3–4, §16); real revocation by re-key / VSS / redistribution / FROST (§1.4 rule 5); cross-signed
+  `IK` rotation chain (§1.5); MLS Remove + device-key rotation + deniable teardown heal the cluster
+  forward (§6.7, §1.2a, §5.2.1(f)); recovery invalidates prior sessions (§13.4, `0x050A`).
+- *Against:* device loss, single-factor theft, and a stolen-`IK`-alone proactive takeover attempt.
+- *Residual:* losing `IK` **and** enough factors simultaneously is unrecoverable; obtaining `IK`
+  **plus** a `rotate_threshold` quorum of factors is an owner-unrecoverable takeover — *worse* than
+  loss (§1.4 "bottom turtle"). Recovery restores the **key**, not prior **content**, absent a
+  surviving cluster device or an encrypted backup (§1.4 backup/restore).
+
+**SP-11 — Anti-abuse without deanonymization.**
+- *Claim:* A recipient can rate-limit and block cold senders **without learning who they are** and
+  **without linking a sender across recipients**.
+- *Holds by:* ARC anonymous, per-origin-scoped, rate-limited tokens (§9.3), PoW fallback (§9.4), and
+  postage (§9.5), all evaluated on the sealed envelope **before decryption** (§2.7 step 6), each
+  bound to the ephemeral `sender_key` to defeat proof theft/replay (§9.2a); the anonymity-preserved
+  principle (§9.1 item 4).
+- *Against:* a recipient (and its operator) attempting to deanonymize or cross-link senders.
+- *Residual:* repeat abuse is bounded at the **issuer** layer, not the recipient layer —
+  recipient-side cross-recipient linking is deliberately unavailable and not claimed (§9.3.2); an
+  unvetted/self-issued token carries a **zero** budget (§9.3.1); a hidden-membership list's committer
+  holds a disclosed per-delivery vouch-trust power (§9.9). Mix-layer flooding is bounded only by
+  content-blind controls (per-connection/operator rate limits + stake, §9.8).
+
+### 6.9.1 The map, in one table
+
+| # | Property | Holds by (§) | Against | Residual (§) |
+|---|----------|--------------|---------|--------------|
+| SP-1 | Message confidentiality (E2E) | §2.4, §5.1 | passive **+ active** | endpoint floor §6.6 item 3; gateway leg §7; first-contact §6.6 item 4; harvest-now §4.4.12 |
+| SP-2 | Content authenticity / integrity | §2.7 step 8, §2.2, §18.9 | passive **+ active** | binding = KT profile SP-9 / §6.6 item 6; deniable = MAC not sig §5.2.1(c) |
+| SP-3 | Sender anonymity vs global **passive** | §2.2, §4.4.5–6, §6.3, §3.7 | global passive (headline) | reduction not elimination §6.2, §6.4, §6.6 item 5, §4.4.11–12 |
+| SP-4 | Sender anonymity vs global **active** | §4.4.6–§4.4.10 | global active | Trilemma floor §6.6 item 1; sub-threshold drop §16.3 |
+| SP-5 | Recipient unlinkability (blinded tags) | §2.2a, §6.4 | passive / final mix | last-hop observability remains §6.4 item 1, §2.2a |
+| SP-6 | Forward secrecy + PCS | §5.2, §4.4.4, §6.7, §5.2.1(b) | later seizure / revoked compromise | per-epoch coarser §5.2; send-only = FS only §5.2.1(b) |
+| SP-7 | Deniability / repudiation (1:1 opt-in) | §5.2.1 | cryptographic-transcript judge | default non-repudiable §5.2; not endpoint §6.6 item 3; X3DH online bound §5.2.1(e) |
+| SP-8 | Downgrade resistance | §1.3, §4.4.9, §10.2, §10.1 | active DoS / MITM | weakest-link §6.6 item 5 (full set §10.7) |
+| SP-9 | KT / equivocation detection | §3.5.2 (v1) / §3.5.1 (v0) | malicious KT log | **v0 not equivocation-proof §6.6 item 6** |
+| SP-10 | Recoverability from compromise | §1.4, §1.5, §6.7, §13.4 | loss / partial compromise | `IK`+quorum takeover; content needs backup §1.4 |
+| SP-11 | Anti-abuse without deanonymization | §9.3–§9.5, §2.7.6, §9.2a | deanonymizing recipient/operator | issuer-layer only §9.3.2; committer vouch §9.9 |
+
+An implementation or a formal model that exhibits a counterexample to any SP-*n* **claim line
+above** — without invoking its stated residual — has found a spec-level defect, and it MUST be
+filed as such (§10.4). That is the point of stating them falsifiably.

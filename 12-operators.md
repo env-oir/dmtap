@@ -153,3 +153,177 @@ closing the gap between "the operator says you used the gateway" and "you can ve
 This is metering as **transparency**: the operator bills exactly the gateway operations the
 protocol makes cryptographically visible, and the user can independently audit the bill against the
 messages' own provenance — consistent with §12.3 and the honest-limits ethic (§12.5).
+
+## 12.8 Operational & security procedures (considerations)
+
+The clauses above (and §1–§11) specify the *mechanisms*; a serious security protocol also needs the
+**operational layer** that turns "we believe it is safe" into "here is what is checkable when
+something goes wrong." This subsection is DMTAP's RFC-style **Security / Operational
+Considerations**: coordinated disclosure, incident-response runbooks, key-ceremony guidance, the
+audit gate, deprecation, and operator lifecycle. It is normative where it says MUST/SHOULD and
+otherwise guidance. Two repository-root companion documents restate the human-facing parts for
+discoverability: **[`SECURITY.md`](../SECURITY.md)** (how to report a vulnerability) and
+**[`GOVERNANCE.md`](../GOVERNANCE.md)** (who decides, and the audit gate). Where they and this
+section overlap, this section governs (§10.4).
+
+### 12.8.1 Coordinated vulnerability disclosure (CVD)
+
+DMTAP is a cryptographic protocol; a flaw can silently defeat SP-1–SP-11 (§6.9) for every user.
+Disclosure is therefore **coordinated**, not full-drop, and is governed by `SECURITY.md`:
+
+- **Private report channel.** Security reports go to **`security@envoir.org`** (PGP key published in
+  `SECURITY.md`), or via the repository's **private security-advisory** facility — **never** a
+  public issue for an unfixed vulnerability. A reporter SHOULD include an affected §/clause, a
+  reproduction or proof, and the SP-*n* property (§6.9) or §10.7 invariant they believe is broken.
+- **Acknowledgement + triage.** The maintainers **SHOULD acknowledge within 3 business days** and
+  give an initial severity assessment within **10 business days**, mapping the report to a spec
+  clause and to an SP-property/§10.7 row.
+- **Embargo window.** The default coordinated embargo is **90 days** from acknowledgement, extendable
+  by mutual agreement for a hard-to-fix protocol/wire change (a longer window than a single codebase
+  needs, because independent implementers must ship in lockstep — §10.4). A fix MAY be released
+  earlier; the embargo ends at the **earlier** of the fix's public release or the agreed date.
+- **CVE + disclosure.** For a confirmed vulnerability the maintainers **request a CVE** and publish a
+  **security advisory** at disclosure naming the affected versions/clauses, the SP-property broken,
+  the fix (or spec erratum + capability-negotiated mitigation, §12.8.5), and credit to the reporter.
+  A **spec-level** defect is filed and corrected per §10.4 (the spec governs; the reference is a
+  proof, not the authority) and, if it changes crypto or wire, triggers the §12.8.4 audit gate.
+- **Safe harbour.** Good-faith research — testing against **your own** identity/node/deployment,
+  no access to or exfiltration of others' data, no service degradation, honoring the embargo — will
+  **not** be pursued by the project. This is a research-safe-harbour statement, not legal advice, and
+  is restated in `SECURITY.md`.
+- **Bug bounty is POST-deployment only.** There is **no monetary bounty pre-launch** — there is no
+  live production target to attack, and a bounty against a spec/reference under active hardening
+  would mis-price the work. A bounty is established **only once a production deployment exists**, and
+  is **distinct** from the pre-deployment external audit gate (§12.8.4): the audit is a *gate the
+  project pays for before shipping*; the bounty is *continuous crowd-sourced review after shipping*.
+  Until then, CVD above is the channel, and coordinated research is welcomed under the safe harbour.
+
+### 12.8.2 Incident-response runbooks
+
+Three protocol events are **detected-and-halted by design** (they raise `HALT_ALERT`, §21.2); each
+has a defined operator + user response. The protocol does the detection; these runbooks do the
+recovery.
+
+- **Detected KT equivocation (§3.5.2(d), `0x0107`/`0x0110`).** The verifier has already HALTed and
+  MUST NOT pin on the log's say-so. Response: (1) **preserve evidence** — the two conflicting
+  signed STHs (or contradicting inclusion proofs) are self-authenticating, transferable proof
+  (§3.5.2(d) step 3); (2) **gossip the evidence** to peers/auditors so the equivocation is globally
+  attributable; (3) **recover on the honest quorum** — if a `> n/2` quorum of the pinned log set
+  still agrees, proceed with the offending log **evicted** and its operator reputation-flagged
+  (§7.5); if quorum breaks, fail closed (`0x0111`) and fall back to OOB verification (§3.4.1); (4)
+  for DMTAP-Auth RPs this is a potential silent account-takeover — require multi-log consistency or
+  an OOB pin (§13.7). On **v0-minimal** KT, where equivocation is only tamper-evident-after-the-fact
+  (§6.6 item 6), the response is OOB re-verification of the affected binding plus operator escalation
+  — the honest v0 limit, disclosed.
+- **Committer / co-committer fork (§5.1, §5.1.1, `0x0404`).** The group has HALTed. Response: members
+  compare hash-chained log heads, identify the **last common epoch**, and an `admin`/`owner`
+  proposes a recovery Commit on top of it that is canonical **only** with the `> n/2` (or, for a
+  2-member group, the trivial both-parties) member-signature quorum (§5.1 fork recovery); members on
+  the losing fork roll back and re-apply; senders re-submit application messages stranded on the
+  abandoned fork (§2.6 sender retry). This is the v0 manual stopgap pending Decentralized MLS.
+- **Key or device compromise (§6.7).** Run the normative lost/stolen-device sequence from **any**
+  surviving cluster device (or after recovery, §1.4): (1) **MLS Remove** the device from every group
+  and the personal-device group (§5.8.2, §5.6); (2) **device-key rotation** re-keying any
+  identity/recovery material it held (§1.5); (3) **session revocation** of all its auth sessions
+  (§13.4, which a device-key rotation triggers wholesale); (4) **deniable-session teardown** —
+  withdraw/rotate the deniable prekeys the device could hold and re-establish live deniable
+  conversations (§5.2.1(f)), because the pairwise ratchet is outside MLS. Steps (1)–(2) advance every
+  affected epoch and (4) reboots each ratchet, so the evicted key has **post-compromise** (decrypts
+  nothing sent after eviction). If `IK` itself is suspected, additionally rotate `IK` (§1.5) and
+  **immediately publish a `RecoveryPolicy` that evicts the compromised factors** (§1.4 reactive path)
+  — a quorum-backed recovery **overrides any veto** (§1.4 rule 4), so a stolen not-yet-removed factor
+  cannot block its own eviction. Confidential shared folders re-key on removal (§6.7).
+
+### 12.8.3 Key-ceremony guidance
+
+The strength of SP-1/SP-2/SP-10 (§6.9) rests on how the long-lived keys are generated and held.
+DMTAP does not invent ceremony crypto; it composes §1/§3/§5 primitives, and RECOMMENDS:
+
+- **Identity key (`IK`) generation & custody.** Generate `IK` on a device and, where the platform
+  allows, **inside a hardware keystore** (Secure Enclave / TPM 2.0 / StrongBox / TEE) as a
+  **non-exportable** key (§1.2a). Because the deniable mode keeps `IK` **sign-only / DH-free**
+  (§5.2.1(a)), a usage-fixed sign-only keystore slot suffices — provision it that way. `IK` is used
+  **rarely** (it certifies device keys and recovery policy, §1.2); hold it in **cold / recovery
+  custody** (§1.4) for day-to-day operation, signing with device subkeys. Record the protection
+  class in `DeviceCert.key_protection` and, for attestation-gated contexts, attach platform
+  key-attestation evidence (§1.2a), refreshed within the re-attestation cadence (**≤ 90 days**).
+- **Recovery-quorum setup (§1.4).** Provision **multiple independent, redundant, rotatable** factors
+  (phrase + devices + social guardians) so no single loss is fatal, and set `rotate_threshold` **>**
+  `recover_threshold` so a single recovered factor cannot rewrite the policy. Use **Verifiable**
+  secret sharing (Feldman/Pedersen VSS), **SLIP-0039** for the mnemonic⊕Shamir encoding, and
+  **strongly prefer FROST (RFC 9591)** so guardians *authorize* recovery without ever reassembling
+  the key in one place. Publish the policy to KT and confirm the owner's monitor devices alert on
+  changes (§1.4 rule 6, §3.5).
+- **Domain-authority threshold ceremony (§3.10.1, §5.8.6).** For an org controlling `@domain`, the
+  authority key SHOULD be **threshold-held by the domain-owner/admin set** (FROST-style over the §1.4
+  machinery, §5.8.6), so rotating the domain anchor or the directory-signing key is a
+  **threshold act**, never one admin's unilateral power (§3.10.4, §13.5.1). Perform the initial
+  ceremony offline with the guardian set present; anchor the resulting authority `IK` at
+  `_dmtap.domain` and in KT (§3.2, §3.10.1); rehearse the recovery/rotation path before it is needed.
+
+### 12.8.4 Audit cadence (the disclosed pre-deployment gate)
+
+DMTAP composes standards rather than inventing crypto (§10.5, §11), but **composition and transport
+are where the novelty — and the risk — live** (the mixnet integration, sealed sender, the deniable
+side-channel, KT federation). Therefore:
+
+- **An independent external cryptographic and code audit MUST precede any production deployment.**
+  This is a **disclosed gate**, not aspirational: a deployment carrying real user mail before a
+  qualified third party has reviewed the crypto/protocol and the reference implementation is
+  operating outside the project's stated posture. The gate covers the protocol (this spec) and the
+  reference `node`/`gateway`/libraries.
+- **Re-audit on any major crypto or wire change.** Adding or retiring an algorithm suite (§1.1),
+  changing a signing preimage (§18.9), altering the Sphinx/mixnet construction (§4.4), or changing
+  the deniable handshake (§5.2.1) re-opens the gate for the affected surface before that change ships
+  to production. A CVD fix that touches crypto/wire (§12.8.1) triggers this.
+- **Pre-deployment-reachable, distinct from the bounty.** This audit is **reachable before launch**
+  (there is a spec and a reference to audit) and is **paid for by the project**; it is explicitly
+  **distinct** from the **post-deployment** bug bounty (§12.8.1), which only begins once a live
+  target exists. Stating both, and their ordering, is the honest gate (§6.6 voice): review *before*
+  shipping, continuous crowd-review *after*.
+
+### 12.8.5 Deprecation procedure (retiring a mechanism without a flag day)
+
+DMTAP retires suites and mechanisms **via capability negotiation** (§10.2), never a coordinated
+flag day — the same dual-stack machinery that lets it *add* them:
+
+1. **Announce** the successor as a new suite/capability token (§1.1, §21.15, §21.22) and let it
+   spread dual-stack; both old and new coexist while adoption grows (§21.25).
+2. **Ratchet.** As peers advertise the successor, the **suite high-water-mark** (§1.3) and
+   **monotonic capability version** (§10.2, `0x030A`) make the upgrade *stick* per contact — a peer
+   cannot be silently rolled back to the retiring mechanism (SP-8, §10.7.1).
+3. **Retire.** The owner performs an explicit `IK`-authorized retirement (§1.5) — e.g. a
+   `classical_retired` marker in `Identity` (§1.3) — which is the **only** way a high-water-mark
+   lowers, making rejection of the retired mechanism unconditional. A verifier that cannot validate a
+   peer's highest offered suite fails closed rather than downgrading (§1.3, §10.1).
+
+The retirement is thus **monotone and per-contact**: no global cutover, no window in which an
+adversary can force the old mechanism, and no user stranded because their counterpart has not yet
+upgraded (they interoperate on the highest mutual capability until the owner retires the old one).
+
+### 12.8.6 Operator onboarding & offboarding (gateway + mix)
+
+Gateway (§7) and mix (§4.4.8) operators are **accountable, attested identities**, not anonymous
+infrastructure. Their lifecycle:
+
+- **Onboarding — attestation.** A **gateway** operator publishes its attestation key under the served
+  domain (`<sel>._dmtap-gw.domain`, §7.2a) and its directory entry `{pubkey, reputation, region,
+  price, stake}` (§7.5); a **mix** operator publishes a `MixNodeDescriptor` under a KT-auditable
+  `node_ik` **and** a `_dmtap-mix` operator attestation under its domain (§4.4.8) — and **only an
+  attested operator counts toward path operator-diversity** (§4.4.8, §10.7.2), which is what stops a
+  single party minting *N* fake operators. Both SHOULD **post stake/bond** (§9.6, §4.4.8), making
+  Sybil fleets costly.
+- **Reputation.** Selection is reputation-weighted: gateways by measured deliverability-to-destination
+  (§7.5, §9.6), mixes by loop-return reliability feeding a selection weight (§4.4.7–§4.4.8). Neither
+  reputation model is a trust root — a gateway cannot forge identity (DKIM delegation separates
+  deliverability reputation from the user's key, §7.3), and a mix directory **indexes, it does not
+  forge** (§4.4.2). Misbehavior (KT/attestation failures, dropped loops, spam vouching) **down-scores
+  and slashes** rather than merely warns.
+- **Offboarding / revocation — zero lock-in.** A gateway is swapped by a **DNS/DKIM change** with no
+  data migration (§7.7) — the box is the authority, so a user drops or switches an operator freely; a
+  self-host backstop is always available (§7.7). A mix is removed by the directory authority
+  (**detectably**, since the directory is KT-anchored and rollback-defended, §4.4.2) and, on proven
+  misbehavior, has its stake slashed and its operator flagged (§9.6). An equivocating KT log operator
+  is **evicted from the pinned set** on self-authenticating evidence (§3.5.2(d), §12.8.2). In every
+  case revocation is a *reputation + configuration* act, never a protocol entitlement the operator
+  can veto — the same non-lock-in property that makes open service survivable (§7.7).
