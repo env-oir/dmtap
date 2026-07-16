@@ -140,8 +140,124 @@ a v1 hardening.**
 - Logs MAY be federated; a verifier trusts a *set* of logs and requires consistency across
   them. No single log is authoritative.
 
-v0-minimal: a single append-only log with signed heads and inclusion proofs; monitoring and
-gossip-based equivocation detection land in v1.
+Two profiles are defined, both registered as KT log-types (§21.19) and selected by capability
+negotiation (§10.2): **v0-minimal (log-type `0x01`)** is the interoperable default every Core
+node MUST implement (§10.3); **v1-hardening (log-type `0x02`)** is specified below and used only
+between a verifier and a log set that advertise it. v0 stays the floor; v1 closes the
+equivocation gap.
+
+### 3.5.1 v0-minimal — the interoperable default (log-type `0x01`)
+
+The default profile, required at **Core** conformance (§10.3), is a **single append-only Merkle
+log** (§21.19 `0x01`): signed tree heads (STHs) + inclusion proofs + rollback defense (§3.3
+step 2), self-monitored by the owner's own devices (STH poll, §16.2). It is
+**tamper-evident-after-the-fact and self-monitorable, but not equivocation-proof** — a single,
+non-gossiped log can present a **split view** (different histories to different observers, §6.6
+item 6). v0 therefore fails closed on an unreachable log (§3.3, `0x0106`), and a network SHOULD
+run more than one independent log and lean on OOB verification (§3.4.1) for high-value contacts
+even in v0. Closing the split-view gap is exactly the job of the v1 profile.
+
+### 3.5.2 v1-hardening — federated, gossiped, equivocation-detecting (log-type `0x02`)
+
+The v1 profile is **specified here and negotiated as a capability** (§10.2 — a KT-log-type token
+in the `system` MOTE / the `kt=` DNS anchor, §3.2). It is **not** the interoperable default:
+v0-minimal (§3.5.1) remains what a Core node MUST implement, and a verifier uses v1 only with a
+counterpart and log set that advertise log-type `0x02` (§21.19). v1 makes **no single log
+authoritative** and turns a split view from a deterred-but-undetectable weakness into a
+**detected, attributable, and responded-to** event. It has four normative parts (a)–(d); the
+detection paths carry codes `0x0107`, `0x0110`–`0x0112` (§21.3).
+
+#### (a) STH gossip — split-view detection
+
+- **Who gossips.** Every v1 verifier (client, monitor, auditor, §3.5.2(c)) that fetches an STH
+  MUST re-publish the signed head it saw — the tuple `(log signing key, tree_size, root_hash,
+  timestamp, log signature)` — to a set of gossip peers (other verifiers, the owner's monitor
+  devices, and any configured auditor) over the mesh (§4). It SHOULD route this gossip through
+  the mixnet (§6, §3.7) so auditing does not leak *who audits whom*.
+- **Cross-check (the detection step).** On receiving a gossiped STH for a log it also follows, a
+  verifier MUST request a **consistency proof** between its own latest STH and the gossiped one
+  and verify that the smaller tree is a **prefix of** the larger (a genuine append-only
+  extension). Two validly-signed STHs from the same log with the **same `tree_size` but a
+  different `root_hash`**, or a consistency proof that cannot be produced between two heads of
+  one log, is cryptographic proof of **equivocation** → `ERR_KT_STH_INCONSISTENT` (`0x0110`) and
+  `ERR_KT_EQUIVOCATION` (`0x0107`), handled per (d).
+- **Freshness (freeze-attack defense).** Gossip MUST occur at least once per **KT gossip
+  interval** (§16.2). A v1 log MUST publish a new STH at least every **maximum merge delay**
+  (§16.2) and MUST include every accepted entry in an STH within that bound; a binding it
+  accepted but did not include within the MMD is evidence of withholding/censorship. A verifier
+  MUST treat an STH older than the **STH freshness window** (§16.2) as stale (`ERR_KT_STH_STALE`,
+  `0x0112`) and refresh it — closing the **freeze attack** where a log serves an old but
+  internally self-consistent head to a targeted observer.
+
+#### (b) Multi-log federation — quorum-audited bindings
+
+- **Pin a set, not a log.** A v1 verifier pins a **set** of logs for a name (the `kt=` DNS/SVCB
+  anchor MAY list several, §3.2), and accepts a `name → ik` binding only when it appears, with a
+  valid inclusion proof, in a **`> n/2` quorum** of that pinned set — the same strict-majority
+  rule the group committer takeover uses (§5.1, §16.8 roster quorum). A **minority of malicious
+  or partitioned logs therefore can neither forge nor suppress** a binding, and **no single log
+  is authoritative**.
+- **Independence.** Each log identifies itself by its own signing key (§21.19), runs its own
+  append-only tree, and the set SHOULD be operated by **distinct operators** so a quorum does not
+  share fate; a verifier SHOULD prefer logs under disjoint operational control (analogous to
+  S/Kademlia disjoint paths, §4.2).
+- **Fail closed below quorum.** If fewer than the quorum of pinned logs attest the binding
+  (logs disagree, or too many are unreachable), resolution MUST fail closed →
+  `ERR_KT_LOG_QUORUM_UNMET` (`0x0111`); the verifier MUST NOT pin on a sub-quorum view (the same
+  fail-closed discipline as v0, §3.3). Bindings SHOULD be **cross-logged** (submitted to every
+  log in the set) so the quorum is normally the whole set and auditors (below) can check each
+  member log against the others.
+
+#### (c) Monitor and auditor roles
+
+Two distinct roles, which MAY be co-located on one operator but are separate capabilities:
+
+- **Monitor** — watches a *specific identity's* entries. The owner's own devices MUST monitor
+  **every log in the identity's pinned set** for any entry under the owner's name/`IK`, and MUST
+  `HALT_ALERT` (§21.2) on any change the owner did not initiate — KT as **identity intrusion
+  detection** (§3.5 preamble; the same owner-alert obligation as `0x010B`/`0x010E`). A relying
+  party MAY additionally monitor the identities it depends on (e.g. a login RP, §13.7).
+- **Auditor** — watches a *whole log's* integrity, name-agnostically. An auditor MUST verify
+  every STH's signature and that each new STH is a **consistent append-only extension** of the
+  heads it has already seen (no rewrite, no rollback of history), and MUST gossip STHs (part (a))
+  so its view is cross-checkable against others. An auditor needs **no knowledge of any user's
+  key** and SHOULD run the mixnet-side private path (§3.7) so auditing itself leaks no user
+  identities. A conformant v1 deployment SHOULD run **≥ 2 independent auditors per log**.
+- **Separation of concerns.** Monitors catch a **targeted** key-swap (one bad entry for one
+  name); auditors catch **global** misbehavior (a log rewriting or forking its own tree); a
+  **split view** (a log self-consistent but showing different observers different heads) is
+  caught by the **gossip cross-check** of part (a), which both roles feed.
+
+#### (d) Equivocation detection and response
+
+- **Detection.** Any of the following is proof — under the log's *own* signature — that a log
+  equivocated: (i) two validly-signed STHs of one log with equal `tree_size` but differing
+  `root_hash`; (ii) two STHs of one log between which no valid consistency proof exists
+  (append-only violation); or (iii) a `name → ik@version` binding attested by some quorum members
+  and **contradicted** (a different `ik` for the same name and version) by others.
+- **Response (normative).** On any of the above a v1 verifier MUST:
+  1. **HALT** — stop treating the offending log as authoritative and MUST NOT pin or update any
+     `name → ik` binding on its say-so (analogous to committer fork-detection, §5.1, §19.5.6, and
+     to `0x0104`/`0x0209`).
+  2. **ALERT** — raise a user-/operator-visible security alert (`HALT_ALERT`, §21.2), emitting
+     `ERR_KT_EQUIVOCATION` (`0x0107`) and, for the append-only-violation form,
+     `ERR_KT_STH_INCONSISTENT` (`0x0110`).
+  3. **Publish evidence.** The two conflicting signed STHs (or the contradicting inclusion
+     proofs) are **self-contained, transferable proof of misbehavior** — an equivocating log
+     signs its own indictment. The verifier SHOULD gossip this evidence to its peers and auditors
+     so the equivocation becomes **globally attributable**, not merely locally observed.
+  4. **Recover on the honest quorum.** The identity stays verifiable on the **remaining honest
+     quorum** of the pinned set (part (b)): if a `> n/2` quorum still agrees on the binding,
+     resolution MAY proceed with the offending log **evicted** from the set and its operator
+     treated as a reputation signal (as gateway/postage misbehavior is, §7.5, §9.6); if the
+     equivocation breaks quorum, resolution fails closed (`0x0111`) and the verifier falls back
+     to OOB verification (§3.4.1). For **DMTAP-Auth**, a split view is a silent per-RP
+     account-takeover vector, so a high-value login RP MUST require this multi-log quorum or an
+     OOB-verified pin (§6.6 item 6, §13.7).
+
+Under log-type `0x02` the honest v0 limit — "tamper-evident after the fact, self-monitorable, but
+not equivocation-proof" (§6.6 item 6) — is **closed**: equivocation is detected by gossip,
+bounded by the federation quorum, and responded to by halt-alert-and-evict.
 
 ## 3.6 Optional: self-sovereign naming (un-loseable addresses)
 

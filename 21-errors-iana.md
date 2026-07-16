@@ -98,6 +98,9 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x010D` | `ERR_DEVICE_CERT_INVALID` | `DeviceCert` validation (§1.2) | Signature invalid, or `caps` claimed exceed what the signing `IK`/quorum authorized. | No | FAIL_CLOSED_BLOCK |
 | `0x010E` | `ERR_RECOVERY_WEAKENING_UNQUORUMED` | `RecoveryPolicy` publish (§1.4 rule 3) | A change that removes/weakens a recovery factor is signed by `IK` alone without satisfying `rotate_threshold` (stolen-`IK` takeover defense). | No | FAIL_CLOSED_BLOCK + HALT_ALERT (owner's monitoring devices must alert) |
 | `0x010F` | `ERR_RECOVERY_VETO_WINDOW` | `RecoveryPolicy` weakening effect (§1.4 rule 4, §16.8) | A factor-weakening change attempts to take effect before its 72 h veto/delay window elapses, or a non-conforming lesser-bar weakening is observed within the window. | Conditional (takes effect once the window elapses with no valid veto) | FAIL_CLOSED_BLOCK — hold until the window elapses; a `rotate_threshold`-backed veto aborts it |
+| `0x0110` | `ERR_KT_STH_INCONSISTENT` | KT v1 STH gossip cross-check (§3.5.2(a),(d)) | Two validly-signed STHs of the **same** log are mutually inconsistent — equal `tree_size` but differing `root_hash`, or no valid consistency proof exists between them (append-only violation). Distinct from `0x0107` (`ERR_KT_EQUIVOCATION`, the split-view *conclusion*): `0x0110` is the specific append-only/consistency-proof failure that evidences it. | No | HALT_ALERT — stop trusting the log; publish the conflicting STHs as transferable evidence (§3.5.2(d)) |
+| `0x0111` | `ERR_KT_LOG_QUORUM_UNMET` | KT v1 multi-log federation binding check (§3.5.2(b)) | A `name → ik` binding is not attested by the required `> n/2` quorum of the pinned log set (logs disagree, or too many are unreachable). | Conditional (a later fetch reaching quorum resolves it) | FAIL_CLOSED_BLOCK — MUST NOT pin on a sub-quorum view; fall back to OOB verification (§3.4.1) |
+| `0x0112` | `ERR_KT_STH_STALE` | KT v1 STH freshness check (§3.5.2(a), §16.2) | A presented STH is older than the STH freshness window / not refreshed within the maximum merge delay — the freeze/withholding attack, where a log serves an old but self-consistent head. | Yes (fetch a fresher head) | HOLD_RESYNC — buffer and re-fetch a current STH before trusting the view; escalate to HALT_ALERT if it persists past gossip cross-check |
 
 ## 21.4 Delivery & Validation — the MOTE object (`0x02xx`)
 
@@ -267,7 +270,9 @@ auditability:
 | Cold-sender-no-challenge | `0x0701` (canonical), cross-referenced at `0x0206`/§2.7 step 6 |
 | Insufficient-challenge | `0x0702` |
 | KT-unreachable-fail-closed | `0x0106` |
-| KT-equivocation-detected | `0x0107` |
+| KT-equivocation-detected | `0x0107` (split-view conclusion), `0x0110` (append-only/consistency-proof evidence) |
+| KT-v1-log-quorum-unmet | `0x0111` |
+| KT-v1-STH-stale (freeze attack) | `0x0112` |
 | Chain-broken | `0x0104` |
 | Stale/rollback record | `0x0105` (identity), `0x0302` (location record) |
 | Committer-fork-detected | `0x0404` |
@@ -307,7 +312,7 @@ extension procedure in §21.23. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 83 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 86 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -356,8 +361,8 @@ extension procedure in §21.23. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Key-Transparency Log Types |
 | **Reference** | §3.5, DNS `kt=` parameter (§3.2) |
 | **Allocation policy** | Specification Required. A log identifies itself by its own signing key and a **log-type tag** from this registry (no central log-ID authority is needed beyond the tag identifying *how to speak to* the log — the log's identity is its key, consistent with the rest of DMTAP). |
-| **Initial contents** | `0x01` — v0-minimal: single append-only log, signed tree heads, inclusion proofs, no gossip (§3.5, current default). `0x02` — v1: federated multi-log with cross-log gossip and consistency auditing (§10.6 roadmap; reserved, not yet in force). |
-| **Registration requirements** | A new log type MUST specify its proof format (must remain independently auditable per §3.5) and MUST NOT weaken the append-only, tamper-evident guarantee that makes KT meaningful. |
+| **Initial contents** | `0x01` — **v0-minimal** (§3.5.1, the interoperable Core default): a single append-only Merkle log; signed tree heads (STHs); inclusion proofs; rollback defense (§3.3 step 2); owner self-monitoring (STH poll, §16.2); **no gossip and no federation** — tamper-evident and self-monitorable, but *not* equivocation-proof (§6.6 item 6). `0x02` — **v1-hardening** (§3.5.2, capability-negotiated per §10.2, **not** the default): a **federated set of independent, per-key append-only logs**, each publishing STHs at least every maximum merge delay (§16.2). A verifier pins a *set* and accepts a `name → ik` binding only on a **`> n/2` quorum** of that set (§3.5.2(b), mirroring the §5.1/§16.8 roster quorum), so no single log is authoritative. Verifiers, **monitors** (per-identity), and **auditors** (per-log) **gossip STHs** and cross-check **consistency proofs** (§3.5.2(a),(c)); a split view / append-only violation / stale-frozen head is detected and produces `ERR_KT_EQUIVOCATION` (`0x0107`), `ERR_KT_STH_INCONSISTENT` (`0x0110`), `ERR_KT_LOG_QUORUM_UNMET` (`0x0111`), or `ERR_KT_STH_STALE` (`0x0112`), with the mandated HALT_ALERT / fail-closed response of §3.5.2(d). A verifier MUST implement `0x01` and MAY additionally negotiate `0x02`; a node offered only `0x02` by a peer that itself supports only `0x01` uses `0x01`. |
+| **Registration requirements** | A new log type MUST specify its proof format (STH structure, inclusion and consistency proofs — which MUST remain independently auditable per §3.5) and MUST NOT weaken the append-only, tamper-evident guarantee that makes KT meaningful. A log type that claims equivocation resistance MUST specify its gossip and cross-checking procedure and the responder actions for a detected split view (as `0x02` does via §3.5.2). |
 
 ## 21.20 Envelope/Payload Extension Header Keys Registry (`Headers.ext`)
 
@@ -445,7 +450,8 @@ fragmenting."
 
 ## 21.24 Summary
 
-- **Error/status codes defined:** 83 (`0x0101`–`0x010F`: 15; `0x0201`–`0x020E`: 14; `0x0301`–
+- **Error/status codes defined:** 86 (`0x0101`–`0x0112`: 18, incl. the KT-v1 detection codes
+  `0x0110`–`0x0112`; `0x0201`–`0x020E`: 14; `0x0301`–
   `0x0309`: 9; `0x0401`–`0x040A`: 10; `0x0501`–`0x050A`: 10; `0x0601`–`0x0604`: 4, plus the
   informative SMTP mapping table of §21.9; `0x0701`–`0x070E`: 14; `0x0801`–`0x0807`: 7),
   spanning the 8 requested subsystems, with every code resolving to exactly one of the 13

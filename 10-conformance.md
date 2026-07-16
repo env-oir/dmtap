@@ -60,7 +60,11 @@ and spec disagree, the spec governs (or the discrepancy is filed as a bug).
 ## 10.6 Roadmap markers (non-normative)
 
 - **v0:** Core + Private (minimal KT via TOFU+pinning) + Groups & Files + Legacy gateway.
-- **v1 hardening:** full CONIKS/KT with monitoring + gossip; onion-routed bulk; anonymous
-  tokens at scale; PQ suite `0x02` migration; optional self-sovereign naming backend.
+- **v1 hardening:** **KT-v1 is specified and capability-negotiated** — the full CONIKS/
+  key-transparency profile (federated multi-log with `> n/2` quorum-audited bindings, STH
+  gossip, monitor/auditor roles, and equivocation halt-alert) is normatively defined as log-type
+  `0x02` (§3.5.2, §21.19) and selected per §10.2, with v0-minimal (§3.5.1) remaining the
+  interoperable Core default. Also: onion-routed bulk; anonymous tokens at scale; PQ suite `0x02`
+  migration; optional self-sovereign naming backend.
 - **Later research:** stronger private contact discovery; scalable private retrieval for
   hostile-buffer scenarios; deniable-group properties; metadata-privacy for very large files.

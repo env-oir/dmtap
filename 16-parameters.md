@@ -25,7 +25,10 @@ above and for ordering hints.
 | Key-name length | 8 words (80 bits) | §3.9.1; 12 words (128 bits) for adversary-proof mode |
 | Key-name wordlist size | 1024 | language-agnostic; +1 checksum word |
 | KT signed-tree-head poll | ≤ 6 h | client re-checks its own entry (self-monitoring) |
-| KT gossip interval (v1) | ≤ 1 h | tree-head gossip for equivocation detection |
+| KT gossip interval (v1) | ≤ 1 h | STH gossip for equivocation detection (§3.5.2(a)) |
+| KT maximum merge delay (v1) | ≤ 24 h | a `0x02` log MUST issue a new STH, and include every accepted entry, within this bound (§3.5.2(a)) |
+| KT STH freshness window (v1) | ≤ 24 h | an STH older than this is stale (freeze-attack defense, `0x0112`); MUST be refreshed before the view is trusted (§3.5.2(a)) |
+| KT log-set consistency quorum (v1) | > n/2 (⌈(n+1)/2⌉ of the pinned log set) | a `name → ik` binding is accepted only on a strict-majority quorum of logs, so a minority cannot forge or suppress it (§3.5.2(b); mirrors the §16.8 committer roster quorum) |
 | DHT location-record TTL | 2 h | signed; republish before expiry (§4.2) |
 | DHT republish interval | 45 min | < TTL, with jitter |
 | DHT lookup redundancy (K) | 20 | store at K closest; S/Kademlia disjoint paths ≥ 3 |
