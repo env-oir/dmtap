@@ -160,6 +160,10 @@ to a MOTE) is a distinct concept scoped to the Auth ceremony; see `0x0502` (§21
 | `0x030F` | `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` | Loop-cover detection (§4.4.7) | A node's loop-cover return fraction fell below the loss threshold (or latency inflated beyond the delay budget), inferring an active drop/delay/flooding attack on its paths. | Yes (after rotation) | HALT_ALERT — rotate away from implicated mixes/guards, alert the user, and **fail closed for `private`** (MUST NOT auto-downgrade to `fast`, §4.4.9) |
 | `0x0310` | `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` | Minimum-viable-path check (§4.4.9) | No path meeting the **in-force profile's** bar is buildable (Standard: ≥ 3 hops, 1/layer, ≥ 3 disjoint operators; **High-security: ≥ 5 hops, ≥ 5 disjoint operators**), all current-epoch keys — an adversary DoSing mixes to force a downgrade, or genuine outage. **Covers both a tier downgrade (`private → fast`) and a profile downgrade (High-security → Standard):** a high-security message that can only build a lesser-bar path fails here rather than silently shipping over Standard strength. | Yes (hold + retry until a viable path exists) | FAIL_CLOSED_BLOCK — hold the MOTE in the sender queue (§4.7), never silently route it over `fast`, a shorter/non-diverse path, or a lower profile's bar; surface to the user if it persists past the retry deadline |
 | `0x0311` | `ERR_MIX_DIRECTORY_STALE` | `MixDirectory` freshness check (§4.4.2, §16.3) | The served mix directory is older than the mix-directory freshness window (≤ one mix-key epoch) — a stale, possibly frozen fleet view an adversary serves to keep the client's diversity/anonymity set small (freeze attack, analogue of KT STH-freshness `0x0112`). | Yes (re-fetch a fresh directory) | FAIL_CLOSED_BLOCK — refresh before building any `private` path; hold + fail closed (§4.4.9) if no fresh directory is obtainable, never build over the stale view |
+| `0x0312` | `ERR_PUSH_SUBSCRIPTION_SIG_INVALID` | `PushSubscription` verification (§4.9.1, §4.9.4, §18.5.5, §18.9.15) | A `PushSubscription`'s signature does not verify under its claimed `device_key`, or that key is not an `IK`-authorized device key of the owner (§1.2) — the subscription is not authenticated to the identity, so acting on it could register/redirect a device's wakes. | No | FAIL_CLOSED_BLOCK — discard the subscription; never wake against it |
+| `0x0313` | `ERR_WAKEPING_CONTENT_PRESENT` | `WakePing` decode (§4.9.1, §18.5.6) | A `WakePing` carries any field beyond the opaque sealed token (key `1`), or its opened plaintext decodes to anything bearing sender/subject/recipient/content — a wake must be content-free and sender-blind. | No | FAIL_CLOSED_BLOCK — reject the wake; a `WakePing` MUST carry only the RFC 8291-sealed sync token |
+| `0x0314` | `ERR_WAKEPING_AUTH_FAILED` | `WakePing` open (RFC 8291 AEAD, §4.9.4, §18.9.15) | The wake token's `aes128gcm` AEAD fails to open under the subscription's `push_key`/`auth_secret` — a forged or unauthenticated wake (the push relay lacks the auth secret and cannot forge one). | No | DROP_SILENT — drop; MUST NOT be surfaced as a real sync trigger (an unauthenticated wake reveals nothing to notify) |
+| `0x0315` | `ERR_WAKEPING_RATE_LIMITED` | Per-device wake rate limit (§4.9.4, §16) | Wakes to this device exceed its rate budget (a wake spends the target's battery); bursts are coalesced into one wake per window. | Yes, after the window resets | DEFER_REQUESTS — coalesce/hold below the cap; DROP_SILENT beyond it |
 
 ## 21.6 Messaging & Group errors — MLS (`0x04xx`)
 
@@ -333,6 +337,10 @@ auditability:
 | Mix path unbuildable / min-viable-path unmet | `0x030D` (no path), `0x0310` (viable-path refused, no downgrade) |
 | Mix packet replay | `0x030E` |
 | Mixnet active-attack inferred (loop-cover) | `0x030F` |
+| Push subscription not authenticated to device | `0x0312` |
+| WakePing carries plaintext content/sender (forbidden) | `0x0313` |
+| WakePing unauthenticated / AEAD open failed | `0x0314` |
+| WakePing rate-limited (battery abuse) | `0x0315` |
 
 ---
 
@@ -359,7 +367,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 111 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 115 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -438,7 +446,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Capability Tokens |
 | **Reference** | §10.2, `system` MOTEs (`kind = 0x0A`) |
 | **Allocation policy** | Specification Required for tokens intended to be portable across implementations; `x-`-prefixed tokens are Private Use / FCFS, mirroring §21.20. |
-| **Initial contents** | Supported-suite tokens (§1.1); privacy-tier tokens (`private`, `fast`, §4.6); supported MLS ciphersuite tokens (§5.1); the **`deniable-1:1`** token (advertises support for the optional deniable 1:1 mode, §5.2.1 — both peers MUST advertise it before a deniable session is established); KT log-type tokens (`0x01`/`0x02`, §3.5.2, §21.19); mix-suite tokens (§4.4.12, §21.23); transport-substrate tokens (§4.1, §21.24); supported extension-kind/extension-header tokens (cross-referencing §21.16/§21.20 registrations); and **signed-object `≥ 64` extension-field tokens** — a peer advertises support for a reserved extension field before any sender may include it in a *signed* object (§18.1.2, §10.2). |
+| **Initial contents** | Supported-suite tokens (§1.1); privacy-tier tokens (`private`, `fast`, §4.6); supported MLS ciphersuite tokens (§5.1); the **`deniable-1:1`** token (advertises support for the optional deniable 1:1 mode, §5.2.1 — both peers MUST advertise it before a deniable session is established); KT log-type tokens (`0x01`/`0x02`, §3.5.2, §21.19); mix-suite tokens (§4.4.12, §21.23); transport-substrate tokens (§4.1, §21.24); the **`push-wake`** token (advertises support for the OPTIONAL push wake-signaling layer of §4.9 — a device/node feature, not required for Core, negotiated device↔node); supported extension-kind/extension-header tokens (cross-referencing §21.16/§21.20 registrations); and **signed-object `≥ 64` extension-field tokens** — a peer advertises support for a reserved extension field before any sender may include it in a *signed* object (§18.1.2, §10.2). |
 | **Announcement versioning** | Capability announcements are **monotonic**: each carries a `caps_version` (`u64`) and a receiver rejects an announcement older-or-equal to the last accepted from that peer (`ERR_CAPABILITY_ANNOUNCE_ROLLBACK`, `0x030A`, §10.2), so a stale replay cannot suppress an advertised capability. |
 | **Forward-compatibility rule** | A node receiving a capability token it does not recognize MUST ignore that token (not the whole `system` MOTE) and MUST NOT assume the counterpart lacks the capability merely because the token name is unfamiliar — absence of a recognized token (in the current, highest-`caps_version` announcement) is inconclusive, not a negative assertion. |
 
@@ -518,17 +526,19 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 111 (`0x0101`–`0x011A`: 26, incl. the KT-v1 detection codes
+- **Error/status codes defined:** 115 (`0x0101`–`0x011A`: 26, incl. the KT-v1 detection codes
   `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
   device-attestation and `0x0118` attestation-expired (§1.2a), `0x0117` KT leaf-hash mismatch
   (§3.5, §18.4.9), and the `Profile` display-data codes `0x0119` (signature invalid) and `0x011A`
   (avatar content-address mismatch) (§3.9.5, §18.4.12); `0x0201`–`0x0210`: 16, incl. `0x020F` suite-downgrade and `0x0210`
   hybrid-suite-incomplete (intra-suite PQ-strip defense, §1.3);
-  `0x0301`–`0x0311`: 17, incl. `0x030A` capability-announce
-  rollback (§10.2) and the mixnet codes `0x030B`–`0x0311` — directory/descriptor/path (`0x030B`–`0x030D`),
+  `0x0301`–`0x0315`: 21, incl. `0x030A` capability-announce
+  rollback (§10.2), the mixnet codes `0x030B`–`0x0311` — directory/descriptor/path (`0x030B`–`0x030D`),
   replay (`0x030E`), active-attack detection (`0x030F`), no-downgrade fail-closed covering
   both tier and profile downgrade (`0x0310`, §4.4.9), and mix-directory freshness/freeze defense
-  (`0x0311`, §4.4.2);
+  (`0x0311`, §4.4.2) — and the OPTIONAL push wake-signaling codes `0x0312`–`0x0315` (§4.9):
+  subscription-not-authenticated, WakePing-content-present, WakePing-auth-failed, and
+  WakePing-rate-limited;
   `0x0401`–`0x040F`: 15, incl. the deniable-mode codes `0x040B`–`0x040F` (§5.2.1) — prekey
   invalid/exhausted, X3DH/PQXDH failure, ratchet-MAC failure, mode-unavailable, and the
   signature-forbidden guard;

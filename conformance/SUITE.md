@@ -55,20 +55,22 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Private** — KT-v1 hardening (`KTV1`) | 4 | 0 | 0 | 4 |
 | **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 |
 | **Core** — profile / avatar (`PROFILE`) | 2 | 0 | 0 | 2 |
-| **Total** | **102** | **33** | **6** | **63** |
+| **Optional** — push wake-signaling (`PUSH`) | 2 | 0 | 0 | 2 |
+| **Total** | **104** | **33** | **6** | **65** |
 
 The 33 vectored + 6 self-contained cases (**39**) are fully machine-runnable **today** from
 `vectors.json` + the inline bytes here, with **no reference implementation required**. They pin the
 entire deterministic, security-critical Core spine — canonical CBOR, content addressing, the two
 MOTE signature preimages (§18.9.1/§18.9.2), Ed25519 (with RFC 8032 cross-checks), the 8-word
-key-name, safety numbers, and suite fail-closed. The 63 `construction-todo` cases give the exact
+key-name, safety numbers, and suite fail-closed. The 65 `construction-todo` cases give the exact
 recipe and expected §21 error for every remaining normative branch (the full §2.7 pipeline,
 identity/KT fail-closed, the higher levels, the wave-2 hardening families —
-`DENIABLE`/`ORG`/`KTV1`/`ATTEST` — and the `PROFILE` display-data guards); each becomes byte-backed
+`DENIABLE`/`ORG`/`KTV1`/`ATTEST` — the `PROFILE` display-data guards, and the optional `PUSH`
+wake-signaling guards); each becomes byte-backed
 when the corresponding subsystem gains a fixed-input KAT in `vectors.json` (see README "Coverage vs.
 deferred"). **Sync status:** `SUITE.md` and [`suite.json`](suite.json) are **in sync** — both carry
-the same **102** case ids (the wave-2 `DENIABLE`/`KTV1` families and the `PROFILE` cases are
-mirrored into `suite.json`). The changed deniable objects (§5.2.1 dedicated-`idk`) are still to be
+the same **104** case ids (the wave-2 `DENIABLE`/`KTV1` families, the `PROFILE` cases, and the
+optional `PUSH` cases are mirrored into `suite.json`). The changed deniable objects (§5.2.1 dedicated-`idk`) are still to be
 re-vectored when the reference regenerates `vectors.json`.
 
 > All 39 byte-backed cases correspond one-for-one to entries in `vectors.json`
@@ -339,6 +341,22 @@ The self-asserted, signed display object (`display_name` / name parts / avatar).
 |----|-----|--------|--------|--------|--------|
 | DMTAP-PROFILE-01 | MUST | §3.9.5, §18.4.12, §18.9.3 | a `Profile` whose `sig` (DS-tag `DMTAP-v0/profile`) does not verify under the identity's `IK` / an `IK`-authorized device key is rejected; the prior pinned profile (or the fallback ladder) is used | reject → `ERR_PROFILE_SIG_INVALID` (0x0119), FAIL_CLOSED_BLOCK | construction-todo |
 | DMTAP-PROFILE-02 | MUST | §3.9.5, §18.4.12 | a `Profile` whose `avatar.hash` is present but the bytes fetched from `avatar.url` do **not** content-address (`0x1e ‖ BLAKE3-256`) to it MUST NOT be displayed; the client falls back down the §3.9.5 ladder (key-derived identicon → initials) and warns | reject → `ERR_PROFILE_AVATAR_HASH_MISMATCH` (0x011A), USER_WARN | construction-todo |
+
+---
+
+## Push wake-signaling (§4.9, OPTIONAL) — `PUSH`
+
+The optional wake layer (§4.9): a device registers a `PushSubscription` with its own node, and the
+node emits a content-free, sender-blind `WakePing`. Push is **not required for Core** (§10.3) — these
+guards are conditional and MUST hold **only when a node implements the optional `push-wake`
+capability** (§10.2, §21.22), mirroring how the `DENIABLE` guards apply only when the deniable mode is
+implemented. No byte-exact vectors yet (RFC 8291 sealing uses fresh randomness); the reject guards
+below are MUST.
+
+| id | req | clause | checks | expect | status |
+|----|-----|--------|--------|--------|--------|
+| DMTAP-PUSH-01 | MUST | §4.9.1, §18.5.6, §18.9.15 | a `WakePing` carrying any field beyond the opaque sealed token (key `1`) — or whose opened plaintext bears sender/subject/recipient/content — MUST be rejected: a wake is content-free and sender-blind | reject → `ERR_WAKEPING_CONTENT_PRESENT` (0x0313), FAIL_CLOSED_BLOCK | construction-todo |
+| DMTAP-PUSH-02 | MUST | §4.9.1, §4.9.4, §18.5.5, §18.9.15 | a `PushSubscription` whose `sig` does not verify under an `IK`-authorized `device_key` (§1.2) MUST be rejected and never woken against — the subscription must be authenticated to the identity | reject → `ERR_PUSH_SUBSCRIPTION_SIG_INVALID` (0x0312), FAIL_CLOSED_BLOCK | construction-todo |
 
 ---
 

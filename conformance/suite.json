@@ -23,7 +23,7 @@
   "vectors_file": "vectors/vectors.json",
   "vectors_count": 32,
   "notes": [
-    "reject cases map to spec §21 (111-code registry); error_code + error_name + disposition (Action column) are normative.",
+    "reject cases map to spec §21 (115-code registry); error_code + error_name + disposition (Action column) are normative.",
     "self-contained CBOR reject cases assert a deterministic-CBOR (RFC 8949 §4.2 / §18.1.1) decoder rejects the given bytes.",
     "construction-todo cases are non-deterministic to seal (sealed Envelope/Payload) or belong to subsystems not yet vectored (README 'Coverage vs. deferred')."
   ],
@@ -1993,6 +1993,51 @@
         "error_code": "0x011A",
         "error_name": "ERR_PROFILE_AVATAR_HASH_MISMATCH",
         "action": "USER_WARN"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-PUSH-01",
+      "level": "Core",
+      "category": "PUSH",
+      "req": "MUST",
+      "optional_capability": "push-wake",
+      "clause": [
+        "§4.9.1",
+        "§18.5.6",
+        "§18.9.15"
+      ],
+      "checks": "a WakePing carrying any field beyond the opaque sealed token (key 1), or whose opened plaintext bears sender/subject/recipient/content, MUST be rejected: a wake is content-free and sender-blind (optional push-wake capability)",
+      "operation": "wakeping_decode",
+      "construction": "a WakePing with an extra map key (or a decoded plaintext bearing sender/content) alongside key 1",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0313",
+        "error_name": "ERR_WAKEPING_CONTENT_PRESENT",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-PUSH-02",
+      "level": "Core",
+      "category": "PUSH",
+      "req": "MUST",
+      "optional_capability": "push-wake",
+      "clause": [
+        "§4.9.1",
+        "§4.9.4",
+        "§18.5.5",
+        "§18.9.15"
+      ],
+      "checks": "a PushSubscription whose sig does not verify under an IK-authorized device_key (§1.2) MUST be rejected and never woken against: the subscription must be authenticated to the identity (optional push-wake capability)",
+      "operation": "push_subscription_verify",
+      "construction": "a PushSubscription with a tampered sig / a device_key not authorized by a current DeviceCert",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0312",
+        "error_name": "ERR_PUSH_SUBSCRIPTION_SIG_INVALID",
+        "action": "FAIL_CLOSED_BLOCK"
       },
       "status": "construction-todo"
     }

@@ -182,6 +182,20 @@ hostile-buffer scenarios.
 8. **`redact`/`expires` are unenforceable** against a non-compliant recipient that already holds
    the plaintext — they are cooperative hints, not guarantees (relevant to any "right to
    erasure" framing).
+9. **Push wake-signaling on platforms that mandate a push service.** The wake-signaling layer
+   (§4.9) is content-free, sender-blind, node-originated, and RFC 8291-encrypted, and on
+   Android / desktop / web it can run **fully open and self-hosted** over UnifiedPush or Web Push
+   (§4.9.3) — a push relay there sees nothing but a **self-edge** ("this node woke its own
+   device"), never a sender, a correspondent, or any content. **On iOS, however, the OS mandates
+   APNs**: a background app cannot be woken except through Apple's push service, so on iOS **Apple
+   sees timing metadata** — that *this device* was pinged at time *T* — even though the wake carries
+   no sender, no subject, and no content (it is opaque ciphertext, §4.9.1), and even though the node
+   MAY jitter/batch wakes to blunt correlation (§4.9.1). This residual is **disclosed and minimized,
+   not hidden**: DMTAP strips the payload and the social graph from the wake, but it cannot remove
+   Apple from the loop on a platform that forbids any other wake path. It is the push analogue of the
+   global-active-adversary residual (item 1) — the maximal open mechanism is applied first, and the
+   irreducible **platform-mandated** leak is stated plainly rather than papered over. Where the
+   platform permits an open provider (UnifiedPush / Web Push), this residual does not arise at all.
 
 DMTAP states these boundaries in-product. Honest, disclosed limits beat a false "perfectly
 anonymous."

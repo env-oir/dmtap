@@ -36,6 +36,10 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **RFC 1035 / 9460** | DNS / SVCB & HTTPS RRs | `name→key` records; underscore-scoped TXT + SVCB (§3.2) |
 | **RFC 6376** | DomainKeys Identified Mail (DKIM) | gateway signs-as-domain via delegated selector (§7.3) |
 | **RFC 8461 / 7672** | MTA-STS / DANE (SMTP TLS) | enforce TLS on the legacy leg (§7) |
+| **RFC 8030** | Generic Event Delivery Using HTTP Push (Web Push) | delivery transport for the optional wake-signaling layer (§4.9) |
+| **RFC 8291** | Message Encryption for Web Push | payload encryption of the content-free `WakePing` token — `aes128gcm` under the device push key + auth secret (§4.9, §18.5.6, §18.9.15) |
+| **RFC 8292** | Voluntary Application Server Identification (VAPID) for Web Push | the node authenticates to a Web Push endpoint as the VAPID application server (§4.9.3) |
+| **UnifiedPush** | UnifiedPush specification (`unifiedpush.org`) | the user-chosen, self-hostable distributor — the decentralized push provider preferred where the platform allows (§4.9.3) |
 
 ## 15.3 Normative — legacy mail interop (the gateway & client edges)
 

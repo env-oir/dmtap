@@ -1160,6 +1160,54 @@ recovered `Envelope`. A reassembly that never completes within the sender's retr
 dropped (the sender re-sends, §4.7); a fragment with an out-of-range `frag_index`/`frag_count`, or
 mixing `msg_id`s, is discarded (`0x0307`).
 
+### 18.5.5 `PushSubscription` (§4.9)
+
+The signed registration a device publishes **to its own node** so the node can wake it (§4.9.1). It
+is an ordinary signed object, held only within the device cluster (§5.6) — never in the DHT, a
+directory, or a relay. The device signature (an `IK`-authorized device key, §1.2) authenticates it
+to the identity, so no other party can register or redirect a device's wakes.
+
+```cddl
+PushSubscription = {
+  1 => u8,          ; provider    push-provider tag (§4.9.3): 1 UnifiedPush, 2 Web Push, 3 APNs, 4 FCM
+  2 => tstr,        ; endpoint    provider endpoint URL (Web Push / UnifiedPush) or opaque device token (APNs / FCM)
+  3 => bytes,       ; push_key    device public push key (Web Push: P-256 uncompressed point, 65 B, RFC 8291)
+  4 => bytes,       ; auth_secret RFC 8291 auth secret (16 B), shared only with the user's own node
+  5 => ik-pub,      ; device_key  the IK-authorized device key that signs this subscription (§1.2)
+  6 => ts,          ; ts
+  7 => sig-val,     ; sig         signed by `device_key` (§18.9.15)
+}
+```
+
+| Field | Key | Type | Presence | Meaning & constraints |
+|-------|----:|------|----------|-----------------------|
+| `provider` | 1 | `u8` | MUST | Push-provider tag (§4.9.3). A node MUST prefer an open provider (`1`/`2`) where the platform allows and fall back to `3`/`4` only where mandated (§6.6 item 9). An unrecognized tag ⇒ unsupported provider (capability-negotiated, §10.2), never a parse failure. |
+| `endpoint` | 2 | `tstr` | MUST | The provider endpoint: an RFC 8030 push-resource URL for Web Push / UnifiedPush, or the opaque platform device token for APNs / FCM. |
+| `push_key` | 3 | `bytes` | MUST | The device's public push key the wake token is sealed to under RFC 8291 Web Push encryption (Web Push: an uncompressed P-256 point). |
+| `auth_secret` | 4 | `bytes` | MUST | The RFC 8291 auth secret (16 B) mixed into the wake's HKDF key derivation; held **only** by the device and the user's own node, so only the node can produce a wake the device will open (§18.9.15). |
+| `device_key` | 5 | `ik-pub` | MUST | The device signing key (an `IK`-authorized device key, §1.2) that signs this subscription; a verifier MUST confirm it is authorized by a current `DeviceCert` under the owner's `Identity`. |
+| `ts` | 6 | `ts` | MUST | Registration time. |
+| `sig` | 7 | `sig-val` | MUST | Signature by `device_key` over the body (§18.9.15). A signature that does not verify is `ERR_PUSH_SUBSCRIPTION_SIG_INVALID` (`0x0312`, FAIL_CLOSED_BLOCK); the subscription MUST NOT be acted on. |
+
+### 18.5.6 `WakePing` (§4.9)
+
+The **content-free, sender-blind** wake signal a node emits to a sleeping device (§4.9.1). It
+carries **only** the opaque, RFC 8291-sealed "sync now" token — no sender, subject, recipient, or
+content, and no field beyond key `1`. It bears **no** DMTAP `sig-val`: its authentication is the RFC
+8291 AEAD tag under the device push key + `auth_secret` (§18.9.15), so the push relay can neither
+read nor forge one.
+
+```cddl
+WakePing = {
+  1 => bytes,       ; token   RFC 8291 (aes128gcm) sealed wake token; the sealed plaintext is an
+                    ;         opaque fixed-form sync nonce ONLY — no sender/subject/recipient/content (§4.9.1)
+}
+```
+
+| Field | Key | Type | Presence | Meaning & constraints |
+|-------|----:|------|----------|-----------------------|
+| `token` | 1 | `bytes` | MUST | The RFC 8291 `aes128gcm` ciphertext of an opaque sync nonce. A `WakePing` carrying **any** other map key, or whose opened plaintext decodes to anything carrying sender/subject/recipient/content, MUST be rejected fail-closed (`ERR_WAKEPING_CONTENT_PRESENT`, `0x0313`). A token whose AEAD fails to open under the subscription's `push_key`/`auth_secret` is a forged/unauthenticated wake and is dropped (`ERR_WAKEPING_AUTH_FAILED`, `0x0314`, DROP_SILENT). Wakes are rate-limited per device (`ERR_WAKEPING_RATE_LIMITED`, `0x0315`, §4.9.4). |
+
 ---
 
 ## 18.6 Group-layer objects (§5.8)
@@ -1442,6 +1490,8 @@ every signature is over `DS-tag ‖ det_cbor(object∖sig)`, where:
 | `LocationRecord` | `sig` (k7) | `DMTAP-v0/location-record` | `det_cbor(LocationRecord ∖ {7})` |
 | `MixNodeDescriptor` | `sig` (k7) | `DMTAP-v0/mix-descriptor` | `det_cbor(MixNodeDescriptor ∖ {7})` |
 | `MixDirectory` | `sig` (k8) | `DMTAP-v0/mix-directory` | `det_cbor(MixDirectory ∖ {8})` |
+| `PushSubscription` | `sig` (k7) | `DMTAP-v0/push-subscription` | `det_cbor(PushSubscription ∖ {7})` (§18.9.15) |
+| `WakePing` | — (none) | — | **no DMTAP sig** — authenticated by the RFC 8291 AEAD tag under the device push key + `auth_secret` (§18.9.15) |
 | `GroupState` | `committer_sig` (k13) | `DMTAP-v0/group-state` | `det_cbor(GroupState ∖ {13})` |
 | `GroupEvent` | `committer_sig` (k6) | `DMTAP-v0/group-event` | `det_cbor(GroupEvent ∖ {6})` |
 | `PostageStamp` | `sig` (k7) | `DMTAP-v0/postage-stamp` | `det_cbor(PostageStamp ∖ {7})` |
@@ -1709,6 +1759,28 @@ token's `sig`. **`SphinxCell` and its sub-structures (§18.5.4) carry no DMTAP `
 integrity is the Sphinx per-hop MAC / wide-block PRP (§4.4.1, §18.9.9), the same
 "security-from-a-different-proof-system" case as `ArcToken`/deniable frames.
 
+### 18.9.15 Push wake-signaling objects (`PushSubscription.sig`, `WakePing`) (§4.9)
+
+`PushSubscription.sig` (key 7) uses the general rule
+`Sign(sk_device, "DMTAP-v0/push-subscription" ‖ 0x00 ‖ det_cbor(PushSubscription ∖ {7}))` with an
+`IK`-authorized device key (§1.2) — the same signing discipline as `LocationRecord` (§18.9.3). It
+authenticates the subscription to the identity so no other party can register or redirect a device's
+wakes; a signature that does not verify is `ERR_PUSH_SUBSCRIPTION_SIG_INVALID` (`0x0312`),
+fail-closed. The verifier MUST also confirm `device_key` (field 5) is authorized by a current
+`DeviceCert` under the owner's `Identity`.
+
+`WakePing` carries **no** DMTAP `sig-val`. Its authentication is the **RFC 8291 `aes128gcm` AEAD
+tag**, computed under a key derived (RFC 8291 HKDF) from the device `push_key` and the
+subscription's `auth_secret` — secrets held **only** by the device and the user's own node — so only
+that node can produce a `WakePing` the device will open, and the push relay (which lacks the auth
+secret) can neither read nor forge one. A `WakePing` whose AEAD fails to open is a
+forged/unauthenticated wake and is dropped (`ERR_WAKEPING_AUTH_FAILED`, `0x0314`, DROP_SILENT); a
+`WakePing` (or its opened plaintext) carrying any field beyond the opaque sync token is
+`ERR_WAKEPING_CONTENT_PRESENT` (`0x0313`), fail-closed; wakes are rate-limited per device
+(`ERR_WAKEPING_RATE_LIMITED`, `0x0315`, §4.9.4). This mirrors the deniable-mode objects (§18.9.10)
+and `SphinxCell` (§18.9.9): a wire object whose security rests on a different, well-specified proof
+system — here RFC 8291 Web Push encryption — not on a DMTAP signature.
+
 ---
 
 ## 18.10 Collected CDDL grammar (copy-paste block)
@@ -1905,6 +1977,14 @@ MixDirectory = {
 ; NOTE: the Sphinx SphinxCell / RoutingCommand / SURB / SphinxFragmentHeader (§18.5.4) are
 ; FIXED-LENGTH BYTE LAYOUTS on the mixnet wire, NOT deterministic CBOR, so they are specified as
 ; byte tables in §18.5.4 and are deliberately not encoded as CDDL rules here.
+
+; ── push wake-signaling (§4.9, OPTIONAL) ───────────────────────────
+; PushSubscription is held only on the user's OWN node; WakePing is content-free & sender-blind.
+PushSubscription = {
+  1 => u8, 2 => tstr, 3 => bytes, 4 => bytes, 5 => ik-pub, 6 => ts, 7 => sig-val,
+  ; 1=provider(1 UnifiedPush/2 Web Push/3 APNs/4 FCM) 3=push_key(P-256) 4=auth_secret(RFC 8291) 5=device_key
+}
+WakePing = { 1 => bytes }   ; RFC 8291-sealed opaque sync token ONLY; NO sig-val; any other field ⇒ 0x0313
 
 ; ── group layer (§5.8) ─────────────────────────────────────────────
 GroupState = {

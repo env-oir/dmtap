@@ -641,3 +641,103 @@ network need no infrastructure at all.
   no such transport (Briar's offline radio transports are its own Bramble code, not libp2p).
   Supporting them would mean writing a custom libp2p `Transport` — flagged as future work, not
   a v0 claim.
+
+## 4.9 Push wake-signaling (optional)
+
+A mobile device sleeps its radios and its DMTAP process to save battery; while asleep it cannot
+hold the mesh connection that §4.3 delivery assumes. Today the only way to wake such a device is
+the platform's push service — Apple **APNs** or Google **FCM** — which sees, for every message,
+**which device was woken and when**. That is a centralized metadata choke point squarely against
+DMTAP's goals (§6). DMTAP therefore defines an **optional**, open wake-signaling layer that
+(a) prefers self-hostable, decentralized push transports, (b) carries **no** content and **no**
+sender identity in the wake signal, and (c) is originated by the **user's own node**, so no third
+party ever sees the social graph. It **reuses existing standards** rather than inventing a push
+protocol: **Web Push** (RFC 8030 delivery, RFC 8291 payload encryption, RFC 8292 VAPID) and
+**UnifiedPush** (a user-chosen distributor), with **APNs**/**FCM** bridges only where a platform
+mandates them (§15.2).
+
+This layer is a **capability, not part of Core** (§10.3): a node that never sleeps (an always-on
+box) needs none of it, and a node that implements it advertises the `push-wake` token in capability
+negotiation (§10.2, §21.22). It changes nothing about the message spine — the actual MOTE is still
+pulled over the ordinary reachability ladder (§4.3) or the mixnet (§4.4); a wake is only a hint to
+**reconnect and sync now**, never a delivery path for content.
+
+### 4.9.1 The two objects, and who holds what
+
+A device registers a **`PushSubscription`** (§18.5.5) with **its own node**: the provider kind, the
+provider endpoint URL/token, the device's **public push key** (P-256 for Web Push, RFC 8291), and
+the RFC 8291 **auth secret**, all **signed by an `IK`-authorized device key** (§1.2) so the
+subscription is authenticated to the identity and cannot be forged by another party to register or
+redirect a device's wakes. The subscription is published **only to the user's own node(s)** (the
+device cluster, §5.6) — never to a global directory, the DHT, or any relay — so no external party
+learns that a given device exists or where it is pushed.
+
+When a MOTE arrives for the user, the node emits a **`WakePing`** (§18.5.6) to each of that user's
+sleeping devices. A `WakePing` is **content-free and sender-blind**: it carries only an **opaque
+"sync now" token** and **no message body, no subject, no recipient, no sender identity, nothing about
+the arriving MOTE**. The token is **sealed to the device push key** using **RFC 8291 Web Push
+encryption** (ECDH to the push key + `aes128gcm`, the `auth_secret` bound into the HKDF key
+derivation), so even the push relay that
+carries it — a Web Push server, a UnifiedPush distributor, or APNs/FCM — sees **only ciphertext of
+fixed shape**, never a readable payload. The woken device opens the token and **pulls** the actual
+sealed MOTE over the normal path (§4.3/§4.4); the wake never carries the message.
+
+Normatively:
+
+- A `WakePing` **MUST NOT** contain plaintext sender, subject, recipient, or content — nor any field
+  (outer or in the opened plaintext) beyond the opaque token; a decoded `WakePing` bearing any such
+  field **MUST** be rejected fail-closed (`ERR_WAKEPING_CONTENT_PRESENT`, `0x0313`, §21.5).
+- The wake token **MUST** be RFC 8291-encrypted to the subscription's push key; a node **MUST NOT**
+  emit a readable/unencrypted wake.
+- A node **MAY** jitter and/or batch wakes (add randomized delay, coalesce several arrivals into one
+  wake) to blunt timing correlation at the push relay; this trades wake latency for metadata
+  resistance and is a per-node policy (§6, §6.6 item 9).
+
+### 4.9.2 Your node originates the ping (why the graph stays private)
+
+The subscription lives on the **user's own node**, and the node — which already terminates delivery
+for its user — is the party that emits the `WakePing`. Consequently the push relay sees only
+**"this user's node woke this user's own device,"** a single self-edge, never *who* sent the message
+or *whom* the user talks to. No sender, no correspondent, and no other node is exposed to the push
+provider. This is the same content-blind, single-choke-point discipline as circuit relays (§4.3) and
+the legacy gateway (§7): the push relay is a **thin, content-blind, self-hostable** carrier, subject
+to the same non-lock-in framing as the gateway (§7.7) — a user can point their subscription at their
+own Web Push / UnifiedPush endpoint and depend on no specific provider.
+
+### 4.9.3 Provider abstraction (all optional; prefer the open ones)
+
+Push transport sits behind a **provider seam**; `PushSubscription.provider` selects one (§18.5.5):
+
+| Provider (tag) | Standard | Openness | Notes |
+|---|---|---|---|
+| **UnifiedPush** (`0x01`) | user-chosen distributor | **fully open / self-hostable** | the decentralized default on Android/desktop; the user picks the distributor, no platform gatekeeper |
+| **Web Push** (`0x02`) | RFC 8030 + 8291 + 8292 (VAPID) | **open / self-hostable** | browsers and any RFC 8030 endpoint; the node acts as the VAPID application server |
+| **APNs** (`0x03`) | Apple-mandated | closed bridge | used **only** where the platform (iOS) mandates it (§6.6 item 9) |
+| **FCM** (`0x04`) | Google-mandated | closed bridge | used **only** where the platform mandates it |
+
+A conforming node **MUST prefer an open provider (UnifiedPush or Web Push) wherever the platform
+allows**, and **MUST fall back to APNs/FCM only on a platform that mandates them** (§6.6 item 9).
+Whichever provider carries it, the wake payload is the **same** RFC 8291-sealed content-free token —
+the provider choice changes only the transport envelope, never what leaks inside it (which is:
+nothing). The provider tags are capability-negotiated (§10.2); an unrecognized tag is treated as an
+unsupported provider, never a parse failure.
+
+### 4.9.4 Anti-abuse (a wake costs battery)
+
+A wake spends the target's battery, so wakes are gated, fail-closed:
+
+- **Authenticated to the device.** A `WakePing` is honored only against a `PushSubscription` the
+  device itself signed (§4.9.1); a subscription whose device-key signature does not verify **MUST**
+  be rejected (`ERR_PUSH_SUBSCRIPTION_SIG_INVALID`, `0x0312`, FAIL_CLOSED_BLOCK) and never acted on.
+  Because the token is RFC 8291-sealed under the device push key **and** the `auth_secret` — secrets
+  that only the user's own node holds — a wake that fails to open is a forged/unauthenticated wake
+  and **MUST** be dropped (`ERR_WAKEPING_AUTH_FAILED`, `0x0314`, DROP_SILENT); it MUST NOT be
+  surfaced as a real sync trigger.
+- **Rate-limited.** A node **MUST** rate-limit wakes per device (coalescing bursts into a single
+  wake within a window, §16), and wakes beyond the device's budget are dropped
+  (`ERR_WAKEPING_RATE_LIMITED`, `0x0315`). This bounds a compromised-relay or misconfigured-node
+  battery-drain and composes with the jitter/batch policy of §4.9.1.
+
+All four failure modes stop rather than wake the device on faith: an unverifiable subscription
+(`0x0312`), a content-bearing wake (`0x0313`), an unauthenticated wake (`0x0314`), and an
+over-budget wake (`0x0315`).
