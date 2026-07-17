@@ -49,7 +49,7 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Private** (`PRIV`) | 7 | 0 | 0 | 7 |
 | **Groups & Files** (`GRP`, `FILE`) | 12 | 0 | 0 | 12 |
 | **Groups & Files** — device-cluster sync (`SYNC`) | 5 | 0 | 0 | 5 |
-| **Legacy** (`LEG`) | 2 | 0 | 0 | 2 |
+| **Legacy** (`LEG`) | 3 | 0 | 0 | 3 |
 | **Legacy** — gateway alias mapping (`GWALIAS`) | 3 | 0 | 0 | 3 |
 | **Clients** (`CLI`) | 1 | 0 | 0 | 1 |
 | **Auth** (`AUTH`) | 5 | 0 | 0 | 5 |
@@ -59,20 +59,20 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 |
 | **Core** — profile / avatar (`PROFILE`) | 2 | 0 | 0 | 2 |
 | **Optional** — push wake-signaling (`PUSH`) | 2 | 0 | 0 | 2 |
-| **Total** | **120** | **33** | **6** | **81** |
+| **Total** | **121** | **33** | **6** | **82** |
 
 The 33 vectored + 6 self-contained cases (**39**) are fully machine-runnable **today** from
 `vectors.json` + the inline bytes here, with **no reference implementation required**. They pin the
 entire deterministic, security-critical Core spine — canonical CBOR, content addressing, the two
 MOTE signature preimages (§18.9.1/§18.9.2), Ed25519 (with RFC 8032 cross-checks), the 8-word
-key-name, safety numbers, and suite fail-closed. The 70 `construction-todo` cases give the exact
+key-name, safety numbers, and suite fail-closed. The 82 `construction-todo` cases give the exact
 recipe and expected §21 error for every remaining normative branch (the full §2.7 pipeline,
 identity/KT fail-closed, the higher levels, the wave-2 hardening families —
 `DENIABLE`/`ORG`/`KTV1`/`ATTEST` — the `PROFILE` display-data guards, and the optional `PUSH`
 wake-signaling guards, and the `FILE` durability guards `DMTAP-FILE-05`–`-09`); each becomes byte-backed
 when the corresponding subsystem gains a fixed-input KAT in `vectors.json` (see README "Coverage vs.
 deferred"). **Sync status:** `SUITE.md` and [`suite.json`](suite.json) are **in sync** — both carry
-the same **120** case ids (the wave-2 `DENIABLE`/`KTV1` families, the `PROFILE` cases, the
+the same **121** case ids (the wave-2 `DENIABLE`/`KTV1` families, the `PROFILE` cases, the
 optional `PUSH` cases, the `FILE` durability cases, and the wave-3 `SYNC` (device-cluster),
 `ALIAS`, and `GWALIAS` families are mirrored into `suite.json`). The changed deniable objects (§5.2.1 dedicated-`idk`) are still to be
 re-vectored when the reference regenerates `vectors.json`.
@@ -261,6 +261,7 @@ Core + gateway inbound/outbound + DKIM delegation.
 |----|-----|--------|--------|--------|--------|
 | DMTAP-LEG-01 | MUST | §7 | a gateway attestation that fails to verify under a trusted key is rejected | reject → `ERR_GATEWAY_ATTESTATION_INVALID` (0x0601) | construction-todo |
 | DMTAP-LEG-02 | MUST | §7 | invalid DKIM delegation is rejected | reject → `ERR_DKIM_DELEGATION_INVALID` (0x0603) | construction-todo |
+| DMTAP-LEG-03 | MUST | §7.11.2, §9.10, §7.12 | an outbound DMTAP→legacy relay from a sender the gateway has neither authenticated (no `GatewayAuthz`/key-registered relationship, §7.12) nor been paid by (no valid postage) is refused — a valid mesh `sender_sig` alone does NOT authorize egress (open-relay prevention) | reject → `ERR_GATEWAY_SENDER_UNAUTHENTICATED` (0x0607), FAIL_CLOSED_BLOCK | construction-todo |
 
 ---
 

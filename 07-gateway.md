@@ -343,3 +343,132 @@ domain to the recipient, and a legacy MTA sees the mail in the clear. The **nati
 gateway** (a pure-mesh message is provably end-to-end, §7.8.1(b)), and every gateway-touched message is
 **marked** so the user sees which mail crossed the bridge (`ProvenanceRecord`, §8.6). DMTAP states this
 honestly rather than implying the bridge inherits mesh privacy.
+
+## 7.11 Bidirectional anti-abuse is mandatory (normative floor)
+
+A gateway sits on the boundary between the accountable mesh (§9) and the open legacy world, so it is
+the one component abusable in **both** directions: as an **injector** (legacy spam pushed into the
+mesh) and as an **open relay** (the mesh used to blast legacy inboxes). Because no single gateway is
+load-bearing (§7.7), a gateway that fails either way poisons the shared reputation pool (§9.6) and
+strangers' inboxes. Therefore anti-abuse enforcement is a **MUST in both directions**, and every check
+**fails closed**.
+
+### 7.11.1 Inbound (legacy → DMTAP): MUST NOT become a spam injector
+
+Before it injects anything into the mesh (§7.2), a gateway MUST:
+
+1. Apply **legacy sender authentication** — **SPF, DKIM, and DMARC** — and reject on hard fail
+   pre-`DATA` where possible (§7.2 step 2 → SMTP `550 5.7.1`, §21.9), alongside the standard
+   RBL/DNSBL + greylisting hygiene.
+2. Carry the legacy origin through the **cold-sender gate** (§9.2): an injected MOTE from a legacy
+   stranger is a **cold contact** and MUST be subject to the recipient's §9 challenge policy exactly
+   as a native cold sender is. The gateway MUST NOT inject legacy mail with the standing of an
+   established contact, and MUST NOT strip or forge the recipient-facing challenge state; mail it
+   cannot qualify defers to the requests area (§9.2), never the inbox.
+
+A gateway MUST NOT emit an inbound MOTE that bypasses either check. This is what stops it from
+laundering legacy spam into the accountable mesh.
+
+### 7.11.2 Outbound (DMTAP → legacy): MUST NOT become an open relay
+
+Before it relays a mesh MOTE to a legacy address (§7.3), a gateway MUST:
+
+1. Relay **only for authenticated senders** — one it has an established authorization relationship
+   with (`GatewayAuthz`, §12.2; **open** or **key-registered**, §7.12) **or** one presenting valid
+   postage (§9.5) redeemable by this gateway. An outbound attempt from a sender the gateway has
+   **neither authenticated nor been paid by** MUST be refused, fail-closed, with
+   `ERR_GATEWAY_SENDER_UNAUTHENTICATED` (`0x0607`, §21.8). A valid mesh `sender_sig` proves *who
+   signed*, **not** *who may relay* — anyone can sign a MOTE — so signature-validity is necessary but
+   **not sufficient** to authorize egress. This is the open-relay-prevention floor whose absence
+   killed SMTP's open relays (§7.7).
+2. Enforce **per-sender rate limits and volume caps** on legacy egress (§9.6 per-identity
+   accountability applied as a throttle), so a single authenticated-but-compromised sender cannot
+   turn the gateway into a blaster. Exceeding the cap is refused/deferred under the operator's egress
+   policy.
+
+### 7.11.3 The floor vs. the numbers
+
+The rules above are the **interoperable security floor**: *that* both directions are gated, *that*
+the gates fail closed, and *which* signals gate them (SPF/DKIM/DMARC + cold-sender inbound;
+authenticated-sender + rate/volume outbound). The **specific values** — DMARC override handling, RBL
+choice, challenge thresholds, egress rates, volume caps, and any pricing — are **operator policy and
+out of scope** (§7.13). A gateway MUST implement the floor; it chooses the numbers.
+
+## 7.12 Optional key-authenticated gateway registration (capability-negotiated)
+
+§7.11.2 requires a gateway to relay outbound only for **authenticated** senders, and §7.7 requires
+that access never become lock-in. A gateway MAY be **open** (it authorizes senders by some
+operator-chosen means — postage alone, or an out-of-band account) or **key-registered** (a sender
+authenticates with their **DMTAP identity key**, interoperably, with no operator-specific account
+system). This section specifies the OPTIONAL key-registered handshake so a client can register with
+**any** key-registered gateway using the same ceremony — the interoperable mechanism behind the
+authenticated-sender requirement. It is **DMTAP-Auth (§13) with the gateway as the relying party** and
+introduces **no new cryptography**.
+
+### 7.12.1 Capability negotiation (a gateway MAY be open or key-registered)
+
+A gateway advertises its registration modes in its directory descriptor (§7.5): `open`,
+`key-registered`, or both. A client MUST NOT assume a mode; it reads the advertised set and, for
+`key-registered`, runs §7.12.2. A gateway advertising neither is native-only and performs no
+third-party outbound relay. This mirrors the mail native/legacy capability discovery (§7.6) — the
+mechanism is **negotiated, never mandated**; the handshake is OPTIONAL on both sides.
+
+### 7.12.2 The registration ceremony (reuse §13.3)
+
+```
+1. client → gateway:  register(name)          ; the client's DMTAP name (§3)
+2. gateway resolves name → key (§3.3 lookup, pinned §3.4) and returns a Challenge:
+     { gw_origin, nonce, issued_at, exp, aud = gateway id, scope = "gateway-egress" }
+   (the §13.3 Challenge shape; gw_origin is the gateway's stable identifier)
+3. the client's TRUSTED CLIENT (§13.3.1) binds + displays gw_origin, runs user
+   verification, and the client's identity/device key signs the §13.3 domain-separated
+   "DMTAP-v0/auth-assertion" preimage over the Challenge (with a fresh session cnf).
+4. gateway verifies the signature against the pinned key (§3.4), aud == its own id,
+   nonce unused, not expired  →  the sender is authenticated; the gateway records a
+   per-identity ACCOUNTABLE egress authorization (§9.6) bound to that key.
+```
+
+Because it **is** the §13.3 ceremony, it inherits its properties verbatim: origin-binding and
+intent-matching (§13.3.1) so a relayed challenge cannot be replayed to register a victim; a **key-bound
+(not bearer)** authorization (§13.4); and revocation without rotating `IK` (§13.4). The gateway learns
+**which key** registered — it must, for accountability (§9.6) — which is the same deliberate,
+per-relationship identity disclosure as any DMTAP-Auth login (§13.7 limit 7), disclosed and **not** a
+metadata-privacy regression for the mesh (native mesh delivery never touches a gateway, §7.7).
+
+### 7.12.3 What registration authorizes (and what it does not)
+
+A successful registration authorizes the key for **outbound legacy egress** through this gateway
+(satisfying §7.11.2 step 1) and MAY anchor inbound MX/DKIM delegation (§7.2, §7.3, §7.10). It is a
+**per-gateway** relationship: it grants nothing on any other gateway, carries **zero lock-in** (drop or
+switch it with a DNS/DKIM change, §7.7), and confers **no** entitlement to unlimited or unpriced relay
+— the rate/volume caps (§7.11.2 step 2) and any pricing remain operator policy (§7.13). Being **open**
+vs. **key-registered** is the operator's choice; both satisfy the §7.11.2 authenticated-sender floor.
+
+## 7.13 In-scope mechanism vs. out-of-scope operator policy (normative boundary)
+
+DMTAP draws the same in-spec-contract / out-of-scope-policy line for the gateway that §3.11 draws for
+naming providers: the **interoperable mechanism and the security floor are in-spec**; the
+**operational knobs are operator policy**. State it explicitly so neither side is over-claimed.
+
+**In scope (normative — every conformant gateway MUST honor these, or interop/security breaks):**
+
+- the **authorization *mechanism*** — the authenticated-sender requirement and the OPTIONAL key-auth
+  handshake (§7.11.2, §7.12);
+- the **address mapping** — native↔legacy aliasing and its two encodings (§7.10);
+- **provenance** — the §7.2a attestation, the §7.8 `ProvenanceRecord`, and the verifiable
+  pure-mesh-vs-gateway-touched distinction;
+- the **anti-abuse *floor*** — that both directions are gated and fail closed, and which signals gate
+  them (§7.11).
+
+**Out of scope (operator / implementation policy — DMTAP does not specify it, and an implementation
+is free to choose):**
+
+- **quota values, rate limits, and volume caps** — the *numbers*, not *whether* they exist;
+- **usage-tracking / metering mechanics** — §12.2 meters *operations*; how an operator records them is
+  its own;
+- **pricing and billing** — postage amounts, egress fees, plan structure (§7.5, §7.9, §12).
+
+The dividing rule is identical to §3.11's for names and §12.3's inviolable metering rule: **what two
+independent implementations must agree on to interoperate securely is in-spec; what an operator may set
+unilaterally without breaking any other party is out of scope.** A gateway that changes its prices or
+caps stays conformant; a gateway that skips the §7.11 floor or the §7.12 handshake shape does not.

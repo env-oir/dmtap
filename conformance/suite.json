@@ -25,7 +25,7 @@
   "referenced_vectors_count": 32,
   "vectors_count_note": "vectors_count is the number of entries in vectors/vectors.json; referenced_vectors_count (32) is how many of them the byte-backed cases currently drive (several drive more than one case). The remaining 35 are pre-generated for construction-todo families not yet wired to a case.",
   "notes": [
-    "reject cases map to spec §21 (129-code registry); error_code + error_name + disposition (Action column) are normative.",
+    "reject cases map to spec §21 (132-code registry); error_code + error_name + disposition (Action column) are normative.",
     "self-contained CBOR reject cases assert a deterministic-CBOR (RFC 8949 §4.2 / §18.1.1) decoder rejects the given bytes.",
     "construction-todo cases are non-deterministic to seal (sealed Envelope/Payload) or belong to subsystems not yet vectored (README 'Coverage vs. deferred')."
   ],
@@ -1622,6 +1622,27 @@
         "outcome": "reject",
         "error_code": "0x0603",
         "error_name": "ERR_DKIM_DELEGATION_INVALID"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-LEG-03",
+      "level": "Legacy",
+      "category": "LEG",
+      "req": "MUST",
+      "clause": [
+        "§7.11.2",
+        "§9.10",
+        "§7.12"
+      ],
+      "checks": "an outbound DMTAP->legacy relay from a sender the gateway has neither authenticated (no GatewayAuthz / key-registered relationship) nor been paid by (no valid redeemable postage) is refused fail-closed; a valid mesh sender_sig alone does NOT authorize egress (open-relay prevention)",
+      "operation": "gateway_outbound_admit",
+      "construction": "present a signed mail MOTE for a legacy address to a gateway with no authorization relationship for the sender key and no attached postage",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0607",
+        "error_name": "ERR_GATEWAY_SENDER_UNAUTHENTICATED",
+        "action": "FAIL_CLOSED_BLOCK"
       },
       "status": "construction-todo"
     },

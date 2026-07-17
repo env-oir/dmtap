@@ -232,3 +232,25 @@ then attributes delivery to the **group**, bypassing each recipient's per-sender
   commensurate with the fan-out size, so mass amplification is not free.
 - **Legacy fan-out** (§5.8.5) is bound by the same rules; the gateway attributes the origin
   (§9.6).
+
+## 9.10 Gateway bidirectional anti-abuse (the two-way choke point)
+
+§9.1–§9.9 protect **native** recipients. The **legacy gateway** (§7) is the one component that also
+faces the open legacy world, so it MUST apply anti-abuse in **both** directions, fail-closed —
+specified normatively in §7.11 and restated here because it belongs to the anti-abuse model:
+
+- **Inbound (legacy → mesh).** The gateway MUST authenticate the legacy sender (SPF/DKIM/DMARC,
+  §7.11.1) and MUST carry legacy senders through the **cold-sender gate** (§9.2): a legacy stranger is
+  a **cold contact**, subject to the recipient's challenge policy, never injected with contact
+  standing. This stops a gateway from laundering legacy spam into the accountable mesh.
+- **Outbound (mesh → legacy).** The gateway MUST relay **only for authenticated senders** — an
+  authorized `GatewayAuthz`/key-registered relationship (§7.12) **or** valid redeemable postage
+  (§9.5) — and MUST apply per-sender **rate limits and volume caps** (§9.6). An unauthenticated
+  outbound relay attempt is refused fail-closed with `ERR_GATEWAY_SENDER_UNAUTHENTICATED` (`0x0607`,
+  §21.8): a valid `sender_sig` proves *who signed*, not *who may relay*, so signature-validity alone
+  MUST NOT authorize egress. This is the open-relay floor (§7.7) that per-identity accountability
+  (§9.6) makes affordable to hold open.
+
+As everywhere in §9, only the **floor** — that both directions are gated, fail-closed, on these
+signals — is in-spec; the **thresholds, caps, and pricing** are operator policy and out of scope
+(§7.13).
