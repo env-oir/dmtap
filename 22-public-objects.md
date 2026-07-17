@@ -201,7 +201,7 @@ PubAnnounce = {
 | `suite` | 2 | `suite` | MUST | Algorithm suite for `sig` and for the `roots` digests. Unknown ⇒ reject fail-closed (`0x0901`; the extension analogue of `ERR_UNKNOWN_SUITE` §1.1/`0x0101`). |
 | `pub` | 3 | `ik-pub` | MUST | The **publisher's root identity key** `IK`. Carried in the clear — authenticity, not anonymity. A reader binds `pub` to a human name only if it wants to *display* one, via ordinary pinning/KT (§3.4/§3.5); verification itself needs no name (§22.3.3). |
 | `roots` | 4 | `[+ hash]` | MUST | One or more `PubManifest.id` content addresses (§22.2). At least one; an announce with an empty `roots` is malformed. Multiple roots let one announce publish a set (e.g. an artifact in several formats, §23). |
-| `meta` | 5 | `{* tstr => ext-value}` | MUST (MAY be empty) | Structured metadata (title, kind, license, etc.), text-keyed and restricted to the deterministic-safe `ext-value` subset (§18.3.6) because it rides inside the signed body. Concrete schemas are **profile-defined** (§23); a reader MUST ignore keys it does not recognize (forward-compat, §21.20). |
+| `meta` | 5 | `{* tstr => ext-value}` | MUST (MAY be empty) | Structured metadata (title, kind, license, etc.), text-keyed and restricted to the deterministic-safe `ext-value` subset (§18.3.6) because it rides inside the signed body. Concrete schemas are **profile-defined** (§23); a reader MUST ignore keys it does not recognize (forward-compat, §21.20). A profile MAY carry a compact integer-keyed schema by embedding it as deterministic CBOR (§18.1.1) in a `bytes` value under a single profile-named key (e.g. `"artifact"`, §23.3.1) — opaque to a generic reader, which ignores the key like any other unrecognized one; the embedded bytes are covered by `sig` like every other `meta` value. |
 | `supersedes` | 6 | `hash` | OPTIONAL | Content address of a prior `PubAnnounce` this one revises, borrowing `edit` (`0x03`, §2.3/§5.4) semantics: a successor supersedes a predecessor by id, forming a revision chain (§22.3.4). The referenced announce MUST have the **same** `pub`, else `ERR_PUB_SUPERSEDE_INVALID` (`0x090B`). Absent ⇒ this is an original announcement. |
 | `ts` | 7 | `ts` | MUST | Publish wall-clock time (ms epoch), subject to clock-skew tolerance (§16.1). Used for display/ordering; feed `seq` (§22.4) is authoritative for order, never `ts`. |
 | `signer` | 8 | `ik-pub` | MUST | The **operational (device) key** that produced `sig`. It MUST be authorized by `pub` via a `DeviceCert` (§1.2) that the verifier checks (§22.3.3); `signer` MAY equal `pub` when `IK` signs directly. Keeping `IK` cold (§1.2a) is RECOMMENDED — an operational key signs day-to-day publishes. |
@@ -427,8 +427,8 @@ not for sealed relay**, for one decisive reason:
 > read** — blind chunk serving (§5.5) means an operator carries bytes without knowing or being
 > responsible for their content. A DMTAP-PUB holder serves **plaintext it can read**. Serving public
 > content therefore **shifts the operator's moderation and liability posture** in a way blind relay
-> does not, so it MUST be an explicit operator choice, never automatic. (Track 1 records this as a
-> new §6.6 honest-limit entry.)
+> does not, so it MUST be an explicit operator choice, never automatic. (§6.6 item 12 records
+> this as an honest limit.)
 
 ### 22.6.2 Per-holder serve policy; no protocol takedown
 
@@ -570,9 +570,9 @@ be fixed; each is an inherent consequence of the public quadrant, disclosed for 
 
 ## 22.10 Error registry (`ERR_PUB_*`, `0x0900`–`0x09FF`)
 
-DMTAP-PUB occupies subsystem byte **`0x09`** (§21.1 marks `0x09` as available for a future subsystem;
-this extension claims it). Codes follow the §21 conventions and responder-action vocabulary (§21.2).
-Track 1 registers this block in §21 (subsystem row + §21.14 registry); the table below is its
+DMTAP-PUB occupies subsystem byte **`0x09`** — the §21.1 subsystem table assigns it to this
+extension, and §21.24b records the registration under the §21.14 new-subsystem-byte policy. Codes
+follow the §21 conventions and responder-action vocabulary (§21.2). The table below is the block's
 initial, authoritative contents.
 
 | Code | Name | Operation(s) | Meaning | Retryable | Action |

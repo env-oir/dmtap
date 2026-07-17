@@ -541,10 +541,10 @@ defined in §22, not here.
 
 | Registry | Allocation |
 |---|---|
-| Message Kinds (§21.16) | `0x40 pub_announce` — Specification Required, extension range (§2.3, §21.16); a public signed announcement, plaintext, openly signed by the publisher identity (no sealed sender). |
+| Message Kinds (§21.16) | `0x40 pub_announce` — Specification Required, extension range (§2.3, §21.16); a public signed announcement, plaintext, openly signed by the publisher identity (no sealed sender). A **bare signed object, not a MOTE** — never carried inside an `Envelope` (§22.3.2). |
 | Capability Tokens (§21.22) | `pub-1` — Specification Required; node/operator opt-in to serving public objects (§10.2, §22). |
 | Error/Status Codes (§21.14) | Subsystem byte `0x09` (`0x0900`–`0x09FF`), allocated under the new-subsystem-byte / Standards Action policy of §21.14, reserved to the DMTAP-PUB extension (`ERR_PUB_*`); individual code points defined in §22. Verified against §21.3–§21.11 at registration time: `0x09` was previously wholly unassigned (formerly part of the `0x09`–`0xEF` reserved range), so this allocation collides with no existing code. |
-| Signature DS-tags (§18.9 convention) | `DMTAP-PUB-v0/manifest`, `DMTAP-PUB-v0/announce`, `DMTAP-PUB-v0/feed` — reserved identifiers, distinct from every `DMTAP-v0/…` DS-tag in §18.9. `DMTAP-PUB-v0/manifest` in particular is **type-incompatible** with the sealed `Manifest` DS-tag (§5.5): a verifier fails closed on any DS-tag mismatch, never branches on a boolean "public" flag carried on one shared object. |
+| Signature DS-tags (§18.9 convention) | `DMTAP-PUB-v0/manifest`, `DMTAP-PUB-v0/announce`, `DMTAP-PUB-v0/feed` — reserved identifiers, distinct from every `DMTAP-v0/…` DS-tag in §18.9. `DMTAP-PUB-v0/manifest` in particular is **type-incompatible** with the sealed `Manifest` root construction (§18.9.5, which uses the bare RFC 6962 `0x00`/`0x01` tree over ciphertext chunk hashes): a verifier fails closed on any mismatch, never branches on a boolean "public" flag carried on one shared object. |
 
 ## 21.25 Extension & versioning procedure (normative)
 

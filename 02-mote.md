@@ -115,7 +115,8 @@ accepted on the fast path). See §9 for the grammar, issuer-trust rules, and eac
 
 `0x40 pub_announce` is allocated from the extension range to the DMTAP-PUB extension (§22): a
 public signed announcement, plaintext, openly signed by the publisher identity (no sealed
-sender).
+sender). Unlike the kinds above, a `pub_announce` is a **bare signed object, not a MOTE** — it
+never rides inside an `Envelope`; it is fetched by content address (§22.3).
 
 Kinds `mail` and `chat` differ only in default client rendering and default privacy tier
 (§6): `mail` defaults to the `private` tier, `chat` MAY use the `fast` tier when both
