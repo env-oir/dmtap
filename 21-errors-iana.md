@@ -112,6 +112,8 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x011B` | `ERR_PROFILE_AVATAR_URL_UNSAFE` | `Profile` avatar URL safety check (§3.9.5, §18.4.12) | `avatar.url` is attacker-chosen data whose scheme is not `https`, or which resolves (incl. after any redirect) to a loopback / private (RFC 1918 / RFC 4193 ULA) / link-local (`169.254.0.0/16`, cloud-metadata `169.254.169.254`) / non-global address — a server-side-request-forgery or internal-probe attempt via a display pointer. | No | FAIL_CLOSED_BLOCK — MUST NOT fetch the URL; fall back down the §3.9.5 ladder (key-derived identicon, then initials) |
 | `0x011C` | `ERR_ALIAS_FORWARD_UNVERIFIED` | Self-asserted-name forward-binding check (§3.9.4, §3.11.3) | A name in the identity's own `Identity.names` (a self-asserted alias) whose forward `name → ik` binding (DNS + KT, §3.3–3.5) does not resolve back to this same identity key — an alias claiming an address the key does not control. The self-asserted-name analogue of the org-directory forward-verify (`0x0114`), applied to the identity's own list. | No | FAIL_CLOSED_BLOCK — render the alias **unverified**; MUST NOT display it as authenticated nor use it to address mail |
 | `0x011D` | `ERR_ALIAS_REVOKED` | Revoked-alias use check (§3.9.4, §3.11.3, §3.11.5) | An alias used to address the identity has been **revoked** (dropped in a newer signed `Identity` version and its `name → ik` DNS + KT binding retired), while the key and the identity's other aliases remain valid. Independently-revocable aliases: revoking one MUST NOT be usable off a stale cache. | No (this alias) | REJECT_NOTIFY — tell the sender to use a live alias or the key-name (§3.9.1); the key and other aliases are unaffected |
+| `0x011E` | `ERR_NAMECHAIN_BINDING_UNVERIFIED` | Name-chain bidirectional binding check (§3.12.5(b)) | A crypto name-chain (`.eth`/`.sol`, resolver-type `name-chain`, §21.18) resolution whose two binding directions **disagree**: the on-chain `name → ik` record names a key that does not claim the name in its signed `Identity.names`, or a claimed name whose chain record resolves to a different key. The chain is a discovery pointer KT audits (§3.3–3.5), never a trust root. | No | FAIL_CLOSED_BLOCK — render the name **unverified**; MUST NOT display it as authenticated nor use it to address mail |
+| `0x011F` | `ERR_RESOLVER_TYPE_UNSUPPORTED` | Resolver-type recognition (§3.12.2) | A name in a resolver type (§21.18) the verifier does not implement, or that is unregistered — the "unknown ⇒ reject, never guess" discipline (as for an unknown suite §1.1 or transport substrate §4.1). The name is unresolvable; the identity is unaffected (its other resolvers and the key-name §3.9.6 still resolve it). | No | FAIL_CLOSED_BLOCK — treat the name as unresolvable; MUST NOT guess a binding |
 
 ## 21.4 Delivery & Validation — the MOTE object (`0x02xx`)
 
@@ -395,7 +397,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 129 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 131 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -554,13 +556,13 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 129 (`0x0101`–`0x011D`: 29, incl. the KT-v1 detection codes
+- **Error/status codes defined:** 131 (`0x0101`–`0x011F`: 31, incl. the KT-v1 detection codes
   `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
   device-attestation and `0x0118` attestation-expired (§1.2a), `0x0117` KT leaf-hash mismatch
   (§3.5, §18.4.9), the `Profile` display-data codes `0x0119` (signature invalid), `0x011A`
   (avatar content-address mismatch) and `0x011B` (avatar URL unsafe / SSRF guard) (§3.9.5,
   §18.4.12), and the alias codes `0x011C` (self-asserted alias fails forward-verify) and `0x011D`
-  (independently-revocable alias revoked) (§3.9.4, §3.11); `0x0201`–`0x0210`: 16, incl. `0x020F` suite-downgrade and `0x0210`
+  (independently-revocable alias revoked) (§3.9.4, §3.11), and the resolver codes `0x011E` (name-chain binding unverified) and `0x011F` (resolver-type unsupported) (§3.12); `0x0201`–`0x0210`: 16, incl. `0x020F` suite-downgrade and `0x0210`
   hybrid-suite-incomplete (intra-suite PQ-strip defense, §1.3);
   `0x0301`–`0x0316`: 22, incl. `0x030A` capability-announce
   rollback (§10.2), the mixnet codes `0x030B`–`0x0311` — directory/descriptor/path (`0x030B`–`0x030D`),

@@ -5,6 +5,17 @@ Identity is the foundation everything else hangs off. The governing principle:
 > **Your key is your identity. Your domain, your IP, and your provider are all replaceable
 > pointers to it.**
 
+**The `identity ≠ name` invariant (normative).** An identity **IS** the key — the root
+identity key `IK` (§1.2), plus its derived, zero-authority **key-name** (§3.9.6). A **name** is
+only a resolver-provided, replaceable **label** that *points at* that key (§3.12). **No
+conformant implementation may treat a name as the identity**, and none may authenticate,
+route to, or grant on a name without resolving it to a key and verifying that binding against
+key transparency (§3.5). This is what makes names — DNS domains, provider handles, crypto
+name-chains, petnames — **swappable forever**, and what makes a change of domain, provider,
+name, or naming system a **non-event**: the key is unchanged, so existing correspondents follow
+by the pinned key and a signed `MoveRecord` (§1.6), never by the abandoned label. The rest of
+this section, and all of §3, is written to hold this invariant.
+
 This section defines keys, the key hierarchy, the recovery policy (and how recovery
 methods are themselves rotated), key rotation, and name/identity migration. All of these
 are **signed, versioned objects** published to the key-transparency log (§3), so every

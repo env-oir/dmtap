@@ -18,6 +18,15 @@ tamper-evident, and how it degrades safely.
   pinned key via the mesh (§4); DNS is not consulted again unless the signed identity chain says
   to. A later DNS/registrar compromise cannot redirect an existing relationship.
 
+**The `identity ≠ name` invariant, restated for naming (normative).** An identity is the key
+(§1.2), plus its derived key-name (§3.9.6); a `name@domain` — or any other name — is only a
+**resolver-provided, replaceable pointer** to it. **No conformant implementation may treat a
+name as the identity.** DNS is *one* way to discover the pointer, never the identity and never
+the proof; §3.12 generalizes this to a **pluggable set of resolvers** of which DNS is only the
+default. Because the key is the identity, native **delivery and verification require zero DNS
+and zero name-chain** (§3.13): a name is an optional discovery convenience layered *over* an
+identity that already exists and is already reachable by key.
+
 **Stable anchor, rotatable keys (the real future-proofing).** The human name binds to a
 **stable identity anchor — the root identity key `IK` (§1.2)** — *not* to a rotatable
 operational key. Day-to-day signing/device keys rotate *under* the identity without changing the
@@ -372,8 +381,12 @@ federation — global, and it pays for that with an authority (DNS/registrar). B
 **neutralizes** that authority by keeping the key the sole trust root, KT-auditing the binding
 (§3.5), and pinning on first use (§3.4): the authority can help you *discover* a key, it can
 never *forge* one undetected. The alternative corner (a flat authority-free name derived from
-the key) is not offered as an address — it is unwieldy, and it would name people by a rotatable
-artifact rather than the stable identity.
+the key — the **key-name**, §3.9.6) *is* offered, but as the **zero-authority floor**, not as
+the headline: it is unwieldy (an 8-word string) and, being derived from `IK`, it changes on the
+rare `IK` rotation — so it is the coin-free, DNS-free fallback that no authority can take away,
+never the everyday address. The two coexist: `name@domain` is the recommended human address;
+the key-name is the floor beneath it that guarantees you are reachable even with no domain, no
+chain, and no provider (§3.13 naming ladder).
 
 ### 3.9.1 `name@domain` — the primary human address
 
@@ -480,7 +493,7 @@ to the same key — and support subaddressing:
   key** (a client SHOULD coalesce them, and pinning is per-key, §3.4). A binding an owner has
   **revoked** — present in a stale cache but retired in the current signed `Identity` / KT — MUST
   NOT be used to address the identity (`ERR_ALIAS_REVOKED`, `0x011D`, REJECT_NOTIFY); the sender is
-  told to use a live alias or the key-name (§3.9.1), and the identity's *other* aliases are
+  told to use a live alias or the key-name (§3.9.6), and the identity's *other* aliases are
   unaffected.
 
 ### 3.9.5 `Profile` — human display data (self-asserted, signed)
@@ -555,7 +568,7 @@ in order:
 1. **Owner-set avatar** — `avatar.url`, displayed **only if** it verifies against `avatar.hash`
    when that hash is present (above); if the hash is absent, displayed best-effort.
 2. **Key-derived identicon** — a deterministic identicon rendered from the identity's public key
-   (e.g. over the §3.9.1 key-name / `BLAKE3-256(ik)` bytes), so every identity always has a
+   (e.g. over the §3.9.6 key-name / `BLAKE3-256(ik)` bytes), so every identity always has a
    stable, unspoofable default that needs no hosting and no third party.
 3. **Initials** — from `display_name` (or the name the user addresses), as a final text fallback.
 
@@ -568,6 +581,42 @@ the key, so it carries none of the tamper-evidence of a `Profile` avatar. The ke
 identicon (step 2) is the correct zero-authority default; an email-hash service is only a
 convenience for interop with an existing legacy identity and ranks **below** a signed `Profile`
 avatar, never above it.
+
+### 3.9.6 Key-name — the derived, zero-authority floor (resolver-type `self`)
+
+The **key-name** is the one name that needs **no resolver, no DNS, no name-chain, no registration,
+and no `@`**: it is a **deterministic function of the identity key itself**, so anyone who holds
+your key already holds your key-name, and no authority can allocate, deny, seize, or repoint it.
+It is the **floor of the naming ladder** (§3.13) and the zero-authority escape hatch referenced
+throughout (§3.9.4, §3.11.5): whatever else fails, you remain nameable and reachable by key-name.
+
+- **Derivation (normative).** The key-name is a word encoding of `BLAKE3-256(ik)` — the identity's
+  root key `IK` (§1.2) — rendered as an **8-word** sequence (80 bits) over the same curated,
+  language-agnostic **~1024-word list** and **folded checksum** used for safety-number word
+  rendering (§3.4.1), so a single mistyped word **fails closed** rather than resolving to a
+  different key. A **12-word** (128-bit) form is defined for the adversary-proof mode (§16.2).
+  Distinct keys yield distinct key-names with overwhelming probability (collision-resistant hash),
+  which is what makes the key-name **globally unique without any consensus or registry** — the one
+  Zooko corner (global + authority-free) a derived name can occupy, at the cost of not being
+  human-*chosen* (§3.9, §15.5 Zooko's Triangle).
+- **It is `self`-resolving (no lookup).** In the resolver framework (§3.12) the key-name is
+  resolver-type **`self`**: "resolution" is a local derivation from the key, not a discovery step,
+  so there is nothing to KT-audit (the binding *is* the key). It has **no `@`** and no namespace,
+  because it belongs to no authority's namespace (§3.13).
+- **Not a safety number.** The key-name (an addressing/identifier floor) and the safety number
+  (§3.4.1, an out-of-band *verification* fingerprint over the whole multi-suite `Identity`) are
+  **distinct**: the key-name may be typed at to reach someone; the safety number never routes and
+  only confirms a pin. Both are word-rendered for human comparison, but they serve different roles.
+- **Honest residual (disclosed).** The key-name is derived from `IK`, so it **changes if `IK`
+  rotates** (§1.5) — the rare migration event, not the common case (device/operational keys rotate
+  *under* `IK` without changing it, §3, and a `name@domain` is unaffected by `IK` rotation because
+  it binds to the stable anchor via the signed chain). When `IK` does rotate, existing
+  correspondents follow by the **pinned key** and the signed `KeyRotation`/`MoveRecord` chain
+  (§1.5–1.6), exactly as for any other name; only a *new* contact who knows only the old key-name
+  is affected. This is the honest price of a coin-free global-unique name — disclosed, not implied
+  away (§6.6). For a chosen, un-loseable human name a user layers a `name@domain` (§3.9.1) or an
+  optional self-sovereign name-chain (§3.6, §3.12) *over* the key-name; none of them replaces it as
+  the floor.
 
 ## 3.10 Organization & domain administration
 
@@ -701,7 +750,7 @@ only org-managed accounts depend on the org to move them.
 model** that sits on top of them plainly, because "who gives you a `name@domain`, and what happens
 if they stop" is the everyday question. The invariant throughout: **the KEY is the identity; a
 `name@domain` is a replaceable, KT-tamper-evident pointer to it (§3.9.1); the 8-word key-name
-(§3.9.1) is the zero-authority fallback that no provider can take away.**
+(§3.9.6) is the zero-authority fallback that no provider can take away.**
 
 ### 3.11.1 Two distinct roles (state it explicitly)
 
@@ -760,7 +809,182 @@ forms are reserved for **§7 legacy bridging** (the gateway-alias `localpart.nat
 A **provider-issued NAME's availability depends on that provider**: if it disappears or de-allocates
 the name, that *pointer* stops resolving. But the **KEY is unaffected**, every **other alias** on the
 key keeps working, and the name is **re-pointable** — you rebind it (or a new one) elsewhere and
-your pinned correspondents follow you by key (§1.6, §3.4). The **8-word key-name (§3.9.1) is the
+your pinned correspondents follow you by key (§1.6, §3.4). The **8-word key-name (§3.9.6) is the
 zero-authority escape hatch** that no provider gates. So the tiers trade convenience for
 provider-dependence **on the name only** — never on the identity, and never irreversibly. This is
 disclosed, not implied away (§6.6).
+
+## 3.12 Identity resolvers — a pluggable resolution framework (normative)
+
+Everything above (DNS, self-sovereign backends, `@handle`, petnames, the key-name) is one
+mechanism seen from several angles. This section states that mechanism **once, generically**, so
+that **any present or future naming system plugs in without changing DMTAP identity, delivery, or
+verification.** The framework is deliberately open-ended: DMTAP does **not** pick a winning naming
+system: it picks an *invariant* (the key is the identity, §1.2, §3, `identity ≠ name`) and lets
+naming systems compete *below* it.
+
+### 3.12.1 Resolution is two steps, always
+
+For **every** resolver type, resolving a name is exactly two steps:
+
+1. **Discover** a `name → identity` pointer via a **resolver** — a mechanism that, given a name,
+   returns a candidate identity key (`ik` / `Identity` content-address). Discovery is **never
+   proof** (§3.1): a resolver can *point*, it cannot *attest*.
+2. **Verify** that pointer against **key transparency** (§3.5) and pin it (§3.4) — the same KT
+   machinery for all resolver types. KT is what makes the binding tamper-evident, so a lying
+   resolver (a rogue registrar, a captured directory, a manipulated chain record) is **detected**,
+   not obeyed. `self` (the key-name, §3.9.6) is the one type where step 1 is a local derivation
+   and step 2 is vacuous — the binding *is* the key.
+
+§3.3's `resolve(name)` is the concrete instantiation of these two steps for the DNS resolver; the
+generic contract is identical for every other type. **A resolver type never introduces its own
+trust root** — authenticity is always the key, verified through KT.
+
+### 3.12.2 The resolver-type registry, and why it is open (normative)
+
+Resolver types are enumerated in the **DMTAP Identity Resolver Types registry** (§21.18),
+allocation policy **Specification Required**. Each registration MUST state four things and nothing
+that touches identity:
+
+- **(i) identifier** — the resolver-type tag (e.g. `self`, `petname`, `dns`, `name-chain`,
+  `directory`);
+- **(ii) name syntax** — how a name in this type is written (whether it carries an `@namespace`,
+  §3.13, and what the namespace is);
+- **(iii) discovery** — how step 1 obtains the `name → ik` pointer;
+- **(iv) KT anchoring** — how the binding is anchored in and verified against key transparency
+  (§3.5), or, for a derivational type, why verification is vacuous.
+
+**Extensibility (normative, load-bearing).** The resolver set is **open and extensible**: a new
+naming system is added **solely by registering a new resolver type** — **nothing else in DMTAP
+changes.** Identity (§1), delivery (§2, §4), and verification (§3.4–§3.5) are defined over **keys**,
+never over any resolver, so **if a better naming system than DNS or a name-chain emerges, it is
+added as a new resolver type and every existing identity, message, pin, and proof keeps working
+unmodified.** A conformant implementation MUST treat the resolver set as extensible: it MUST NOT
+hard-wire naming assumptions into identity or delivery, MUST accept that a name it cannot resolve
+(a resolver type it does not implement) is simply *undiscovered by this node*, not invalid, and
+MUST NOT **guess** a binding for an unrecognized resolver type — a name in an unimplemented or
+unregistered resolver type is treated as unresolvable and **fails closed**
+(`ERR_RESOLVER_TYPE_UNSUPPORTED`, `0x011F`; the same "unknown ⇒ reject, never guess" discipline as
+an unknown suite §1.1 or unimplemented transport substrate §4.1/§21.24), while the identity remains
+fully reachable via any resolver type — and always via the key-name floor (§3.9.6) — that the node
+*does* implement.
+
+### 3.12.3 Multi-resolver discovery — resolvers cross-check each other (normative)
+
+Because **KT anchors every binding to the same key**, resolvers are not merely alternatives — they
+are **mutual auditors**. A client MAY query several resolvers for one name **in parallel** (e.g. a
+`name@domain`'s DNS pointer *and* a name-chain record the owner also publishes for the same name).
+Since a genuine identity has exactly one key, **independent resolvers MUST agree on the resolved
+`ik`.** Disagreement — two resolvers returning **different keys** for the same name — is **surfaced
+as a potential attack**, never silently reconciled to one: the client MUST NOT pin, MUST raise a
+security alert, and MUST fall back to KT-quorum (§3.5.2(b)) or out-of-band verification (§3.4.1) to
+decide the true key (`ERR_RESOLVER_DISAGREEMENT`, `0x011E`, HALT_ALERT). This strengthens the
+anti-equivocation posture of §3.5: an attacker must now corrupt **every** resolver *and* the KT
+quorum consistently, not just one registrar or one chain.
+
+### 3.12.4 The resolver types defined today
+
+| Type | `@`? | Discovery (step 1) | KT anchoring (step 2) | Where specified |
+|------|:----:|--------------------|-----------------------|-----------------|
+| **`self`** (key-name) | no | **derive** `BLAKE3-256(ik)` → 8-word name; no lookup, no authority | vacuous — the binding *is* the key | §3.9.6 |
+| **`petname`** | no | **local** label a user assigns after contact exchange/introduction; no global lookup | vacuous — bound to an already-pinned key | §3.9.3 |
+| **`dns`** (DNS + KT) | yes (`local@domain`) | `_dmtap` TXT/SVCB record (§3.2), a **discovery pointer, not a trust root** | forward `name → ik` verified in KT (§3.3, §3.5) | §3.2, §3.5, §3.11 |
+| **`name-chain`** (crypto, OPTIONAL) | yes (`local@.eth`/`.sol`) | read the chain's on-chain `name → ik` record (read-only) | bidirectional key↔name binding, KT-audited (below) | §3.6, §3.12.5 |
+| **`directory`** (`@handle`, opt-in) | the `@` is the marker | a thin, KT-audited global handle registry (§3.9.2) | `handle → ik` in a KT log (§3.5) | §3.9.2 |
+
+`dns` is the **default and recommended** resolver (it gives human-meaningful, federated, legacy-
+interoperable `name@domain` without a chain, §3.9.1); a **provider** that runs `_dmtap` DNS + KT for
+its domain and allocates `alice@provider.com` (free random / paid vanity, §3.11 tiers) is simply
+**a provider operating the `dns` resolver for its own domain** — not a new namespace protocol, just
+the provider-tier machinery of §3.10–§3.11. `self` and `petname` are the two **zero-authority**
+types (no `@`, no lookup, no registration); they are always available and are the reason identity
+and delivery need no naming system at all (§3.13).
+
+### 3.12.5 The `name-chain` resolver type — OPTIONAL, with four guardrails (normative)
+
+A crypto **name-chain** is offered for the **one** thing DNS and key-names cannot give: a **bare,
+globally-unique, human-*chosen* username**. Two name-chains are registered and supported today —
+**ENS `.eth`** (Ethereum; free/instant gasless *off-chain subnames* via CCIP-Read/ENSIP-10, or a
+full on-chain name for self-owned trustlessness) and **SNS `.sol`** (Solana Name Service; cheap and
+fast). Further chains are added purely by registration in §21.18 — the protocol hard-wires none. Global uniqueness of a chosen string requires consensus (Zooko's Triangle,
+§3.9, §15.5), and a name-chain is the consensus mechanism. It is admitted **only** as one resolver
+type among several, bound by four normative guardrails:
+
+- **(a) Optional, never required.** A name-chain is **one resolver among several**, never a
+  dependency of DMTAP. Identity, delivery, and verification work fully with **no** chain (§3.13);
+  nothing in the protocol *requires* a chain, and a deployment that admits none is fully conformant.
+- **(b) Identity is still the key — bidirectionally bound.** A chain name is a **label pointing at
+  the DMTAP key**, not the identity. The binding MUST be **bidirectional**: the **key claims the
+  name** (the name appears in the owner's self-asserted `Identity.names` and forward-verifies,
+  §3.9.4), **and** the **chain record points at the key** (the on-chain `name → ik` record resolves
+  to the same `IK`). A name-chain resolution where these two directions disagree — a chain record
+  naming a key that does not claim the name, or a claimed name whose chain record names a different
+  key — MUST fail closed (`ERR_NAMECHAIN_BINDING_UNVERIFIED`, `0x011E`), and the name MUST be
+  rendered unverified and MUST NOT be used to address mail. The chain, like DNS, is a
+  **discovery pointer that KT audits**, never a trust root.
+- **(c) Resolving is free and read-only.** Looking someone up by their chain name, and messaging
+  them, requires **no wallet, no token, and no transaction** — resolution reads a public record.
+  **Only the registrant pays, once,** to *claim* the name. A recipient never needs on-chain assets
+  to be reachable at their chain name.
+- **(d) DMTAP has no token of its own.** DMTAP **resolves** names from **existing** chains exactly
+  as it resolves DNS; it does **not** define, mint, require, or endorse any coin or token, and a
+  name-chain resolver MUST NOT introduce a DMTAP-level payment path. Multiple chains are supported
+  **through the resolver-type registry** (§21.18) — DMTAP does **not** hard-wire a single chain.
+
+**Honest residuals (disclosed, §6.6).** Registering a chain name **costs money and needs a wallet**;
+on-chain `name → ik` bindings are **public and typically permanent**; and you **inherit that chain's
+decentralization, governance, and fee risk** (congestion, fee spikes, a captured registrar
+contract, chain deprecation). These are real costs, which is exactly why the name-chain is the
+**optional** path and the **coin-free floor is key-names (§3.9.6) + DNS-provider names (§3.11)**. If
+a chain degrades or disappears, the identity is unaffected and **every other resolver — key-name,
+DNS, another chain — still resolves it** (§3.12.3); the name-chain is additive, never load-bearing.
+
+## 3.13 Operation without DNS — the naming ladder & the `@` marker (normative)
+
+This section states plainly what the framework buys: **DMTAP identity, delivery, and verification
+require zero DNS and zero name-chain.** Names are optional discovery conveniences layered over an
+identity that already exists and is already reachable by key.
+
+### 3.13.1 `@` is a namespace marker, not a delivery requirement
+
+**Native delivery is always to a key** (§2, §4): the mesh routes by the pinned identity key, and a
+MOTE is addressed to a key, never to a string. The `@` sign is therefore a **namespace marker**,
+not a routing requirement — it appears **only** for a **namespaced name** `local@namespace`, where
+`namespace` is any resolver type that *has* a namespace: a **DNS domain** (`alice@provider.com`), or
+a **crypto name-chain** (`alice@.eth`, `bob@.sol`, `carol@.hns`), or the opt-in handle registry
+(`@handle`). Addressing by **key-name** (self-contained, resolver-type `self`, §3.9.6) or by
+**petname** (local, resolver-type `petname`, §3.9.3) carries **no `@`**, because neither belongs to
+any authority's namespace. Seeing an `@` tells you *which resolver namespace* to look in; its
+absence tells you the name is self-contained (key-name) or local (petname) and needs no lookup at
+all.
+
+### 3.13.2 The naming ladder
+
+The name forms are a **ladder from zero-authority floor to human convenience**, not a set of
+equals — every rung resolves to the **same key**:
+
+1. **Key-name** (floor — `self`, §3.9.6): derived from `IK`, **no DNS, no chain, no registration,
+   no `@`.** Always available; the guarantee that you are nameable and reachable with nothing but a
+   keypair.
+2. **Petname** (local — `petname`, §3.9.3): a human label you assign to a pinned contact, **no
+   `@`, no global lookup**; never leaves your device cluster.
+3. **`name@namespace`** (convenience — `dns` or `name-chain`, §3.9.1, §3.12.5): a human-meaningful,
+   discoverable, optionally legacy-interoperable address. This is the **recommended everyday**
+   form, and the only rung that involves an authority (a DNS provider or a chain) — neutralized by
+   KT + pinning.
+
+Climbing the ladder adds **discoverability and human-friendliness**; it never adds anything to
+**identity, delivery, or verification**, which are complete at rung 1. A user with no domain, no
+chain, and no provider is a full first-class DMTAP identity.
+
+### 3.13.3 Name changes are non-events (continuity)
+
+Because every rung points at the same key, **changing the name — a new domain, a new provider, a
+new vanity handle, a switched or dropped name-chain, even a rotated `IK` (§1.5) that changes the
+key-name — is a change of *label*, not of identity** (§1.6). Existing correspondents route by the
+**pinned key** and follow a signed `MoveRecord` (§1.6, §3.4); they cannot be redirected by a forged
+move (§1.6) and are unaffected by which resolver the owner uses this week. Only a *new* contact who
+knows solely an abandoned label is affected — the same, unavoidable tradeoff as giving up any name,
+with **identity and all existing relationships preserved.** This continuity is precisely what the
+`identity ≠ name` invariant (§1, §3) and the pluggable resolver framework (§3.12) exist to
+guarantee.
