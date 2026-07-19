@@ -405,7 +405,7 @@ Snapshot = {
   2 => suite,
   3 => tstr,             ; ns          the namespace this snapshot covers
   4 => VersionVector,    ; covers      the exact set of ops folded into `root` (per-author max HLC)
-  5 => hash,             ; root        DS-tagged hash of the canonical observable state (§6.2)
+  5 => hash,             ; root        DS-tagged hash of the canonical observable state (§6.1.1)
   6 => ts,
   7 => ik-pub,           ; signer      author key; DeviceCert chains to an admitted IK (§9)
   8 => sig-val,          ; signer over det_cbor(Snapshot ∖ {8}), DS-tag DMTAP-SYNC-v0/snapshot
@@ -414,11 +414,14 @@ Snapshot = {
 
 - **`root` is a deterministic function of observable state.** The producer serializes the *observable*
   state of the namespace — present OR-Set members, sorted LWW cells, PN-counter totals per object,
-  live RGA sequences, the acyclic tree — as canonical deterministic CBOR and hashes it with the DS-tag
-  `DMTAP-SYNC-v0/snapshot ‖ 0x00`. This is exactly the §5.6 `ClusterState::snapshot()` canonical form,
-  generalized across all six CRDT types. Two replicas at the same `covers` vector **MUST** compute the
-  same `root`; a mismatch is `ERR_SYNC_SNAPSHOT_ROOT_MISMATCH` (`0x0A09`) and is evidence of divergence
-  (HALT_ALERT).
+  live RGA sequences, the acyclic tree — as the canonical deterministic CBOR of **§6.1.1** and hashes it
+  with the DS-tag `DMTAP-SYNC-v0/snapshot-state ‖ 0x00`: `root = 0x1e ‖ BLAKE3-256("DMTAP-SYNC-v0/`
+  `snapshot-state" ‖ 0x00 ‖ det_cbor(ObservableState))` (a §18.1.5 v0 `hash`). This generalizes the §5.6
+  `ClusterState::snapshot()` canonical form across all six CRDT types. The **snapshot signature** (key
+  `8`) uses the distinct DS-tag `DMTAP-SYNC-v0/snapshot` over `det_cbor(Snapshot ∖ {8})` (§18.1.6) — two
+  DS-tags, one for the state-root hash preimage and one for the signature preimage, so the two can never
+  be confused. Two replicas at the same `covers` vector **MUST** compute the same `root`; a mismatch is
+  `ERR_SYNC_SNAPSHOT_ROOT_MISMATCH` (`0x0A09`) and is evidence of divergence (HALT_ALERT).
 - **Fast join (the point).** A joining replica fetches a `Snapshot`, adopts its observable state, sets its
   local vector to `covers`, and then pulls **only the ops after `covers`** (§5.2) — it never replays the
   pre-snapshot history. Because `root` is recomputable, a replica that later backfills the pre-snapshot
@@ -432,6 +435,53 @@ Snapshot = {
   independently signed and verified, so divergence surfaces at the next snapshot boundary). The policy
   MUST be explicit; silently trusting an unverifiable snapshot is prohibited (fail-closed governance,
   §10.7).
+
+### 6.1.1 Canonical observable-state schema (normative, frozen — `SYNC-SNAP-01`/`SYNC-SNAP-02`)
+
+`ObservableState` is the single deterministic-CBOR value a replica hashes to produce `Snapshot.root`. It
+is a **fixed six-element array**, one section per CRDT type in **`kind`-ascending order**, generalizing
+the §5.6 three-array `ClusterState::snapshot()` form (which covered only OR-Set/LWW/death) to all six
+types. Positional sections — not a keyed map — are used deliberately, matching the §5.6 reference and
+removing any map-key-scheme choice as a source of divergence.
+
+```cddl
+ObservableState = [
+  orset,   ; §4.3 present OR-Set members
+  lww,     ; §4.4 LWW register cells
+  pn,      ; §4.6 PN-counter totals
+  death,   ; §4.5 death-certificate deleted objects
+  rga,     ; §4.7 live RGA sequences
+  tree,    ; §4.8 movable-tree parent edges
+]
+
+orset = [ * [ target: tstr, element: cv ] ]              ; one entry per PRESENT (target, element);
+                                                          ; sorted ASCENDING by det_cbor of the [target,element] pair
+lww   = [ * [ target: tstr, field: tstr, value: cv ] ]   ; winning cell per (target,field);
+                                                          ; sorted ASCENDING by det_cbor of the triple
+pn    = [ * [ target: tstr, field: tstr, total: int ] ]  ; total = Σ_a P[a] − Σ_a N[a] (a signed integer);
+                                                          ; sorted ASCENDING by det_cbor of the triple
+death = [ * [ target: tstr, class: tstr ] ]              ; one entry per DELETED object (Live contributes nothing);
+                                                          ; class ∈ {redact,expires,sensitive}; sorted by det_cbor
+rga   = [ * [ target: tstr, atoms: [ * cv ] ] ]          ; per RGA target, the live (non-tombstoned) atom values
+                                                          ; in SEQUENCE order (the §4.7 pre-order walk, NOT re-sorted);
+                                                          ; outer array sorted ASCENDING by det_cbor(target)
+tree  = [ * [ node: tstr, parent: tstr, ord: tstr ] ]    ; each non-root node's winning (parent, ordering_key) after
+                                                          ; the §4.8 acyclic replay; sorted ASCENDING by det_cbor of the triple
+```
+
+- **Empty sections are the empty array `[]`**, present in position; a section is never omitted, so the
+  array is always length 6.
+- **Sort keys are byte comparisons of the deterministic-CBOR encoding** of each entry (or, for `rga`, of
+  `det_cbor(target)`), so ordering is implementation-independent — the same rule §5.6 already uses
+  (`cells.sort_by(|a,b| cbor(a).cmp(&cbor(b)))`).
+- **Only *observable* state appears.** OR-Set add-tags/tombstones, PN-counter per-author `P`/`N` maps,
+  RGA element ids and tombstones, `Live` death cells, and superseded LWW cells are all internal — two
+  replicas that converge on the *observable* projection produce byte-identical `ObservableState`, hence a
+  byte-identical `root`, regardless of internal bookkeeping or apply order. This is the strong-eventual-
+  consistency equality the fast-join guarantee (`SYNC-SNAP-02`) rests on: adopting a snapshot + applying
+  post-`covers` ops yields the same `ObservableState` bytes as a full replay.
+- **Movable-tree root sentinel.** The reserved tree-root node id is the **empty string `""`**; it never
+  appears as a `node` entry (the root has no parent edge), only as the `parent` value of a top-level node.
 
 ### 6.2 Compaction via stability cut (grounded in §5.6)
 
@@ -551,8 +601,8 @@ actually made yet.
 | `SYNC-RGA-01` | Concurrent insert order | two `seq-insert` same origin, ids h1<h2 | order = [h2, h1] (newer-first), identical on both replicas | **Frozen** — `sync_rga_concurrent_sibling_order` |
 | `SYNC-RGA-02` | Insert after tombstone | `seq-remove(x)` then concurrent `seq-insert` with `ref=x` | insert resolves; sequence well-defined | **Frozen** — `sync_rga_insert_after_tombstone` |
 | `SYNC-TREE-01` | Concurrent-move cycle | `move(A→B)` at `h1` and `move(B→A)` at `h2`, `h1<h2`, HLC-ordered replay | **earlier**-HLC move (`h1`, A under B) applied, **later** (`h2`, B under A) skipped; tree acyclic; identical on both | **Frozen** — `sync_tree_concurrent_move_cycle`. The contradiction is **resolved in §4.8**: replaying oldest-first, `h1` applies first (A becomes a child of B) and `h2` then *would* close the cycle B→A→B, so the **later** move is the one skipped. The stub's prior expected text ("later-HLC move applied, earlier skipped") was the **erroneous side** and is corrected here; §4.8's ordered-replay algorithm was correct and now states the outcome explicitly. This is Kleppmann's result and is **not** LWW for the colliding pair (LWW governs only repeated moves of the *same* node) |
-| `SYNC-SNAP-01` | Snapshot root determinism | two replicas at the same `covers` vector | identical `root`; mismatch ⇒ `0x0A09` | **NOT-FROZEN** — §6.1 names *what* is serialized (present OR-Set members, sorted LWW cells, PN-counter totals, live RGA sequences, the acyclic tree) but not the exact canonical CBOR *schema* (map shape, key scheme) for a mixed-type "observable state" — that schema is a design choice this document has not yet made |
-| `SYNC-SNAP-02` | Fast-join equals replay | join via snapshot+post-ops vs full replay | byte-identical observable state | **NOT-FROZEN** — depends on the same unresolved "observable state" schema as `SYNC-SNAP-01` |
+| `SYNC-SNAP-01` | Snapshot root determinism | two replicas at the same `covers` vector | identical `root`; mismatch ⇒ `0x0A09` | **Frozen** — `sync_snapshot_root_determinism`. §6.1.1 now pins the canonical `ObservableState`: a fixed six-element positional array (one section per CRDT kind, `orset`/`lww`/`pn`/`death`/`rga`/`tree`), each a section sorted by `det_cbor` of its entries (RGA inner order is sequence order, not re-sorted), and `root = 0x1e ‖ BLAKE3-256("DMTAP-SYNC-v0/snapshot-state" ‖ 0x00 ‖ det_cbor(ObservableState))`. Two replicas at the same `covers` compute identical `root`; mismatch ⇒ `0x0A09` |
+| `SYNC-SNAP-02` | Fast-join equals replay | join via snapshot+post-ops vs full replay | byte-identical observable state | **Frozen** — `sync_snapshot_fast_join_equals_replay`. Same §6.1.1 schema: snapshot-adopt + post-`covers` ops yields byte-identical `ObservableState` (hence identical `root`) to a full replay, because only the observable projection is serialized |
 | `SYNC-RECON-01` | Range-Merkle finds diff | two replicas differing in 1 op, range-fingerprint round | exactly the 1 differing op surfaced; equal ranges exchange no ops | **NOT-FROZEN** — §5.3 specifies `fp` as "a **folded** BLAKE3 hash of the ordered op content-addresses" without fixing the fold function (sequential chaining vs. a Merkle-style fold vs. another combiner all satisfy the prose); picking one would be inventing, not reading, the algorithm |
 | `SYNC-NS-01` | Sparse scoping | caller subscribes `{x}`, responder holds `{x,y}` | only `ns=x` ops shipped | **Frozen** — `sync_ns_sparse_scoping` |
 | `SYNC-NS-02` | Cross-namespace ref rejected | RGA `ref` naming a target in another `ns` | reject `0x0A0A` | **Frozen** — `sync_ns_cross_namespace_ref_rejected` |
