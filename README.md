@@ -90,7 +90,7 @@ Start at [`substrate/README.md`](substrate/README.md) for the waist model, the a
 MAY adopt any subset; if it implements a capability's function it MUST speak that capability's spec*), and
 the two litmus tests that keep the waist honest — the **flowstock test** (sync inventory by reading only
 the waist docs) and the **HTTP test** (transports pluggable, HTTPS first-class). The substrate directory is
-**additive**: it re-presents parts of §1–§23 as a standalone waist and cross-references them; it renumbers
+**additive**: it re-presents parts of §1–§24 as a standalone waist and cross-references them; it renumbers
 and changes nothing in the numbered sections, which remain the normative source of truth.
 
 ## How a message moves
@@ -230,12 +230,13 @@ reference code. Where the reference and the spec disagree, **the spec wins**. By
 | 21 | [`21-errors-iana.md`](21-errors-iana.md) | **Appendix D** — Error/status registry + IANA registries + extension/versioning procedure |
 | 22 | [`22-public-objects.md`](22-public-objects.md) | **DMTAP-PUB** (extension) — public signed announces, plaintext-addressed public blobs, author feeds, trustless serving |
 | 23 | [`23-cad-artifact-profile.md`](23-cad-artifact-profile.md) | **CAD / artifact profile** over DMTAP-PUB — artifact metadata & licensing (SPDX), revisions/forks, assembly Merkle-DAG / BOM |
+| 24 | [`24-video-profile.md`](24-video-profile.md) | **Video / media profile** over DMTAP-PUB (the vidmesh convergence path) — channels=feeds, VideoManifest + signed rendition derivations, comments/reactions/follows, HLS as serving-layer, optional live streaming |
 
 A typeset PDF ([`dmtap.pdf`](dmtap.pdf)) is generated from these files.
 
 **The substrate (the narrow waist).** The [`substrate/`](substrate/) directory re-presents five general
 capabilities as a small, standalone waist that products beyond mail adopt à la carte — see *The narrow
-waist* above. It is **additive**: it profiles and cross-references §1–§23 without renumbering or changing
+waist* above. It is **additive**: it profiles and cross-references §1–§24 without renumbering or changing
 them (the numbered sections govern the normative bytes).
 
 | File | Capability | Contents |
@@ -246,15 +247,15 @@ them (the numbered sections govern the normative bytes).
 | [`substrate/SYNC.md`](substrate/SYNC.md) | ③ Sync | **The one new spec** — signed multi-author CRDT ops, version-vector + range-Merkle reconciliation, signed snapshots, sparse namespace sync |
 | [`substrate/ROLES.md`](substrate/ROLES.md) | ④ Roles + ⑤ Wake | Infrastructure roles as an open key-addressed protocol + content-free wake (RFC 8030/8291/8292) |
 
-**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **157
+**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **172
 numbered cases** (SUITE.md ≡ suite.json). **52 are byte-runnable today** — 46 vectored cases
 backed by known-answer vectors (**68 core vectors** in `vectors/vectors.json` + **15 DMTAP-PUB
-vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **104
+vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **119
 carry an exact construction recipe** and expected §21 error, pending vectors for subsystems not
-yet byte-pinned (mixnet / MLS / gateway / auth and the wave-2/3 families); and 1 is a
-manual-attestation case (46 + 6 + 104 + 1 = 157). Every reject case names one of the **140
-codes** in the §21 registry. So the runnable ratio is **52/157 today**, growing as each subsystem
-gains a fixed-input KAT.
+yet byte-pinned (mixnet / MLS / gateway / auth and the wave-2/3 families, plus the profile-level
+`CAD`/`VIDEO` checklists); and 1 is a manual-attestation case (46 + 6 + 119 + 1 = 172). Every reject
+case names one of the **140 codes** in the §21 registry. So the runnable ratio is **52/172 today**,
+growing as each subsystem gains a fixed-input KAT.
 
 ## Building the PDF
 
