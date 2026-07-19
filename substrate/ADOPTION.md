@@ -1,6 +1,6 @@
 # Adoption status — what each product implements today
 
-> **Status:** informative, descriptive, non-normative. This is a **snapshot** (2026-07-19) of what each
+> **Status:** informative, descriptive, non-normative. This is a **snapshot** (2026-07-20) of what each
 > product's code actually does, read directly from each repository — not a conformance certification and
 > not a roadmap commitment. It fixes no wire bytes and defines nothing; [`IDENTITY.md`](IDENTITY.md),
 > [`FEEDS.md`](FEEDS.md), [`SYNC.md`](SYNC.md), and [`ROLES.md`](ROLES.md) remain the sole normative
@@ -24,11 +24,18 @@ relevant to the product but nothing exists yet.
 | **envoir** (`/Users/pc/code/vulos/envoir`) | to-spec | to-spec | to-spec | partial | not built |
 | **vulos** (`/Users/pc/code/vulos/vulos`) | independent (×2) | independent | independent (×2) | independent | independent** |
 | **vulos-relay** (`/Users/pc/code/vulos/vulos-relay`) | minimal | to-spec | not built | independent | not built |
-| **ofisi** (`/Users/pc/code/vulos/ofisi`) | minimal | n/a | independent | independent | n/a |
+| **ofisi** (`/Users/pc/code/vulos/ofisi`) | minimal | n/a | **partial**† | independent | n/a |
 | **flowstock** (`/Users/pc/code/vulos/flowstock`) | minimal | n/a | independent (partial algebra) | n/a | n/a |
 | **vidmesh** (`/Users/pc/code/vulos/vidmesh`) | independent*** | independent (founder-gated convergence) | n/a | partial | not built |
 | **whatsacc** (`/Users/pc/code/whatsacc`) | minimal | n/a | n/a | n/a | n/a |
 | **kerf-pub** (`/Users/pc/code/exo/kerf/packages/kerf-pub`) | minimal | to-spec | n/a | to-spec (cache/pin only) | independent |
+
+† **The substrate's first real product adoption.** ofisi's **Sheets** grid now runs on the shared
+`dmtap-sync` engine (vendored as `dmtap-sync-wasm`) — the same compiled implementation, not a
+reimplementation — **behind a build-time flag (`VITE_SUBSTRATE_SYNC`), off by default**. Docs and
+Whiteboard remain Yjs *by design*, and Slides is blocked on a substrate gap the adoption itself found.
+See §2 for the accurate breakdown; the adoption is what surfaced [`SYNC.md`](SYNC.md) §14 corrections
+**C-08**, **C-09** and **C-10**.
 
 \** Uses the correct open standard (Web Push/VAPID) but the payload carries a title/body, so it is not the
 content-free wake the spec requires — see §2.
@@ -151,14 +158,54 @@ the substrate's shape without speaking its bytes.
   identity.
 - **Feeds & Blobs — n/a.** No content-addressed public object or publish mechanism exists or is implied by
   what ofisi is (a live collaborative editor).
-- **Sync — independent.** Genuine **Yjs** CRDT (`yjs`, `y-prosemirror`), not custom, not Automerge. Wire is
-  Yjs's own binary update/state-vector format, base64-wrapped in a JSON envelope (`{y:1, u:"..."}`) — no
-  CBOR, no COSE, no HLC total order, no version-vector/Merkle reconciliation (Yjs's own state-vector diff
-  substitutes for it). **What would move it:** per [`BINDINGS.md § 6`](BINDINGS.md#6-migration-path-per-product-optional-per-capability-nothing-forced),
-  full conformance would mean ripping out Yjs's CRDT engine entirely (it is load-bearing through the whole
-  editor stack) — unrealistic as a wholesale migration. The realistic partial move is wrapping Yjs's
-  opaque update bytes inside a COSE-signed `dmtap-sync` envelope (adopting the authenticity layer, not the
-  algebra).
+- **Sync — partial (and the substrate's first real adoption anywhere).** This cell is **per-surface**, and
+  the honest summary is that one of four editors is on-spec behind a flag while the rest are unchanged.
+  - **Sheets — to-spec, flag-gated, OFF by default.** `src/lib/crdt/substrateGrid.js` replaces the
+    hand-rolled LWW map in `grid.js` with the **shared `dmtap-sync` engine**, vendored as
+    `dmtap-sync-wasm` (`third_party/dmtap-sync-wasm/`) — the *same compiled implementation* a Rust server
+    runs, not a JS reimplementation of it. The mapping is [`SYNC.md`](SYNC.md) §4.4 directly: namespace
+    `sheet`, one LWW register per cell at `target = cell:<r>,<c>`, `field = "v"`, resolved by the §3 HLC.
+    Canonical op bytes are the durable artifact; ofisi's existing JSON update-log and fabric frames carry
+    them base64-wrapped as transport only. Convergence is asserted against the engine's own §6.1 **state
+    root**, not against a rendered projection.
+    - Selected by **`VITE_SUBSTRATE_SYNC` at build time**, default **off**; with the flag off not one byte
+      of the substrate loads and `grid.js` behaves exactly as before. The gating is *correct and not
+      timidity*: the two engines are each internally convergent but do not share a total order
+      (`grid.js` compares `(lamport, replicaId)` and ignores wall-clock; the substrate compares a full
+      HLC), so for two concurrent writes to one cell they can pick different winners. Every replica in a
+      deployment must run the same path — which a build-time flag guarantees and a gradual rollout would
+      not. Load failure falls back to `grid.js` rather than leaving a grid that records nothing.
+    - **One real gap, named by the code itself:** ops go in via `ingest_ambient_authenticated`, the §5.6
+      path for ops whose authenticity was established out of band. ofisi's grid ops are unsigned (they
+      ride an authenticated fabric room / the server's update log), so this is the honest mapping rather
+      than a downgrade — and it *is* a hole on a multi-author untrusted transport. Closing it means
+      wiring per-device COSE signing (§4.1); that work is not done.
+  - **Docs and Whiteboard — Yjs, by design, not by inertia.** Genuine **Yjs** (`yjs`, `y-prosemirror`)
+    with its own binary update/state-vector wire, base64-wrapped in `{y:1, u:"..."}` — no CBOR, no COSE,
+    no HLC total order. Rich-text with a live ProseMirror binding is not something [`SYNC.md`](SYNC.md)
+    §4.7's RGA displaces cheaply, and Yjs is load-bearing through the whole editor stack. The realistic
+    move here remains [`BINDINGS.md § 6`](BINDINGS.md#6-migration-path-per-product-optional-per-capability-nothing-forced)'s:
+    wrap Yjs's opaque updates in a COSE-signed envelope, adopting the authenticity layer and not the
+    algebra.
+  - **Slides — blocked, and it is a substrate gap, not an ofisi one.** `src/lib/crdt/__tests__/substrateTree.mapping.test.js`
+    measures the boundary by execution rather than asserting it: the **structural** half maps cleanly onto
+    §4.8 `tree-move` (ofisi's fractional `ordKey`s carried unchanged as the ordering key, reorder = a
+    second move, concurrent moves converging to one identical tree and one identical state root), and
+    slide **deletion** maps correctly onto §4.5's death certificate because a deleted slide is never
+    revived. The **content** half is what blocked: a slide object is nested JSON, and §4.1's value type as
+    written could not express it. That is now [`SYNC.md`](SYNC.md) §14 **C-08** — the section named
+    §18.3.6's `ext-value` but described a strictly narrower type — so the block is being lifted in the
+    specification rather than worked around in the product. The remaining work is then an ordinary port
+    of `tree.js`, which is a rewrite of a working editor's core and deliberately not attempted yet.
+  - **What this adoption gave back.** Three [`SYNC.md`](SYNC.md) §14 corrections came out of it, all of a
+    kind an independent reimplementation would not have found, because they are only visible to something
+    that arrives with *its own data and its own storage shape*: **C-08** (the `ext-value` narrowing above),
+    **C-09** (the snapshot *body* is a compacted **op set**, not `ObservableState` — ofisi built exactly
+    that, one op per key, because the engine exposes no state-import entry point, and asked whether it was
+    a workaround or the design; it is the design, and §6.1.2 now says so), and **C-10** (§4.10's
+    death-certificate-vs-LWW selection guidance — ofisi first mapped "clear cell" onto §4.5, which would
+    have silently swallowed every subsequent edit to a cleared cell, caught it, and then chose §4.5
+    *correctly* for slide deletion in the same investigation).
 - **Roles — independent.** A vendored `@vulos/relay-client` (`FabricClient`) provides signaling, rendezvous,
   WebRTC circuit-fallback relay, and presence — conceptually close to the Roles substrate, but its own
   SDK/protocol, not DMTAP key-addressed announce/resolve.
@@ -301,7 +348,13 @@ retire them" — holds up, with more nuance than the premise implied:
 - **Sync is genuinely fragmented**, and each fragment is a real, working, independently-correct design:
   flowstock's HLC+oplog (the spec's own wire-shape grounding, yet not byte-conformant itself), ofisi's Yjs,
   vulos's fabric LWW/OR-set (LAN-only, one table) and its separate Yjs-based collab path. No two of these
-  four can talk to each other today. This is exactly the gap [`BINDINGS.md`](BINDINGS.md) is written to
+  four can talk to each other today. **The first fragment has now actually been retired** rather than
+  planned away: ofisi's hand-rolled Sheets grid CRDT — the fifth such engine — runs on the shared
+  `dmtap-sync` core behind a flag, which is the premise's first real evidence. It also shows what the
+  retirement costs and returns: the cost is a build-time flag (two engines cannot share a deployment,
+  because they do not share a total order), and the return is three specification corrections
+  ([`SYNC.md`](SYNC.md) §14 C-08…C-10) that no amount of reimplementing the document from the document
+  would have surfaced. This is exactly the gap [`BINDINGS.md`](BINDINGS.md) is written to
   close — not by asking four teams to rewrite four times, but by giving Sync one compiled core and four
   thin bindings.
 - **Feeds & Blobs is closer to converged than expected.** vulos-relay's `pubcache`, kerf-pub, and envoir's
