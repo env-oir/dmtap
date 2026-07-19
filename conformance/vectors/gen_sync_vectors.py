@@ -11,7 +11,7 @@ not implement it).
 
 Scope discipline: this script freezes SYNC-* stubs only where substrate/SYNC.md's
 text fully determines the byte-exact inputs/outputs, with no design choice left
-to the generator. All 20 stubs are now byte-exact: the five that were previously
+to the generator. All stubs are now byte-exact: the five that were previously
 NOT-FROZEN (SYNC-OP-02 COSE_Sign1 envelope framing, SYNC-SNAP-01/02 canonical
 observable-state schema, SYNC-RECON-01 fingerprint fold, and the SYNC-TREE-01
 earlier/later-wins contradiction) were resolved *in the specification first* —
@@ -796,6 +796,10 @@ add(
                                 "canonically ordered by encoded key bytes (B's key sorts before A's).",
         "snapshot_covers_cbor_hex": covers_v1.hex(),
         "snapshot_observable_state_cbor_hex": state_v1.hex(),
+        "snapshot_observable_state_role": "the COMMITMENT hashed to produce `root` (§6.1.1) — NOT the "
+                                          "transferred body and NOT importable; what a joining replica "
+                                          "actually adopts is the §6.1.2 SnapshotBody, a compacted op "
+                                          "set that FOLDS to these bytes (see SYNC-SNAP-03).",
         "snapshot_root_hex": root_v1.hex(),
         "post_covers_ops_cbor_hex": [op_post.hex()],
         "post_covers_ops": [{"kind": 3, "target": "doc1", "field": "title", "value": "p",
@@ -808,7 +812,9 @@ add(
         "root_hex": root_v2.hex(),
         "roots_equal": True,
     },
-    "§6.1/§6.1.1 (frozen): a joining replica adopts the snapshot's observable state, sets its "
+    "§6.1/§6.1.1 (frozen): a joining replica ingests the snapshot's BODY (§6.1.2 — a compacted op "
+    "set that folds to the observable state below; corrected by C-09, which is vectored separately "
+    "as SYNC-SNAP-03), sets its "
     "local vector to `covers`, and applies only the ops AFTER `covers` — here one lww-set writing "
     "(doc1,title) = \"p\" at (W,20,B), which supersedes the snapshot's winning value \"n\" because "
     "its HLC is greater. The resulting ObservableState bytes are IDENTICAL to those of a replica "
@@ -818,6 +824,180 @@ add(
     "strong-eventual-consistency equality the fast-join guarantee rests on, and it is what makes "
     "a snapshot VERIFIABLE rather than merely trusted — a replica that later backfills the "
     "pre-`covers` ops MUST recompute this same root.",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-SNAP-03 — the snapshot BODY is a compacted op set, not ObservableState (§6.1.2, C-09)
+# ══════════════════════════════════════════════════════════════════════════════════════
+# A deliberately minimal namespace so the failure is arithmetic rather than atmospheric:
+# ONE live LWW cell. The body is the ONE op that produced it; the state is what that op
+# folds to. The post-`covers` op is chosen to have a LOWER HLC than the body's op, which is
+# possible precisely because `covers` bounds each author's OWN stream while the §3 HLC is a
+# total order ACROSS authors — B is absent from `covers`, so every op of B's is "after"
+# `covers`, including ones the total order places before A's winning write.
+hlc_body_a = encode_hlc(HLC_WALL, 4, PK_A)
+op_body_a = encode_sync_op(kind=3, ns="", target="doc1", field="title",
+                           value=enc_tstr("n"), hlc_bytes=hlc_body_a)
+cose_body_a = cose_sign1(op_body_a, SK_A, PK_A)
+
+snap3_state = observable_state([], [enc_array([enc_tstr("doc1"), enc_tstr("title"), enc_tstr("n")])],
+                               [], [], [], [])
+snap3_root = state_root(snap3_state)
+snap3_covers = enc_bstr_map([(PK_A, hlc_body_a)])
+snap3_body = enc_array([cose_body_a])   # §6.1.2 SnapshotBody: ops item-embedded per §5.2 (C-06)
+
+# The post-`covers` op: author B, counter 3 < the body op's counter 4, same wall.
+hlc_post_b = encode_hlc(HLC_WALL, 3, PK_B)
+op_post_b = encode_sync_op(kind=3, ns="", target="doc1", field="title",
+                           value=enc_tstr("q"), hlc_bytes=hlc_post_b)
+cose_post_b = cose_sign1(op_post_b, SK_B, PK_B)
+
+# Correct outcome: fold the body, then apply the post-op. (W,4,A) > (W,3,B), so "n" HOLDS.
+snap3_state_after = snap3_state          # unchanged — the incumbent wins
+snap3_root_after = snap3_root
+# The WRONG outcome an ObservableState-adopter reaches: it has the value "n" but not its HLC,
+# so it has nothing to compare (W,3,B) against and applies the write.
+snap3_state_projection = observable_state(
+    [], [enc_array([enc_tstr("doc1"), enc_tstr("title"), enc_tstr("q")])], [], [], [], [])
+snap3_root_projection = state_root(snap3_state_projection)
+
+add(
+    "sync_snapshot_body_is_op_set",
+    "sync_snapshot_body_fold",
+    {
+        "snapshot_covers_cbor_hex": snap3_covers.hex(),
+        "snapshot_root_hex": snap3_root.hex(),
+        "snapshot_body_cbor_hex": snap3_body.hex(),
+        "snapshot_body_ops": [{"kind": 3, "target": "doc1", "field": "title", "value": "n",
+                               "hlc": {"wall": HLC_WALL, "counter": 4, "author_hex": PK_A.hex()}}],
+        "post_covers_op_cbor_hex": cose_post_b.hex(),
+        "post_covers_op": {"kind": 3, "target": "doc1", "field": "title", "value": "q",
+                           "hlc": {"wall": HLC_WALL, "counter": 3, "author_hex": PK_B.hex()}},
+        "observable_state_cbor_hex": snap3_state.hex(),
+    },
+    {
+        "body_folds_to_root": True,
+        "folded_state_cbor_hex": snap3_state.hex(),
+        "folded_root_hex": snap3_root.hex(),
+        "state_after_post_op_cbor_hex": snap3_state_after.hex(),
+        "root_after_post_op_hex": snap3_root_after.hex(),
+        "winning_value_after_post_op": "n",
+        "projection_adopt_state_cbor_hex": snap3_state_projection.hex(),
+        "projection_adopt_root_hex": snap3_root_projection.hex(),
+        "projection_adopt_is_nonconformant": True,
+        "roots_differ": True,
+        "body_mismatch_error_code": "0x0A09",
+        "body_mismatch_error_name": "ERR_SYNC_SNAPSHOT_ROOT_MISMATCH",
+    },
+    "§6.1.2 (C-09): what a fast-joining replica transfers and adopts is a SnapshotBody — the "
+    "minimal set of canonical, individually-signed ops whose fold equals the observable state — "
+    "NOT det_cbor(ObservableState). The body here is one COSE_Sign1 op, item-embedded per §5.2's "
+    "framing rule, and it is verified by FOLD-THEN-RECOMPUTE: ingest each op through the ordinary "
+    "§4 path, derive ObservableState per §6.1.1, hash with the snapshot-state DS-tag, and require "
+    "equality with Snapshot.root (0x0A09 otherwise, body discarded whole). That is strictly "
+    "stronger than hashing the transfer bytes, because it proves the ops PRODUCE the committed "
+    "state. The second half of this vector is why the distinction is normative rather than "
+    "stylistic: §6.1.1 drops the winning cell's HLC, so a replica that adopted the PROJECTION has "
+    "the value \"n\" but nothing to compare a later op against. The post-`covers` op here is "
+    "(W,3,B) — genuinely after `covers` (B is absent from it, so every op of B's is), yet BELOW "
+    "(W,4,A) in the §3 total order, which orders across authors while `covers` bounds each author's "
+    "own stream. A conformant replica folds the body, sees (W,3,B) < (W,4,A), and KEEPS \"n\"; a "
+    "projection-adopter has no incumbent HLC, applies the write, and lands on \"q\" with a "
+    "different root — silent, permanent divergence with no error raised on either side. Compare "
+    "SYNC-SNAP-02, whose post-`covers` op is (W,20,B) and genuinely does win: that vector's "
+    "expectation is unchanged and remains correct; it simply does not exercise the ordering case "
+    "that distinguishes the two adoption models.",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-VAL-01 — the `ext-value` boundary for a SyncOp value (§4.1/§4.1.1, C-08)
+# ══════════════════════════════════════════════════════════════════════════════════════
+# ext-value = bool / int / bytes / tstr / [* ext-value] / { * tstr => ext-value }   (§18.3.6)
+def enc_tstr_map(pairs) -> bytes:
+    """A text-KEYED map — the §18.3.6 ext-value map arm. RFC 8949 §4.2.1 canonical ordering is
+    by the ENCODED key bytes, which for tstr keys is shortest-first then lexicographic."""
+    enc = sorted(((enc_tstr(k), v) for k, v in pairs), key=lambda kv: kv[0])
+    out = _enc_head(5, len(enc))
+    for k, v in enc:
+        out += k + v
+    return out
+
+
+val_nested = enc_tstr_map([
+    ("id", enc_tstr("shape-a")),
+    ("x", enc_uint(10)),
+    ("locked", enc_bool(False)),
+    ("pts", enc_array([enc_uint(1), enc_int(-2)])),
+    ("meta", enc_tstr_map([("z", enc_bstr(b"\x01\x02"))])),   # recursion, depth 2
+])
+val_hetero = enc_array([enc_tstr("fade"), enc_uint(3), enc_bool(True)])
+val_opaque = enc_tstr('{"id":"shape-a","x":10}')
+
+VAL_ACCEPT = [
+    ("tstr", enc_tstr("v"), "text — the baseline value of SYNC-OP-01"),
+    ("bstr", enc_bstr(b"\xde\xad"), "byte string"),
+    ("uint", enc_uint(10), "unsigned integer"),
+    ("nint", enc_int(-2), "negative integer"),
+    ("bool", enc_bool(True), "boolean"),
+    ("tstr_map_nested", val_nested,
+     "TEXT-KEYED MAP, recursively nested (depth 2) — the §18.3.6 arm §4.1 previously omitted"),
+    ("array_heterogeneous", val_hetero,
+     "array of MIXED ext-values — §18.3.6 is [* ext-value]; homogeneity was never required"),
+    ("tstr_opaque_json", val_opaque,
+     "an opaque JSON payload carried as tstr — still conformant, and still the right choice "
+     "for foreign or byte-exact-round-trip content (§4.1.1)"),
+]
+
+VAL_REJECT = [
+    ("int_keyed_map", enc_map([(1, enc_tstr("v"))]),
+     "INTEGER-keyed map — ext-value has no such arm; this is the shape a product reaches for "
+     "second, and it validates cleanly to `false` rather than crashing"),
+    ("float64", bytes.fromhex("fb3ff0000000000000"),
+     "float (1.0) — excluded: no canonical form across encoders"),
+    ("null", bytes.fromhex("f6"),
+     "null — excluded, which is why §4.1.1 requires a DISCRIMINATED empty value rather than an "
+     "ad-hoc sentinel"),
+    ("undefined", bytes.fromhex("f7"), "undefined — excluded"),
+    ("tag", bytes.fromhex("c07818323032362d30372d32305430303a30303a30305a"),
+     "tag 0 (standard date-time string) — tags are excluded; the tagged item is otherwise a tstr, "
+     "so the rejection is on the TAG, not on what it wraps"),
+    ("nested_int_keyed_map", enc_tstr_map([("meta", enc_map([(1, enc_uint(0))]))]),
+     "a valid text-keyed map whose VALUE is an integer-keyed map — validation is RECURSIVE, so "
+     "the violation is caught at depth 2, not waved through by a shallow check"),
+]
+
+add(
+    "sync_ext_value_boundary",
+    "sync_ext_value_validate",
+    {
+        "accept": [{"case": n, "cbor_hex": b.hex(), "note": d} for n, b, d in VAL_ACCEPT],
+        "reject": [{"case": n, "cbor_hex": b.hex(), "note": d} for n, b, d in VAL_REJECT],
+        "carrier_op_cbor_hex": encode_sync_op(
+            kind=3, ns="", target="slide:s1", field="obj:shape-a",
+            value=val_nested, hlc_bytes=encode_hlc(HLC_WALL, 4, PK_A)).hex(),
+    },
+    {
+        "accept_all": True,
+        "reject_all": True,
+        "reject_error_code": "0x0A03",
+        "reject_error_name": "ERR_SYNC_OP_INVALID",
+        "validation_is_recursive": True,
+        "carrier_op_accepted": True,
+    },
+    "§4.1/§4.1.1 (C-08): a SyncOp `value` is EXACTLY §18.3.6's `ext-value` — "
+    "bool / int / bytes / tstr / [* ext-value] / { * tstr => ext-value } — recursive, with "
+    "heterogeneous arrays and TEXT-KEYED maps both admitted. §4.1 previously described a strictly "
+    "narrower type under the same name, dropping the map arm and adding a homogeneity constraint "
+    "§18.3.6 does not impose, which left nested application data blocked twice over: no tag for a "
+    "string-keyed map (an ENCODER failure), and the integer-keyed map CBOR does offer correctly "
+    "not an ext-value (a VALIDATION `false`). Both refusals are frozen here, on opposite sides of "
+    "the boundary, so the two are never conflated again. Determinism is unaffected: §2.2 "
+    "canonicalizes text keys by ENCODED key bytes exactly as it does integer keys, applied "
+    "recursively, and §18.3.6's `Headers.ext` already carries this same recursive type INSIDE a "
+    "signature preimage on every MOTE. Validation MUST be recursive (see the depth-2 reject case) "
+    "and MUST fail closed at the first violating node — 0x0A03, never a canonicalization guess. "
+    "The carrier op shows the intended shape end-to-end: one LWW register per (slide, object), "
+    "nesting used for REPRESENTATION while §4.1.1's merge boundary stays at the whole value.",
 )
 
 # ══════════════════════════════════════════════════════════════════════════════════════
@@ -1189,7 +1369,7 @@ out = {
     "§18-canonical, integer-keyed deterministic encoding (RFC 8949 §4.2) used by "
     "conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json; all content addresses use "
     "the §18.1.5 v0 form 0x1e || BLAKE3-256(DS-tag || 0x00 || body) with the §21.24c DMTAP-SYNC-v0 DS-tags.",
-    "scope_note": "This file freezes ALL 22 of substrate/SYNC.md §10's conformance vectors. The five that "
+    "scope_note": "This file freezes ALL 24 of substrate/SYNC.md §10's conformance vectors. The five that "
     "were previously NOT-FROZEN — SYNC-OP-02 (COSE_Sign1 envelope framing), SYNC-TREE-01 (which side of a "
     "concurrent-move cycle loses), SYNC-SNAP-01/02 (canonical observable-state schema) and SYNC-RECON-01 "
     "(range-Merkle fingerprint fold) — were each resolved by adding normative frozen text to the "
@@ -1206,7 +1386,22 @@ out = {
     "whose 'replay' op carried a different HLC and was therefore a distinct op; C-03 fixed SYNC-RGA-02's "
     "atom_order_incl_tombstones, which contradicted §4.7 and the vector's own note; C-04 fixed "
     "SYNC-SNAP-02's snapshot_covers_cbor_hex, which encoded an integer-keyed map where §5.1 specifies "
-    "ik-pub bstr keys. C-05 (also found by envoir, while implementing §6.2 op-log truncation) closed a "
+    "ik-pub bstr keys. C-08/C-09/C-10 came from a different direction — the FIRST real product "
+    "adoption of the engine (ofisi's Sheets grid) rather than an independent reimplementation — and "
+    "are the three gaps only a consumer could surface. C-08: §4.1 named §18.3.6's `ext-value` but "
+    "described a strictly narrower type, dropping the recursive text-keyed map arm and adding a "
+    "homogeneity constraint that is not there, so nested application data was blocked twice over "
+    "(no tag to encode a string-keyed map; the integer-keyed map correctly not an ext-value) for no "
+    "determinism reason — the recursive type is canonical under §2.2 and already rides inside a "
+    "signature preimage via Headers.ext. NEW vector SYNC-VAL-01 freezes the boundary from both "
+    "sides. C-09: the snapshot BODY is a compacted op set, not det_cbor(ObservableState) — the "
+    "§6.1.1 projection deliberately drops the merge metadata the next merge needs (the LWW winner's "
+    "HLC above all), so adopting it as base state silently diverges; NEW vector SYNC-SNAP-03 "
+    "demonstrates the exact ordering case, with a post-`covers` op that is genuinely after `covers` "
+    "yet BELOW the incumbent in the §3 total order. C-10 is selection guidance (§4.10, death "
+    "certificate vs LWW-empty) and adds no vector — SYNC-DEATH-01 already pins the domination it "
+    "warns about. Vector count goes 22 -> 24. C-05 (also found by envoir, while implementing §6.2 "
+    "op-log truncation) closed a "
     "HOLE rather than a contradiction: §5.2's `pull` response had no way to say 'you are below my "
     "truncation floor, fast-join from this snapshot', leaving a truncating responder to either return "
     "the surviving suffix — silently losing every truncated op while APPEARING to succeed — or error "

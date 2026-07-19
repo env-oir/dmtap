@@ -3,8 +3,8 @@
   "suite": "Sync substrate capability (substrate/SYNC.md) \u2014 suite 0x01 (classical): Ed25519 / BLAKE3-256 primitives shared with the core. These vectors exercise the deterministic CBOR + CRDT-algebra layer, the RFC 9052 COSE_Sign1 op envelope (\u00a74.1), the canonical observable-state root (\u00a76.1.1), the range-Merkle fingerprint fold (\u00a75.3) and the \u00a75.2.1 fast-join `pull` response",
   "generated_by": "conformance/vectors/gen_sync_vectors.py (this repo) \u2014 NOT the dmtap-core reference crate, which does not implement the Sync substrate capability (it is substrate/SYNC.md's own 'one genuinely new normative specification', ungrounded in any single existing numbered section). Every value here is a direct, mechanical application of substrate/SYNC.md's \u00a73/\u00a74/\u00a76/\u00a77 rules to fixed inputs \u2014 no randomness, no wall-clock reads.",
   "methodology": "Fixed 32-byte Ed25519 seeds (0xCC/0xDD/0xEE) via the `cryptography` package; BLAKE3-256 via the `blake3` package. Ed25519 (RFC 8032) is deterministic, so the one signature vector (SYNC-OP-02) is a reproducible known answer with no RNG involved. CBOR here is the same \u00a718-canonical, integer-keyed deterministic encoding (RFC 8949 \u00a74.2) used by conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json; all content addresses use the \u00a718.1.5 v0 form 0x1e || BLAKE3-256(DS-tag || 0x00 || body) with the \u00a721.24c DMTAP-SYNC-v0 DS-tags.",
-  "scope_note": "This file freezes ALL 22 of substrate/SYNC.md \u00a710's conformance vectors. The five that were previously NOT-FROZEN \u2014 SYNC-OP-02 (COSE_Sign1 envelope framing), SYNC-TREE-01 (which side of a concurrent-move cycle loses), SYNC-SNAP-01/02 (canonical observable-state schema) and SYNC-RECON-01 (range-Merkle fingerprint fold) \u2014 were each resolved by adding normative frozen text to the specification FIRST (\u00a74.1, \u00a74.8, \u00a76.1.1, \u00a75.3 respectively, each with its rationale) and only then vectored here. SYNC-FJ-01/SYNC-FJ-02 are NEW (correction C-05) and follow the same discipline: \u00a75.2.1 decided the response shape, the below-floor MUST NOT and the inline-vs-by-reference encoding split FIRST, and only then was it vectored. No decision in this file originates in this file: substrate/SYNC.md is authoritative.",
-  "corrections_note": "Regenerated after substrate/SYNC.md \u00a714's corrections C-01..C-04, all of which were surfaced by an independent Rust implementation of SYNC.md (envoir `dmtap-sync`), not by review: C-01 changed \u00a74.6's PN-counter merge from per-author max of P/N to the per-author UNION of op-id-keyed deltas (the max join is non-associative and LOSES writes when replicas hold different subsets of one author's deltas \u2014 a NORMATIVE merge-semantics correction); C-02 fixed SYNC-PN-01, whose 'replay' op carried a different HLC and was therefore a distinct op; C-03 fixed SYNC-RGA-02's atom_order_incl_tombstones, which contradicted \u00a74.7 and the vector's own note; C-04 fixed SYNC-SNAP-02's snapshot_covers_cbor_hex, which encoded an integer-keyed map where \u00a75.1 specifies ik-pub bstr keys. C-05 (also found by envoir, while implementing \u00a76.2 op-log truncation) closed a HOLE rather than a contradiction: \u00a75.2's `pull` response had no way to say 'you are below my truncation floor, fast-join from this snapshot', leaving a truncating responder to either return the surviving suffix \u2014 silently losing every truncated op while APPEARING to succeed \u2014 or error and strand the peer. \u00a75.2.1 now specifies the fast-join response, makes the bare suffix a MUST NOT, and adds GET /sync/state/<root> plus error 0x0A0C. Vector count goes 20 -> 22 (SYNC-FJ-01, SYNC-FJ-02 added; the other 20 are byte-identical to the previous generation). C-06 and C-07 (both found by the same implementation, which DECLINED to guess) tighten SYNC-FJ-02 without changing the count, which stays 22: C-06 pins op framing inside an `ops` array to item-embedded COSE_Sign1, never bstr-wrapped (\u00a75.2) \u2014 this vector's ops are now REAL COSE_Sign1 envelopes rather than bare SyncOp stand-ins, since a stand-in that lacks the specified shape is precisely how the ambiguity survived a frozen vector; C-07 removes \u00a75.2.1's unverifiable 'floor MUST NOT exceed covers' clause (a category error: a single Hlc vs a per-author VersionVector) in favour of \u00a75.2.2's explicit split between what a caller verifies and what it trusts, and freezes the rejected `covers.lacks(floor)` predicate here alongside the data on which it wrongly fires.",
+  "scope_note": "This file freezes ALL 24 of substrate/SYNC.md \u00a710's conformance vectors. The five that were previously NOT-FROZEN \u2014 SYNC-OP-02 (COSE_Sign1 envelope framing), SYNC-TREE-01 (which side of a concurrent-move cycle loses), SYNC-SNAP-01/02 (canonical observable-state schema) and SYNC-RECON-01 (range-Merkle fingerprint fold) \u2014 were each resolved by adding normative frozen text to the specification FIRST (\u00a74.1, \u00a74.8, \u00a76.1.1, \u00a75.3 respectively, each with its rationale) and only then vectored here. SYNC-FJ-01/SYNC-FJ-02 are NEW (correction C-05) and follow the same discipline: \u00a75.2.1 decided the response shape, the below-floor MUST NOT and the inline-vs-by-reference encoding split FIRST, and only then was it vectored. No decision in this file originates in this file: substrate/SYNC.md is authoritative.",
+  "corrections_note": "Regenerated after substrate/SYNC.md \u00a714's corrections C-01..C-04, all of which were surfaced by an independent Rust implementation of SYNC.md (envoir `dmtap-sync`), not by review: C-01 changed \u00a74.6's PN-counter merge from per-author max of P/N to the per-author UNION of op-id-keyed deltas (the max join is non-associative and LOSES writes when replicas hold different subsets of one author's deltas \u2014 a NORMATIVE merge-semantics correction); C-02 fixed SYNC-PN-01, whose 'replay' op carried a different HLC and was therefore a distinct op; C-03 fixed SYNC-RGA-02's atom_order_incl_tombstones, which contradicted \u00a74.7 and the vector's own note; C-04 fixed SYNC-SNAP-02's snapshot_covers_cbor_hex, which encoded an integer-keyed map where \u00a75.1 specifies ik-pub bstr keys. C-08/C-09/C-10 came from a different direction \u2014 the FIRST real product adoption of the engine (ofisi's Sheets grid) rather than an independent reimplementation \u2014 and are the three gaps only a consumer could surface. C-08: \u00a74.1 named \u00a718.3.6's `ext-value` but described a strictly narrower type, dropping the recursive text-keyed map arm and adding a homogeneity constraint that is not there, so nested application data was blocked twice over (no tag to encode a string-keyed map; the integer-keyed map correctly not an ext-value) for no determinism reason \u2014 the recursive type is canonical under \u00a72.2 and already rides inside a signature preimage via Headers.ext. NEW vector SYNC-VAL-01 freezes the boundary from both sides. C-09: the snapshot BODY is a compacted op set, not det_cbor(ObservableState) \u2014 the \u00a76.1.1 projection deliberately drops the merge metadata the next merge needs (the LWW winner's HLC above all), so adopting it as base state silently diverges; NEW vector SYNC-SNAP-03 demonstrates the exact ordering case, with a post-`covers` op that is genuinely after `covers` yet BELOW the incumbent in the \u00a73 total order. C-10 is selection guidance (\u00a74.10, death certificate vs LWW-empty) and adds no vector \u2014 SYNC-DEATH-01 already pins the domination it warns about. Vector count goes 22 -> 24. C-05 (also found by envoir, while implementing \u00a76.2 op-log truncation) closed a HOLE rather than a contradiction: \u00a75.2's `pull` response had no way to say 'you are below my truncation floor, fast-join from this snapshot', leaving a truncating responder to either return the surviving suffix \u2014 silently losing every truncated op while APPEARING to succeed \u2014 or error and strand the peer. \u00a75.2.1 now specifies the fast-join response, makes the bare suffix a MUST NOT, and adds GET /sync/state/<root> plus error 0x0A0C. Vector count goes 20 -> 22 (SYNC-FJ-01, SYNC-FJ-02 added; the other 20 are byte-identical to the previous generation). C-06 and C-07 (both found by the same implementation, which DECLINED to guess) tighten SYNC-FJ-02 without changing the count, which stays 22: C-06 pins op framing inside an `ops` array to item-embedded COSE_Sign1, never bstr-wrapped (\u00a75.2) \u2014 this vector's ops are now REAL COSE_Sign1 envelopes rather than bare SyncOp stand-ins, since a stand-in that lacks the specified shape is precisely how the ambiguity survived a frozen vector; C-07 removes \u00a75.2.1's unverifiable 'floor MUST NOT exceed covers' clause (a category error: a single Hlc vs a per-author VersionVector) in favour of \u00a75.2.2's explicit split between what a caller verifies and what it trusts, and freezes the rejected `covers.lacks(floor)` predicate here alongside the data on which it wrongly fires.",
   "vectors": [
     {
       "name": "sync_op_lww_canonical",
@@ -537,6 +537,7 @@
         "snapshot_covers_note": "per-author max HLC folded into the snapshot: A@(W,4), B@(W,7). \u00a75.1 VersionVector = { * ik-pub => Hlc }: ik-pub BYTE-STRING keys, canonically ordered by encoded key bytes (B's key sorts before A's).",
         "snapshot_covers_cbor_hex": "a2582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144a3011b0000018bcfe6eea0020703582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc1445820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeba3011b0000018bcfe6eea00204035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
         "snapshot_observable_state_cbor_hex": "8681826474616773626531818364646f6331657469746c65616e81836673746f636b31637174790381826472656331667265646163748182656c696e6531836561746f6d30615961588283614161426131836142606162",
+        "snapshot_observable_state_role": "the COMMITMENT hashed to produce `root` (\u00a76.1.1) \u2014 NOT the transferred body and NOT importable; what a joining replica actually adopts is the \u00a76.1.2 SnapshotBody, a compacted op set that FOLDS to these bytes (see SYNC-SNAP-03).",
         "snapshot_root_hex": "1e63918ccc89f4d158e4dda9b09510876d87205348efd6093713379b598559119a",
         "post_covers_ops_cbor_hex": [
           "a6010302600364646f633104657469746c6505617006a3011b0000018bcfe6eea0021403582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144"
@@ -562,7 +563,147 @@
         "root_hex": "1e89b11f055b4a1625601b5f2520ff5db25f311f265d2e84e878e39aec04854424",
         "roots_equal": true
       },
-      "note": "\u00a76.1/\u00a76.1.1 (frozen): a joining replica adopts the snapshot's observable state, sets its local vector to `covers`, and applies only the ops AFTER `covers` \u2014 here one lww-set writing (doc1,title) = \"p\" at (W,20,B), which supersedes the snapshot's winning value \"n\" because its HLC is greater. The resulting ObservableState bytes are IDENTICAL to those of a replica that replayed the entire history from genesis, hence the roots are identical: only the observable projection is serialized, so the two replicas' differing internal bookkeeping (one has the pre-snapshot op log, the other never saw it) cannot show through. This is the strong-eventual-consistency equality the fast-join guarantee rests on, and it is what makes a snapshot VERIFIABLE rather than merely trusted \u2014 a replica that later backfills the pre-`covers` ops MUST recompute this same root."
+      "note": "\u00a76.1/\u00a76.1.1 (frozen): a joining replica ingests the snapshot's BODY (\u00a76.1.2 \u2014 a compacted op set that folds to the observable state below; corrected by C-09, which is vectored separately as SYNC-SNAP-03), sets its local vector to `covers`, and applies only the ops AFTER `covers` \u2014 here one lww-set writing (doc1,title) = \"p\" at (W,20,B), which supersedes the snapshot's winning value \"n\" because its HLC is greater. The resulting ObservableState bytes are IDENTICAL to those of a replica that replayed the entire history from genesis, hence the roots are identical: only the observable projection is serialized, so the two replicas' differing internal bookkeeping (one has the pre-snapshot op log, the other never saw it) cannot show through. This is the strong-eventual-consistency equality the fast-join guarantee rests on, and it is what makes a snapshot VERIFIABLE rather than merely trusted \u2014 a replica that later backfills the pre-`covers` ops MUST recompute this same root."
+    },
+    {
+      "name": "sync_snapshot_body_is_op_set",
+      "operation": "sync_snapshot_body_fold",
+      "input": {
+        "snapshot_covers_cbor_hex": "a15820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeba3011b0000018bcfe6eea00204035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "snapshot_root_hex": "1e975bd1a001091cb4f223323fb3b6b09342e40743b5defe9fdf4ab96d77165ff5",
+        "snapshot_body_cbor_hex": "81845826a20127045820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeba05846a6010302600364646f633104657469746c6505616e06a3011b0000018bcfe6eea00204035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb5840757ee187b7a8c22d47982032c1c0786e4c69425490b47118ec53865f7a23f4a19b56dd4f24379d7849e1fe714e63fe678b6965db08ede2c9ddeedae08e9e7e0b",
+        "snapshot_body_ops": [
+          {
+            "kind": 3,
+            "target": "doc1",
+            "field": "title",
+            "value": "n",
+            "hlc": {
+              "wall": 1700000100000,
+              "counter": 4,
+              "author_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+            }
+          }
+        ],
+        "post_covers_op_cbor_hex": "845826a2012704582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144a05846a6010302600364646f633104657469746c6505617106a3011b0000018bcfe6eea0020303582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc14458402df2434697c225c339ffeb97b07ed228c50dcca63395296c2b97650a7fb8eed61b573c0898c201846e4c1c2c75cb82b73fefb5a1cb4ef69803dbed8dc8a7650b",
+        "post_covers_op": {
+          "kind": 3,
+          "target": "doc1",
+          "field": "title",
+          "value": "q",
+          "hlc": {
+            "wall": 1700000100000,
+            "counter": 3,
+            "author_hex": "68460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144"
+          }
+        },
+        "observable_state_cbor_hex": "8680818364646f6331657469746c65616e80808080"
+      },
+      "expected": {
+        "body_folds_to_root": true,
+        "folded_state_cbor_hex": "8680818364646f6331657469746c65616e80808080",
+        "folded_root_hex": "1e975bd1a001091cb4f223323fb3b6b09342e40743b5defe9fdf4ab96d77165ff5",
+        "state_after_post_op_cbor_hex": "8680818364646f6331657469746c65616e80808080",
+        "root_after_post_op_hex": "1e975bd1a001091cb4f223323fb3b6b09342e40743b5defe9fdf4ab96d77165ff5",
+        "winning_value_after_post_op": "n",
+        "projection_adopt_state_cbor_hex": "8680818364646f6331657469746c65617180808080",
+        "projection_adopt_root_hex": "1ef64066dc6d59375b026513df6404616a4ff9082ead2a5326ab3a94d94d5c637d",
+        "projection_adopt_is_nonconformant": true,
+        "roots_differ": true,
+        "body_mismatch_error_code": "0x0A09",
+        "body_mismatch_error_name": "ERR_SYNC_SNAPSHOT_ROOT_MISMATCH"
+      },
+      "note": "\u00a76.1.2 (C-09): what a fast-joining replica transfers and adopts is a SnapshotBody \u2014 the minimal set of canonical, individually-signed ops whose fold equals the observable state \u2014 NOT det_cbor(ObservableState). The body here is one COSE_Sign1 op, item-embedded per \u00a75.2's framing rule, and it is verified by FOLD-THEN-RECOMPUTE: ingest each op through the ordinary \u00a74 path, derive ObservableState per \u00a76.1.1, hash with the snapshot-state DS-tag, and require equality with Snapshot.root (0x0A09 otherwise, body discarded whole). That is strictly stronger than hashing the transfer bytes, because it proves the ops PRODUCE the committed state. The second half of this vector is why the distinction is normative rather than stylistic: \u00a76.1.1 drops the winning cell's HLC, so a replica that adopted the PROJECTION has the value \"n\" but nothing to compare a later op against. The post-`covers` op here is (W,3,B) \u2014 genuinely after `covers` (B is absent from it, so every op of B's is), yet BELOW (W,4,A) in the \u00a73 total order, which orders across authors while `covers` bounds each author's own stream. A conformant replica folds the body, sees (W,3,B) < (W,4,A), and KEEPS \"n\"; a projection-adopter has no incumbent HLC, applies the write, and lands on \"q\" with a different root \u2014 silent, permanent divergence with no error raised on either side. Compare SYNC-SNAP-02, whose post-`covers` op is (W,20,B) and genuinely does win: that vector's expectation is unchanged and remains correct; it simply does not exercise the ordering case that distinguishes the two adoption models."
+    },
+    {
+      "name": "sync_ext_value_boundary",
+      "operation": "sync_ext_value_validate",
+      "input": {
+        "accept": [
+          {
+            "case": "tstr",
+            "cbor_hex": "6176",
+            "note": "text \u2014 the baseline value of SYNC-OP-01"
+          },
+          {
+            "case": "bstr",
+            "cbor_hex": "42dead",
+            "note": "byte string"
+          },
+          {
+            "case": "uint",
+            "cbor_hex": "0a",
+            "note": "unsigned integer"
+          },
+          {
+            "case": "nint",
+            "cbor_hex": "21",
+            "note": "negative integer"
+          },
+          {
+            "case": "bool",
+            "cbor_hex": "f5",
+            "note": "boolean"
+          },
+          {
+            "case": "tstr_map_nested",
+            "cbor_hex": "a561780a6269646773686170652d6163707473820121646d657461a1617a420102666c6f636b6564f4",
+            "note": "TEXT-KEYED MAP, recursively nested (depth 2) \u2014 the \u00a718.3.6 arm \u00a74.1 previously omitted"
+          },
+          {
+            "case": "array_heterogeneous",
+            "cbor_hex": "83646661646503f5",
+            "note": "array of MIXED ext-values \u2014 \u00a718.3.6 is [* ext-value]; homogeneity was never required"
+          },
+          {
+            "case": "tstr_opaque_json",
+            "cbor_hex": "777b226964223a2273686170652d61222c2278223a31307d",
+            "note": "an opaque JSON payload carried as tstr \u2014 still conformant, and still the right choice for foreign or byte-exact-round-trip content (\u00a74.1.1)"
+          }
+        ],
+        "reject": [
+          {
+            "case": "int_keyed_map",
+            "cbor_hex": "a1016176",
+            "note": "INTEGER-keyed map \u2014 ext-value has no such arm; this is the shape a product reaches for second, and it validates cleanly to `false` rather than crashing"
+          },
+          {
+            "case": "float64",
+            "cbor_hex": "fb3ff0000000000000",
+            "note": "float (1.0) \u2014 excluded: no canonical form across encoders"
+          },
+          {
+            "case": "null",
+            "cbor_hex": "f6",
+            "note": "null \u2014 excluded, which is why \u00a74.1.1 requires a DISCRIMINATED empty value rather than an ad-hoc sentinel"
+          },
+          {
+            "case": "undefined",
+            "cbor_hex": "f7",
+            "note": "undefined \u2014 excluded"
+          },
+          {
+            "case": "tag",
+            "cbor_hex": "c07818323032362d30372d32305430303a30303a30305a",
+            "note": "tag 0 (standard date-time string) \u2014 tags are excluded; the tagged item is otherwise a tstr, so the rejection is on the TAG, not on what it wraps"
+          },
+          {
+            "case": "nested_int_keyed_map",
+            "cbor_hex": "a1646d657461a10100",
+            "note": "a valid text-keyed map whose VALUE is an integer-keyed map \u2014 validation is RECURSIVE, so the violation is caught at depth 2, not waved through by a shallow check"
+          }
+        ],
+        "carrier_op_cbor_hex": "a6010302600368736c6964653a7331046b6f626a3a73686170652d6105a561780a6269646773686170652d6163707473820121646d657461a1617a420102666c6f636b6564f406a3011b0000018bcfe6eea00204035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+      },
+      "expected": {
+        "accept_all": true,
+        "reject_all": true,
+        "reject_error_code": "0x0A03",
+        "reject_error_name": "ERR_SYNC_OP_INVALID",
+        "validation_is_recursive": true,
+        "carrier_op_accepted": true
+      },
+      "note": "\u00a74.1/\u00a74.1.1 (C-08): a SyncOp `value` is EXACTLY \u00a718.3.6's `ext-value` \u2014 bool / int / bytes / tstr / [* ext-value] / { * tstr => ext-value } \u2014 recursive, with heterogeneous arrays and TEXT-KEYED maps both admitted. \u00a74.1 previously described a strictly narrower type under the same name, dropping the map arm and adding a homogeneity constraint \u00a718.3.6 does not impose, which left nested application data blocked twice over: no tag for a string-keyed map (an ENCODER failure), and the integer-keyed map CBOR does offer correctly not an ext-value (a VALIDATION `false`). Both refusals are frozen here, on opposite sides of the boundary, so the two are never conflated again. Determinism is unaffected: \u00a72.2 canonicalizes text keys by ENCODED key bytes exactly as it does integer keys, applied recursively, and \u00a718.3.6's `Headers.ext` already carries this same recursive type INSIDE a signature preimage on every MOTE. Validation MUST be recursive (see the depth-2 reject case) and MUST fail closed at the first violating node \u2014 0x0A03, never a canonicalization guess. The carrier op shows the intended shape end-to-end: one LWW register per (slide, object), nesting used for REPRESENTATION while \u00a74.1.1's merge boundary stays at the whole value."
     },
     {
       "name": "sync_fastjoin_response",
