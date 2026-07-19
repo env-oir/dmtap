@@ -217,6 +217,29 @@ owning clause says otherwise.
 | **Deniable bundle first-contact rollback** | §5.2.1(f), §5.8.6 | a fetched `DeniablePrekeyBundle` `version` is older than the KT-anchored current version | fail closed, `0x040B` — withdrawal must be detectable at first contact, not only on re-fetch by a pinned peer |
 | **Push-wake gates fail closed** | §4.9.1, §4.9.4 | unverifiable subscription / content-bearing wake / unauthenticated wake / replayed wake / over-budget wake (a wake spends the target's battery) | reject/drop — `0x0312` (FAIL_CLOSED_BLOCK), `0x0313` (FAIL_CLOSED_BLOCK), `0x0314` (DROP_SILENT), `0x0316` (DROP_SILENT), `0x0315` (rate-limit at emitter **and** receiver); a wake is never surfaced on faith |
 
+### 10.7.4a Substrate — Sync capability fail-closed (`0x0A`, proposed additive)
+
+Mirrored here per `substrate/SYNC.md` §12's own rule ("registered additively under §21.14; mirrored into
+the §10.7 auditable set") and the substrate adoption rule that "each substrate document carries its own
+fail-closed table cross-referenced into §10.7" (`substrate/README.md` rule 5). The Sync substrate
+capability ([`substrate/SYNC.md`](substrate/SYNC.md)) is the one genuinely new normative specification in
+the substrate (not a profile of an existing numbered section); its fail-closed rules are additive and
+apply only to a replica that advertises `sync-1` (§21.22, §21.24c) — the identical scoping as `pub-1`'s
+optional-capability posture (§10.3).
+
+| Invariant | Clause | Trigger | Behavior / error on violation |
+|-----------|--------|---------|-------------------------------|
+| Author admission + op signature mandatory | `SYNC.md` §4.1, §8, §9 | op author not admitted by the namespace policy, or its `COSE_Sign1` fails / `DeviceCert` chain broken | FAIL_CLOSED_BLOCK, `0x0A01` / `0x0A02` |
+| Op value / causal-integrity validity | `SYNC.md` §4.1, §4.3, §8 | non-`ext-value` value, a `set-remove` citing a future add-tag, an embedded deniable payload, or any malformed op | FAIL_CLOSED_BLOCK, `0x0A03` — never merge on a guess |
+| Unsupported op/snapshot version | `SYNC.md` §4.1, §6.1 | a `v`/`suite` this replica does not support | FAIL_CLOSED_BLOCK, `0x0A04` — never guess |
+| HLC skew bound | `SYNC.md` §3 | op `wall` outside the fixed skew window | FAIL_CLOSED_BLOCK, `0x0A05` |
+| PN-counter foreign-entry write | `SYNC.md` §4.6 | an op mutates another author's `P`/`N` entry | FAIL_CLOSED_BLOCK, `0x0A06` |
+| RGA causal-readiness bound | `SYNC.md` §4.7 | an insert's origin is absent and the causal buffer overflows | DEFER_REQUESTS then ROTATE_RETRY, `0x0A07` — buffering, never rejection, unless bounded |
+| Frame hash-chain integrity | `SYNC.md` §4.1 | a `SyncFrame` op's back-link does not resolve to its predecessor | HALT_ALERT, `0x0A08` — publish conflicting frames as evidence |
+| Snapshot root mismatch | `SYNC.md` §6.1 | recomputed observable-state root ≠ `Snapshot.root` at the same `covers` | HALT_ALERT, `0x0A09` — divergence evidence |
+| Cross-namespace reference | `SYNC.md` §7 | an op references a `target` outside its own namespace | FAIL_CLOSED_BLOCK, `0x0A0A` |
+| Open-namespace admission quota | `SYNC.md` §9 | an admission rate/quota exceeded | DENY_POLICY, `0x0A0B` — a policy deny, never a silent hole |
+
 ### 10.7.5 The one governing rule
 
 Across all four groups the invariant is identical: **a security-relevant downgrade is either
