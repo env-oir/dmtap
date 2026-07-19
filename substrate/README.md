@@ -220,6 +220,16 @@ standard or required to speak it. These are named only as existence proofs that 
 Independent implementations **MUST** be buildable from the substrate documents and the core spec alone,
 without reading any of the above (repository README). Where a reference and the spec disagree, the spec wins.
 
+**One core, many surfaces, and today's honest gap.** The suite currently has roughly five independently
+hand-rolled sync/identity/feed implementations across its products, none byte-interoperable with any other.
+[`BINDINGS.md`](BINDINGS.md) is the plan for closing that the right way — one compiled Rust core
+(`dmtap-core`/`dmtap-clustersync`/`dmtap-sync` in `/Users/pc/code/vulos/envoir`), thin per-language bindings
+(native Rust, C-ABI/cgo for Go, WASM for browser/JS, UniFFI for mobile if ever needed), and the frozen
+conformance vectors as the cross-surface proof that a binding is byte-identical to the core rather than a
+sixth reimplementation. [`ADOPTION.md`](ADOPTION.md) is the honest, per-product status matrix that plan is
+the answer to: which product implements which capability today, to-spec or independently, read directly
+from each repository rather than assumed.
+
 ---
 
 ## 7. Document index
@@ -228,3 +238,5 @@ without reading any of the above (repository README). Where a reference and the 
 - [`FEEDS.md`](FEEDS.md) — Capability ②: signed append-only author feeds + public content-addressed blobs.
 - [`SYNC.md`](SYNC.md) — Capability ③: the signed CRDT op algebra and reconciliation wire protocol (the one new spec).
 - [`ROLES.md`](ROLES.md) — Capabilities ④+⑤: open, key-addressed infrastructure roles and content-free wake.
+- [`BINDINGS.md`](BINDINGS.md) — informative: the one-core/many-surfaces bindings plan (native Rust, cgo/C-ABI, WASM, UniFFI).
+- [`ADOPTION.md`](ADOPTION.md) — informative: today's per-product adoption-status matrix across all five capabilities.
