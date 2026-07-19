@@ -103,6 +103,28 @@ CIDv1 (raw codec) can be derived from a chunk hash for an IPFS fetch-adapter. Th
 the kerf-pub reference (below) ships **SHA2-256 under prefix `0x12`** as its interop digest and derives
 CIDv1 for its optional IPFS adapter, changing the digest with "a one-line change" and no flag day.
 
+> **Note (verified-by-exhaustion, not proved): the RFC 6962 split rule and level-by-level odd-node
+> promotion build the same tree.** `MTH` above is stated as the RFC 6962 split rule — recurse on the
+> largest power of two below `n`. An audit-path generator is more naturally built the other way round:
+> level by level, pairing nodes left to right and **promoting** a level's unpaired final node unchanged —
+> the construction the *vidmesh* protocol's own chunk tree uses (§5.3 below). These two constructions
+> produce **structurally identical trees** — same shape, same root, for the same ordered leaf list — for
+> every `n` tested: exhaustively up to `n = 2999` by an implementer building an audit-path generator
+> against this section, with a committed conformance suite (vulos-relay's `tunnel/pubcache`) asserting the
+> equivalence for every `n ≤ 300`. This is exactly the kind of property that holds trivially at powers of
+> two and could plausibly fail at, say, `n = 11`; it is recorded here as a verified-by-exhaustion
+> observation, not a proof, and an implementation that builds its own audit-path generator on the
+> level-by-level construction SHOULD verify the equivalence itself rather than take this note as a
+> substitute for that check.
+>
+> **This is a shape equivalence, not a hash equivalence.** vidmesh's leaf hashing differs from this
+> section's: it hashes `BLAKE3(0x00 ‖ chunk_bytes)` — the raw plaintext bytes, no domain-separation tag —
+> where this section hashes `leaf(h_i) = BLAKE3-256(DS ‖ 0x00 ‖ h_i)` over the chunk's *address* `h_i`,
+> DS-tagged (§3.3's fail-closed type separation depends on that tag). The two trees therefore have the
+> same branching structure and **different node values at every level**; a vidmesh audit path and a §5.3
+> audit path are not wire-interchangeable. §5.3 never claims they are — this note makes that explicit so
+> nobody assumes shape parity implies hash parity.
+
 ### 3.3 Type-incompatibility with sealed manifests (fail closed, §22.2.3)
 
 The DS-tag is folded into every leaf and node, so a **public root and a sealed root over the same
@@ -257,6 +279,46 @@ GET /.well-known/dmtap-pub/manifest/{id}/proof?chunk=i   → [ i, [ sibling_hash
   DS-tagged `leaf`/`node` functions** (§3.2), and checks the result equals the `PubManifest.id` it already
   trusts from the signed announce. A lying server cannot forge a proof (BLAKE3 collision resistance) — the
   endpoint is a convenience, never a trust root, identical in spirit to every other §22 read.
+- **The response is not self-sufficient, and that is by design — but be precise about what it omits.**
+  `[chunk_index, [sibling_hashes…]]` folds to a root; it does not by itself let a verifier know, at each
+  level of the fold, whether the current node has a sibling or is the level's promoted, unpaired last one
+  (RFC 6962 audit-path verification, and the level-by-level promotion construction of the §3.2 note, both
+  need the **tree size** for exactly this). This document's opening framing — verified fetch "without the
+  full manifest" — should be read narrowly: what the endpoint removes from the fetch is the `chunks`
+  array (`PubManifest`'s `4 => [+ hash]` field, the part whose size is O(n) and can run to thousands of
+  entries for large media), never the two small scalar fields `size` and `chunk_sz` (`PubManifest` keys
+  `2`/`3`). A client MUST take `n = ⌈size ÷ chunk_sz⌉` from those fields — already-trusted, because the
+  signed `PubAnnounce` commits to the manifest's content address (§4.2) and the manifest is fetched
+  through the ordinary verified read path (§5.1) — never from this response and never from the chunk
+  list. Because `PubManifest`'s deterministic-CBOR encoding sorts map keys ascending (§18.1.1), `id`,
+  `size`, and `chunk_sz` (keys `1`–`3`) precede `chunks` (key `4`) in the encoded object; a client that
+  wants to avoid the `chunks` array's transfer cost too, not just its verification cost, MAY stream-decode
+  or range-fetch the manifest response and stop once it has read keys `1`–`3`, though this is an
+  implementation optimization, not new normative machinery. With that in hand, the O(log n) property
+  holds as stated: **two small header fields, not the chunk list.**
+  - **Chosen resolution: (a) — document the requirement, do not change the encoding.** vulos-relay's
+    `tunnel/pubcache` already ships this endpoint decoding `[index, path]` and taking `nChunks` from the
+    manifest header out-of-band, exactly as this note now specifies; widening the wire encoding to carry
+    the tree size would be a breaking change to a **fielded** implementation of an OPTIONAL endpoint, for
+    no gain in soundness (the root, not the count, is the authenticator — see the corollary below). A
+    future revision that still prefers **(b)** — adding `tree_size` as a third array element — MUST treat
+    it as a breaking change to this endpoint's response shape and version or capability-flag it (e.g. a
+    distinct query parameter or capability token a server advertises before emitting the wider form), so
+    an old client cannot silently misparse `[i, path, tree_size]` as a malformed 2-element array or a new
+    client silently accept a 2-element response from a server that never had the tree size to add. This
+    document does not adopt (b).
+  - **Corollary: `nChunks` is structural metadata, not a second authenticator.** It tells a verifier
+    where odd-node promotion happens; it does not itself authenticate anything, because it never entered
+    the fold — only the path and the leaf did. Two different chunk counts that happen to imply the same
+    per-level "does this node have a sibling" decisions for the queried index accept the **same** path to
+    the **same** root: for example, `n = 5` and `n = 6` fold identically at index `2` (both consume a
+    sibling at every level on the way up), so a proof that verifies under one of those counts verifies
+    under the other too — correctly so, since the **root**, not the count, is what authenticates the
+    chunk. A wrong `nChunks` is caught only indirectly, when it changes which levels have a promoted node
+    for the queried index and the fold consequently diverges from the trusted root; a count that happens
+    not to change the fold shape is simply not detected. No implementation should build a guarantee on
+    the chunk count matching the true one — it is a navigational hint for locating promotion, not a
+    check, and the design does not need it to be more than that.
 - **Purely additive.** A gateway that does not implement it answers 404 and the client falls back to
   whole-manifest verification (§5.1); a client that does not need it never calls it. It changes nothing
   about how objects are signed, addressed, or stored — it only serves a proof the tree already commits to.
