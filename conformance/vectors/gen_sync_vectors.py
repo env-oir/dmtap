@@ -9,27 +9,45 @@ implementation yet exists for this wire shape — SYNC.md itself is "the one
 genuinely new normative specification" in the substrate, and dmtap-core does
 not implement it).
 
-Scope discipline (freeze-check, per the wave that added this file): this
-script freezes ONLY the SYNC-* stubs whose byte-exact inputs/outputs are
-FULLY determined by substrate/SYNC.md's text with no further design choice
-required of the generator. Stubs whose wire shape is genuinely underspecified
-(the COSE_Sign1 envelope framing for SYNC-OP-02, the canonical "observable
-state" CBOR schema for SYNC-SNAP-01/02, the range-Merkle fingerprint "fold"
-function for SYNC-RECON-01, and the apparent earlier/later-wins ambiguity in
-SYNC-TREE-01's cycle-resolution phrasing vs. §4.8's body text) are left as
-stubs in substrate/SYNC.md, each with a NOT-FROZEN marker explaining why —
-see that document, not this script, for the authoritative list.
+Scope discipline: this script freezes SYNC-* stubs only where substrate/SYNC.md's
+text fully determines the byte-exact inputs/outputs, with no design choice left
+to the generator. All 20 stubs are now byte-exact: the five that were previously
+NOT-FROZEN (SYNC-OP-02 COSE_Sign1 envelope framing, SYNC-SNAP-01/02 canonical
+observable-state schema, SYNC-RECON-01 fingerprint fold, and the SYNC-TREE-01
+earlier/later-wins contradiction) were resolved *in the specification first* —
+§4.1, §6.1.1, §5.3 and §4.8 respectively now carry the normative frozen text
+plus its rationale — and only then vectored here. The spec, not this script,
+remains the authoritative source of every decision below.
 
-Dependencies: `pip install cryptography` (Ed25519 pubkey derivation only;
-these vectors do not exercise signing — see NOT-FROZEN note on SYNC-OP-02).
-Everything below is a FIXED constant: fixed 32-byte Ed25519 seeds, fixed
-HLC wall-clock values. No randomness, no wall-clock reads.
+Dependencies: `pip install blake3 cryptography` (BLAKE3-256 for content
+addresses / state roots / reconciliation fingerprints; Ed25519 for author keys
+and the SYNC-OP-02 COSE_Sign1 signature). Everything below is a FIXED constant:
+fixed 32-byte Ed25519 seeds, fixed HLC wall-clock values. No randomness, no
+wall-clock reads; Ed25519 (RFC 8032) is itself deterministic, so the signature
+bytes are reproducible.
 
 Run: python3 conformance/vectors/gen_sync_vectors.py > conformance/vectors/sync_vectors.json
 """
 import json
+import blake3
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
+
+# ── DMTAP-SYNC DS-tags (substrate/SYNC.md §4.1/§5.3/§6.1; §21.24c registry) ───────────────
+# Each is the ASCII identifier terminated by a single 0x00 (the §18.1.6 DS-tag convention).
+DS_OP = b"DMTAP-SYNC-v0/op\x00"                       # COSE_Sign1 external_aad (§4.1)
+DS_OP_ID = b"DMTAP-SYNC-v0/op-id\x00"                 # op content-address hash preimage (§4.1)
+DS_SNAPSHOT_STATE = b"DMTAP-SYNC-v0/snapshot-state\x00"  # observable-state root hash (§6.1.1)
+DS_RECON_FP = b"DMTAP-SYNC-v0/recon-fp\x00"           # range-Merkle fingerprint fold (§5.3)
+
+
+def b3(data: bytes) -> bytes:
+    return blake3.blake3(data).digest()
+
+
+def content_addr(ds_tag: bytes, body: bytes) -> bytes:
+    """0x1e || BLAKE3-256(DS-tag || body) — a §18.1.5 v0 `hash` (33 bytes) over a DS-tagged preimage."""
+    return b"\x1e" + b3(ds_tag + body)
 
 # ── fixed test constants (no randomness, no timestamps read from the clock) ──────────────
 SEED_SYNC_A = bytes([0xCC] * 32)   # author A — admitted in every scenario below
@@ -48,9 +66,9 @@ def keypair(seed: bytes):
     return sk, pk
 
 
-_, PK_A = keypair(SEED_SYNC_A)
-_, PK_B = keypair(SEED_SYNC_B)
-_, PK_X = keypair(SEED_SYNC_X)
+SK_A, PK_A = keypair(SEED_SYNC_A)
+SK_B, PK_B = keypair(SEED_SYNC_B)
+SK_X, PK_X = keypair(SEED_SYNC_X)
 
 
 # ── minimal deterministic (RFC 8949 §4.2 canonical) CBOR encoder ─────────────────────────
@@ -179,6 +197,86 @@ add(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-OP-02 — COSE_Sign1 envelope framing + signature bind (§4.1, frozen)
+# ══════════════════════════════════════════════════════════════════════════════════════
+# protected = bstr(det_cbor({1: alg, 4: kid})); alg = -8 (EdDSA) for suite 0x01, kid = hlc.author
+COSE_ALG_EDDSA = -8
+protected_map01 = enc_map([(1, enc_int(COSE_ALG_EDDSA)), (4, enc_bstr(PK_A))])
+protected01 = enc_bstr(protected_map01)      # the bstr-wrapped protected header, as it appears on the wire
+unprotected01 = enc_map([])                  # 0xa0 — nothing outside the signature
+payload01 = enc_bstr(op01)                   # det_cbor(SyncOp) carried inline, never detached/nil
+
+# Signable preimage: RFC 9052 §4.4 Sig_structure ["Signature1", protected, external_aad, payload],
+# external_aad = the DS-tag "DMTAP-SYNC-v0/op" || 0x00 (bound into the signature, never transmitted).
+sig_structure01 = enc_array([enc_tstr("Signature1"), protected01, enc_bstr(DS_OP), payload01])
+signature01 = SK_A.sign(sig_structure01)
+cose_sign1_01 = enc_array([protected01, unprotected01, payload01, enc_bstr(signature01)])
+op_id_01 = content_addr(DS_OP_ID, op01)
+
+# Tamper case: flip the low bit of the FINAL payload byte (the last byte of det_cbor(SyncOp)) and
+# re-frame with the SAME signature — the signature must now fail.
+op01_tampered = op01[:-1] + bytes([op01[-1] ^ 0x01])
+cose_sign1_01_tampered = enc_array(
+    [protected01, unprotected01, enc_bstr(op01_tampered), enc_bstr(signature01)]
+)
+# Substituted-kid case: same signature + payload, but the protected header names PK_B as signer.
+protected01_badkid = enc_bstr(enc_map([(1, enc_int(COSE_ALG_EDDSA)), (4, enc_bstr(PK_B))]))
+cose_sign1_01_badkid = enc_array(
+    [protected01_badkid, unprotected01, payload01, enc_bstr(signature01)]
+)
+add(
+    "sync_op_cose_sign1_bind",
+    "sync_op_cose_sign1_verify",
+    {
+        "sync_op_cbor_hex": op01.hex(),
+        "signer_seed_hex": SEED_SYNC_A.hex(),
+        "signer_pubkey_hex": PK_A.hex(),
+        "alg": COSE_ALG_EDDSA,
+        "external_aad_hex": DS_OP.hex(),
+        "cose_sign1_hex": cose_sign1_01.hex(),
+        "tampered_payload_cose_sign1_hex": cose_sign1_01_tampered.hex(),
+        "substituted_kid_cose_sign1_hex": cose_sign1_01_badkid.hex(),
+    },
+    {
+        "protected_hex": protected01.hex(),
+        "unprotected_hex": unprotected01.hex(),
+        "payload_hex": payload01.hex(),
+        "sig_structure_hex": sig_structure01.hex(),
+        "signature_hex": signature01.hex(),
+        "op_id_hex": op_id_01.hex(),
+        "verifies": True,
+        "tampered_payload": {
+            "verifies": False,
+            "error_code": "0x0A02",
+            "error_name": "ERR_SYNC_OP_SIG_INVALID",
+            "action": "FAIL_CLOSED_BLOCK",
+        },
+        "substituted_kid": {
+            "verifies": False,
+            "error_code": "0x0A02",
+            "error_name": "ERR_SYNC_OP_SIG_INVALID",
+            "action": "FAIL_CLOSED_BLOCK",
+        },
+    },
+    "§4.1 (frozen): the wire object is the RFC 9052 `COSE_Sign1` four-element array "
+    "[protected, unprotected, payload, signature], itself deterministic CBOR. protected = "
+    "bstr(det_cbor({1: alg = -8 EdDSA (suite 0x01), 4: kid = hlc.author})) — kid is inside the "
+    "INTEGRITY-COVERED header, so substituting a signer key is a verification failure, never a "
+    "silent mis-attribution (see substituted_kid_cose_sign1_hex, which reuses a valid signature "
+    "under a different kid and MUST fail). unprotected = the empty map 0xa0. payload = "
+    "bstr(det_cbor(SyncOp)), always inline. signature = Ed25519(sk_author, det_cbor(Sig_structure)) "
+    "over [\"Signature1\", protected, external_aad, payload] with external_aad = the DS-tag "
+    "\"DMTAP-SYNC-v0/op\" || 0x00 — the RFC-9052-idiomatic realization of §18.1.6's "
+    "preimage = DS-tag || body, bound into the signature but never transmitted, so a COSE_Sign1 "
+    "minted for any other DMTAP object can never verify as a SyncOp and no peer-flippable "
+    "discriminator flag exists. A flipped payload byte is 0x0A02. The op content address "
+    "op_id = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/op-id\" || 0x00 || det_cbor(SyncOp)) is computed "
+    "over the SyncOp, NOT the envelope, so per-op-signed and SyncFrame-carried forms of one op "
+    "share a single dedup/fingerprint identity. Ed25519 is deterministic (RFC 8032), so "
+    "signature_hex is a reproducible known answer.",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
 # SYNC-AUTH-01 — Unauthorized author (§8, §9)
 # ══════════════════════════════════════════════════════════════════════════════════════
 hlc_auth01 = encode_hlc(HLC_WALL, 1, PK_X)
@@ -202,8 +300,9 @@ add(
     "the analogous single-owner DeviceCert set, §8 row 1) MUST be rejected regardless of "
     "whether its (hypothetical) signature verifies — admission is checked in addition to, "
     "not instead of, signature validity (§4.1, §8 'the authorization check is the same'). "
-    "This vector tests the admission predicate only; it does not assert anything about "
-    "COSE_Sign1 envelope bytes (see SYNC-OP-02, NOT-FROZEN).",
+    "This vector tests the admission predicate ALONE, deliberately independent of the envelope: "
+    "the COSE_Sign1 framing is exercised separately by SYNC-OP-02, and admission must reject here "
+    "even if that framing were byte-perfect.",
 )
 
 # ══════════════════════════════════════════════════════════════════════════════════════
@@ -478,6 +577,258 @@ add(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-TREE-01 — concurrent-move cycle: earlier-HLC move applied, later skipped (§4.8, frozen)
+# ══════════════════════════════════════════════════════════════════════════════════════
+TREE_ROOT = ""  # §6.1.1: the reserved tree-root node id is the empty string
+# Baseline: A and B are both top-level nodes (children of the root sentinel).
+hlc_t_a0 = encode_hlc(HLC_WALL, 0, PK_A)
+hlc_t_b0 = encode_hlc(HLC_WALL, 0, PK_B)   # (W,0,A) < (W,0,B): equal wall+counter, author breaks the tie
+op_tree_a0 = encode_sync_op(kind=8, ns="", target="A", field="a", hlc_bytes=hlc_t_a0, ref=encode_opref(TREE_ROOT))
+op_tree_b0 = encode_sync_op(kind=8, ns="", target="B", field="b", hlc_bytes=hlc_t_b0, ref=encode_opref(TREE_ROOT))
+# The colliding concurrent pair: move(A -> under B) at h1, move(B -> under A) at h2, h1 < h2.
+hlc_t_h1 = encode_hlc(HLC_WALL, 1, PK_A)
+hlc_t_h2 = encode_hlc(HLC_WALL, 2, PK_B)
+op_tree_h1 = encode_sync_op(kind=8, ns="", target="A", field="1", hlc_bytes=hlc_t_h1, ref=encode_opref("B"))
+op_tree_h2 = encode_sync_op(kind=8, ns="", target="B", field="1", hlc_bytes=hlc_t_h2, ref=encode_opref("A"))
+add(
+    "sync_tree_concurrent_move_cycle",
+    "sync_tree_move_replay",
+    {
+        "baseline_ops_cbor_hex": [op_tree_a0.hex(), op_tree_b0.hex()],
+        "baseline_edges": [
+            {"node": "A", "parent": TREE_ROOT, "ord": "a"},
+            {"node": "B", "parent": TREE_ROOT, "ord": "b"},
+        ],
+        "colliding_ops_cbor_hex": [op_tree_h1.hex(), op_tree_h2.hex()],
+        "colliding_moves": [
+            {"label": "h1", "move": "A -> under B", "hlc": {"wall": HLC_WALL, "counter": 1, "author_hex": PK_A.hex()}},
+            {"label": "h2", "move": "B -> under A", "hlc": {"wall": HLC_WALL, "counter": 2, "author_hex": PK_B.hex()}},
+        ],
+    },
+    {
+        "applied": ["h1"],
+        "skipped": ["h2"],
+        "skipped_is_error": False,
+        "final_edges": [
+            {"node": "A", "parent": "B", "ord": "1"},
+            {"node": "B", "parent": TREE_ROOT, "ord": "b"},
+        ],
+        "acyclic": True,
+        "apply_order_independent": True,
+    },
+    "§4.8 (frozen): moves are replayed in ASCENDING HLC order (oldest first), and a move "
+    "(node -> new_parent) would create a cycle iff new_parent == node or new_parent is a "
+    "descendant of node in the tree formed by all strictly-earlier-HLC moves already applied. "
+    "Replay order here is (W,0,A) (W,0,B) h1 h2. When h1 is evaluated, B is not a descendant of "
+    "A, so A becomes a child of B. When h2 is then evaluated, A IS already a descendant of B, so "
+    "moving B under A would close the cycle B->A->B and h2 is SKIPPED (a recorded no-op, never an "
+    "error); B keeps its pre-swap parent, the root. The observable result is therefore the "
+    "EARLIER move applied and the LATER move skipped — the correction to the original stub text, "
+    "which asserted the reverse. This is Kleppmann's cycle-safe replicated-tree result and is "
+    "deliberately NOT last-writer-wins for the colliding pair: LWW (§4.4) governs only repeated "
+    "moves of the SAME node; the ordered replay, not the clock, decides the interaction between "
+    "moves of DIFFERENT nodes, so every replica reaches this identical acyclic tree regardless of "
+    "arrival order (a replica receiving h2 before h1 re-evaluates the affected subtree in HLC "
+    "order and reaches the same result).",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-SNAP-01 / SYNC-SNAP-02 — canonical observable state + snapshot root (§6.1.1, frozen)
+# ══════════════════════════════════════════════════════════════════════════════════════
+def section(entries) -> bytes:
+    """A §6.1.1 section: entries sorted ASCENDING by their deterministic-CBOR bytes."""
+    return enc_array(sorted(entries))
+
+
+def observable_state(orset, lww, pn, death, rga, tree) -> bytes:
+    """The fixed SIX-element positional array of §6.1.1 — kind-ascending, never omitted."""
+    return enc_array([section(orset), section(lww), section(pn), section(death),
+                      section(rga), section(tree)])
+
+
+def state_root(state_cbor: bytes) -> bytes:
+    """root = 0x1e || BLAKE3-256("DMTAP-SYNC-v0/snapshot-state" || 0x00 || det_cbor(ObservableState))."""
+    return content_addr(DS_SNAPSHOT_STATE, state_cbor)
+
+
+# The state below is exactly what the earlier vectors in this file converge to, so the snapshot
+# vectors are not a fresh invention: OR-Set "e1" present on "tags" (SYNC-ORSET-01), the LWW winner
+# "n" on (doc1,title) (SYNC-LWW-01), the PN total 3 on (stock1,qty) (SYNC-PN-01), rec1 deleted with
+# class "redact" (SYNC-DEATH-01), the RGA sequence [atom0, Y, X] on line1 (SYNC-RGA-01), and the
+# acyclic tree A-under-B / B-under-root (SYNC-TREE-01).
+sect_orset = [enc_array([enc_tstr("tags"), enc_tstr("e1")])]
+sect_lww = [enc_array([enc_tstr("doc1"), enc_tstr("title"), enc_tstr("n")])]
+sect_pn = [enc_array([enc_tstr("stock1"), enc_tstr("qty"), enc_int(3)])]
+sect_death = [enc_array([enc_tstr("rec1"), enc_tstr("redact")])]
+sect_rga = [enc_array([enc_tstr("line1"),
+                       enc_array([enc_tstr("atom0"), enc_tstr("Y"), enc_tstr("X")])])]
+sect_tree = [
+    enc_array([enc_tstr("A"), enc_tstr("B"), enc_tstr("1")]),
+    enc_array([enc_tstr("B"), enc_tstr(TREE_ROOT), enc_tstr("b")]),
+]
+state_v1 = observable_state(sect_orset, sect_lww, sect_pn, sect_death, sect_rga, sect_tree)
+root_v1 = state_root(state_v1)
+
+empty_state = observable_state([], [], [], [], [], [])
+add(
+    "sync_snapshot_root_determinism",
+    "sync_snapshot_state_root",
+    {
+        "observable_state": {
+            "orset": [["tags", "e1"]],
+            "lww": [["doc1", "title", "n"]],
+            "pn": [["stock1", "qty", 3]],
+            "death": [["rec1", "redact"]],
+            "rga": [["line1", ["atom0", "Y", "X"]]],
+            "tree": [["A", "B", "1"], ["B", TREE_ROOT, "b"]],
+        },
+        "ds_tag_hex": DS_SNAPSHOT_STATE.hex(),
+        "empty_state_sections": 6,
+    },
+    {
+        "observable_state_cbor_hex": state_v1.hex(),
+        "root_hex": root_v1.hex(),
+        "empty_state_cbor_hex": empty_state.hex(),
+        "empty_state_root_hex": state_root(empty_state).hex(),
+        "same_covers_same_root": True,
+        "mismatch_error_code": "0x0A09",
+        "mismatch_error_name": "ERR_SYNC_SNAPSHOT_ROOT_MISMATCH",
+        "mismatch_action": "HALT_ALERT",
+    },
+    "§6.1.1 (frozen): ObservableState is a fixed SIX-element positional array — "
+    "[orset, lww, pn, death, rga, tree] in kind-ascending order, positional rather than keyed so "
+    "no map-key scheme can be a source of divergence, and empty sections are the empty array [] "
+    "present in position (see empty_state_cbor_hex = 0x86 followed by six 0x80). Every section is "
+    "sorted ASCENDING by the deterministic-CBOR bytes of each entry; the sole exception is the "
+    "RGA inner atom list, which is in SEQUENCE order (the §4.7 pre-order walk) and is NOT "
+    "re-sorted, because for a sequence the order IS the observable value. Only OBSERVABLE state "
+    "appears — add-tags, tombstones, per-author P/N maps, RGA element ids, Live death cells and "
+    "superseded LWW cells are all internal — so two replicas at the same `covers` vector produce "
+    "byte-identical bytes regardless of apply order or internal bookkeeping. "
+    "root = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/snapshot-state\" || 0x00 || det_cbor(ObservableState)), "
+    "a §18.1.5 v0 hash; the DS-tag is distinct from the snapshot SIGNATURE tag "
+    "(\"DMTAP-SYNC-v0/snapshot\") so a state-root preimage and a signature preimage can never be "
+    "confused. A root mismatch at equal `covers` is 0x0A09 (HALT_ALERT) — evidence of divergence. "
+    "The state serialized here is exactly the convergence result of this file's earlier vectors "
+    "(ORSET-01, LWW-01, PN-01, DEATH-01, RGA-01, TREE-01).",
+)
+
+# SYNC-SNAP-02 — fast join (snapshot + post-`covers` ops) == full replay, byte-for-byte.
+hlc_post = encode_hlc(HLC_WALL, 20, PK_B)  # strictly after everything folded into `covers`
+op_post = encode_sync_op(kind=3, ns="", target="doc1", field="title", value=enc_tstr("p"), hlc_bytes=hlc_post)
+sect_lww_v2 = [enc_array([enc_tstr("doc1"), enc_tstr("title"), enc_tstr("p")])]
+state_v2 = observable_state(sect_orset, sect_lww_v2, sect_pn, sect_death, sect_rga, sect_tree)
+root_v2 = state_root(state_v2)
+covers_v1 = enc_map([(1, encode_hlc(HLC_WALL, 4, PK_A)), (2, encode_hlc(HLC_WALL, 7, PK_B))])
+add(
+    "sync_snapshot_fast_join_equals_replay",
+    "sync_snapshot_fast_join",
+    {
+        "snapshot_covers_note": "per-author max HLC folded into the snapshot: A@(W,4), B@(W,7)",
+        "snapshot_covers_cbor_hex": covers_v1.hex(),
+        "snapshot_observable_state_cbor_hex": state_v1.hex(),
+        "snapshot_root_hex": root_v1.hex(),
+        "post_covers_ops_cbor_hex": [op_post.hex()],
+        "post_covers_ops": [{"kind": 3, "target": "doc1", "field": "title", "value": "p",
+                             "hlc": {"wall": HLC_WALL, "counter": 20, "author_hex": PK_B.hex()}}],
+    },
+    {
+        "fast_join_state_cbor_hex": state_v2.hex(),
+        "full_replay_state_cbor_hex": state_v2.hex(),
+        "states_byte_identical": True,
+        "root_hex": root_v2.hex(),
+        "roots_equal": True,
+    },
+    "§6.1/§6.1.1 (frozen): a joining replica adopts the snapshot's observable state, sets its "
+    "local vector to `covers`, and applies only the ops AFTER `covers` — here one lww-set writing "
+    "(doc1,title) = \"p\" at (W,20,B), which supersedes the snapshot's winning value \"n\" because "
+    "its HLC is greater. The resulting ObservableState bytes are IDENTICAL to those of a replica "
+    "that replayed the entire history from genesis, hence the roots are identical: only the "
+    "observable projection is serialized, so the two replicas' differing internal bookkeeping "
+    "(one has the pre-snapshot op log, the other never saw it) cannot show through. This is the "
+    "strong-eventual-consistency equality the fast-join guarantee rests on, and it is what makes "
+    "a snapshot VERIFIABLE rather than merely trusted — a replica that later backfills the "
+    "pre-`covers` ops MUST recompute this same root.",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
+# SYNC-RECON-01 — range-Merkle fingerprint fold + drill-down (§5.3, frozen)
+# ══════════════════════════════════════════════════════════════════════════════════════
+def recon_fp(op_ids) -> bytes:
+    """fp = 0x1e || BLAKE3-256("DMTAP-SYNC-v0/recon-fp" || 0x00 || det_cbor([* op-id])),
+    over the range's op ids sorted ASCENDING by the HLC of their ops (§3 total order)."""
+    return content_addr(DS_RECON_FP, enc_array([enc_bstr(i) for i in op_ids]))
+
+
+hlc_r1 = encode_hlc(HLC_WALL, 1, PK_A)
+hlc_r2 = encode_hlc(HLC_WALL, 2, PK_A)
+hlc_r3 = encode_hlc(HLC_WALL, 3, PK_A)  # the op replica R2 is missing
+op_r1 = encode_sync_op(kind=1, ns="", target="tags", value=enc_tstr("r1"), hlc_bytes=hlc_r1)
+op_r2 = encode_sync_op(kind=1, ns="", target="tags", value=enc_tstr("r2"), hlc_bytes=hlc_r2)
+op_r3 = encode_sync_op(kind=1, ns="", target="tags", value=enc_tstr("r3"), hlc_bytes=hlc_r3)
+id_r1, id_r2, id_r3 = (content_addr(DS_OP_ID, o) for o in (op_r1, op_r2, op_r3))
+
+# Whole range [lo, hi) = [(W,0,A), (W,10,A)) — A holds {r1,r2,r3}, B holds {r1,r2}.
+fp_A_full, fp_B_full = recon_fp([id_r1, id_r2, id_r3]), recon_fp([id_r1, id_r2])
+# Split into a fan-out of 2 at (W,2,A): sub-range 1 = [(W,0,A),(W,2,A)) = {r1} on BOTH sides.
+fp_A_sub1, fp_B_sub1 = recon_fp([id_r1]), recon_fp([id_r1])
+# Sub-range 2 = [(W,2,A),(W,10,A)): {r2,r3} vs {r2} — the mismatch, which ships exactly r3.
+fp_A_sub2, fp_B_sub2 = recon_fp([id_r2, id_r3]), recon_fp([id_r2])
+fp_empty = recon_fp([])
+add(
+    "sync_recon_range_merkle_diff",
+    "sync_recon_fingerprint",
+    {
+        "ops_cbor_hex": {"r1": op_r1.hex(), "r2": op_r2.hex(), "r3": op_r3.hex()},
+        "op_ids_hex": {"r1": id_r1.hex(), "r2": id_r2.hex(), "r3": id_r3.hex()},
+        "replica_A_holds": ["r1", "r2", "r3"],
+        "replica_B_holds": ["r1", "r2"],
+        "range": {"lo": {"wall": HLC_WALL, "counter": 0, "author_hex": PK_A.hex()},
+                  "hi": {"wall": HLC_WALL, "counter": 10, "author_hex": PK_A.hex()}},
+        "split_at": {"wall": HLC_WALL, "counter": 2, "author_hex": PK_A.hex()},
+        "ds_tag_hex": DS_RECON_FP.hex(),
+    },
+    {
+        "full_range": {
+            "A": {"fp_hex": fp_A_full.hex(), "count": 3},
+            "B": {"fp_hex": fp_B_full.hex(), "count": 2},
+            "match": False,
+        },
+        "subrange_1": {
+            "A": {"fp_hex": fp_A_sub1.hex(), "count": 1},
+            "B": {"fp_hex": fp_B_sub1.hex(), "count": 1},
+            "match": True,
+            "ops_exchanged": [],
+        },
+        "subrange_2": {
+            "A": {"fp_hex": fp_A_sub2.hex(), "count": 2},
+            "B": {"fp_hex": fp_B_sub2.hex(), "count": 1},
+            "match": False,
+            "ops_shipped_to_B": [id_r3.hex()],
+        },
+        "ops_shipped_total": 1,
+        "empty_range_fp_hex": fp_empty.hex(),
+        "empty_range_count": 0,
+    },
+    "§5.3 (frozen): fp = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/recon-fp\" || 0x00 || "
+    "det_cbor([* op-id])) over the range's op ids sorted ascending by their ops' HLC — one "
+    "DS-tagged BLAKE3 hash FOLDING the ordered ids into a single digest (matching the §5.6 `recon` "
+    "reference fp = ContentId::of(det_cbor([* id]))), shipped with count = |R|. It is deliberately "
+    "NOT a homomorphic/incremental combiner (XOR- or addition-of-hashes): a homomorphic fold buys "
+    "O(1) range updates but admits cancellation (an even number of identical insertions vanishes) "
+    "and adds integer arithmetic to the wire, whereas a changed range is simply re-hashed and "
+    "BLAKE3 over the length-prefixed deterministic-CBOR array is collision-resistant and "
+    "unambiguous across a range boundary. `count` guards the degenerate empty-vs-empty and "
+    "duplicate cases a digest alone cannot distinguish (note empty_range_fp_hex is a well-defined "
+    "hash of det_cbor([]) = 0x80, not a special case). Round: the full range mismatches, so it is "
+    "split (fan-out of 2 at (W,2,A) — the SPLIT POINT is an input here, since §5.3 fixes only "
+    "\"split by op count into a small fixed fan-out\", not a particular boundary); sub-range 1 has "
+    "equal (fp,count) on both sides and exchanges NO ops; sub-range 2 mismatches and surfaces "
+    "exactly the one differing op r3. Range-Merkle is a discovery optimization only — r3 is still "
+    "applied through the same §4 verify+merge path.",
+)
+
+# ══════════════════════════════════════════════════════════════════════════════════════
 # SYNC-NS-01 / SYNC-NS-02 — sparse scoping + cross-namespace ref reject (§7)
 # ══════════════════════════════════════════════════════════════════════════════════════
 hlc_nsx = encode_hlc(HLC_WALL, 0, PK_A)
@@ -555,23 +906,26 @@ add(
 out = {
     "format": "dmtap-conformance-vectors/1",
     "suite": "Sync substrate capability (substrate/SYNC.md) — suite 0x01 (classical): Ed25519 / BLAKE3-256 "
-    "primitives shared with the core; these vectors exercise only the deterministic CBOR + CRDT-algebra "
-    "layer (no signing math — see NOT-FROZEN note on SYNC-OP-02 in substrate/SYNC.md §10)",
+    "primitives shared with the core. These vectors exercise the deterministic CBOR + CRDT-algebra layer, "
+    "the RFC 9052 COSE_Sign1 op envelope (§4.1), the canonical observable-state root (§6.1.1) and the "
+    "range-Merkle fingerprint fold (§5.3)",
     "generated_by": "conformance/vectors/gen_sync_vectors.py (this repo) — NOT the dmtap-core reference "
     "crate, which does not implement the Sync substrate capability (it is substrate/SYNC.md's own "
     "'one genuinely new normative specification', ungrounded in any single existing numbered section). "
     "Every value here is a direct, mechanical application of substrate/SYNC.md's §3/§4/§6/§7 rules to "
     "fixed inputs — no randomness, no wall-clock reads.",
-    "methodology": "Fixed 32-byte Ed25519 seeds (0xCC/0xDD/0xEE) via the `cryptography` package for author "
-    "identity bytes only (no signatures are computed — this file freezes the CBOR + CRDT-merge layer, "
-    "not the COSE_Sign1 signing envelope, which substrate/SYNC.md §10 marks NOT-FROZEN pending a frozen "
-    "COSE profile). CBOR here is the same §18-canonical, integer-keyed deterministic encoding (RFC 8949 "
-    "§4.2) used by conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json.",
-    "scope_note": "This file freezes 15 of substrate/SYNC.md §10's 20 stubs (SYNC-OP-01, SYNC-AUTH-01, "
-    "SYNC-LWW-01/02, SYNC-ORSET-01/02, SYNC-DEATH-01/02, SYNC-PN-01/02, SYNC-RGA-01/02, SYNC-NS-01/02, "
-    "SYNC-GC-01). The remaining 5 (SYNC-OP-02, SYNC-TREE-01, SYNC-SNAP-01/02, SYNC-RECON-01) are left as "
-    "construction-recipe stubs in substrate/SYNC.md, each marked NOT-FROZEN with the specific "
-    "underspecified design choice blocking a byte-exact vector — see that document, not this script.",
+    "methodology": "Fixed 32-byte Ed25519 seeds (0xCC/0xDD/0xEE) via the `cryptography` package; BLAKE3-256 "
+    "via the `blake3` package. Ed25519 (RFC 8032) is deterministic, so the one signature vector "
+    "(SYNC-OP-02) is a reproducible known answer with no RNG involved. CBOR here is the same "
+    "§18-canonical, integer-keyed deterministic encoding (RFC 8949 §4.2) used by "
+    "conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json; all content addresses use "
+    "the §18.1.5 v0 form 0x1e || BLAKE3-256(DS-tag || 0x00 || body) with the §21.24c DMTAP-SYNC-v0 DS-tags.",
+    "scope_note": "This file freezes ALL 20 of substrate/SYNC.md §10's conformance stubs. The five that "
+    "were previously NOT-FROZEN — SYNC-OP-02 (COSE_Sign1 envelope framing), SYNC-TREE-01 (which side of a "
+    "concurrent-move cycle loses), SYNC-SNAP-01/02 (canonical observable-state schema) and SYNC-RECON-01 "
+    "(range-Merkle fingerprint fold) — were each resolved by adding normative frozen text to the "
+    "specification FIRST (§4.1, §4.8, §6.1.1, §5.3 respectively, each with its rationale) and only then "
+    "vectored here. No decision in this file originates in this file: substrate/SYNC.md is authoritative.",
     "vectors": vectors,
 }
 print(json.dumps(out, indent=2))

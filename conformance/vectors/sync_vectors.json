@@ -1,9 +1,9 @@
 {
   "format": "dmtap-conformance-vectors/1",
-  "suite": "Sync substrate capability (substrate/SYNC.md) \u2014 suite 0x01 (classical): Ed25519 / BLAKE3-256 primitives shared with the core; these vectors exercise only the deterministic CBOR + CRDT-algebra layer (no signing math \u2014 see NOT-FROZEN note on SYNC-OP-02 in substrate/SYNC.md \u00a710)",
+  "suite": "Sync substrate capability (substrate/SYNC.md) \u2014 suite 0x01 (classical): Ed25519 / BLAKE3-256 primitives shared with the core. These vectors exercise the deterministic CBOR + CRDT-algebra layer, the RFC 9052 COSE_Sign1 op envelope (\u00a74.1), the canonical observable-state root (\u00a76.1.1) and the range-Merkle fingerprint fold (\u00a75.3)",
   "generated_by": "conformance/vectors/gen_sync_vectors.py (this repo) \u2014 NOT the dmtap-core reference crate, which does not implement the Sync substrate capability (it is substrate/SYNC.md's own 'one genuinely new normative specification', ungrounded in any single existing numbered section). Every value here is a direct, mechanical application of substrate/SYNC.md's \u00a73/\u00a74/\u00a76/\u00a77 rules to fixed inputs \u2014 no randomness, no wall-clock reads.",
-  "methodology": "Fixed 32-byte Ed25519 seeds (0xCC/0xDD/0xEE) via the `cryptography` package for author identity bytes only (no signatures are computed \u2014 this file freezes the CBOR + CRDT-merge layer, not the COSE_Sign1 signing envelope, which substrate/SYNC.md \u00a710 marks NOT-FROZEN pending a frozen COSE profile). CBOR here is the same \u00a718-canonical, integer-keyed deterministic encoding (RFC 8949 \u00a74.2) used by conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json.",
-  "scope_note": "This file freezes 15 of substrate/SYNC.md \u00a710's 20 stubs (SYNC-OP-01, SYNC-AUTH-01, SYNC-LWW-01/02, SYNC-ORSET-01/02, SYNC-DEATH-01/02, SYNC-PN-01/02, SYNC-RGA-01/02, SYNC-NS-01/02, SYNC-GC-01). The remaining 5 (SYNC-OP-02, SYNC-TREE-01, SYNC-SNAP-01/02, SYNC-RECON-01) are left as construction-recipe stubs in substrate/SYNC.md, each marked NOT-FROZEN with the specific underspecified design choice blocking a byte-exact vector \u2014 see that document, not this script.",
+  "methodology": "Fixed 32-byte Ed25519 seeds (0xCC/0xDD/0xEE) via the `cryptography` package; BLAKE3-256 via the `blake3` package. Ed25519 (RFC 8032) is deterministic, so the one signature vector (SYNC-OP-02) is a reproducible known answer with no RNG involved. CBOR here is the same \u00a718-canonical, integer-keyed deterministic encoding (RFC 8949 \u00a74.2) used by conformance/vectors/vectors.json and conformance/vectors/pub_vectors.json; all content addresses use the \u00a718.1.5 v0 form 0x1e || BLAKE3-256(DS-tag || 0x00 || body) with the \u00a721.24c DMTAP-SYNC-v0 DS-tags.",
+  "scope_note": "This file freezes ALL 20 of substrate/SYNC.md \u00a710's conformance stubs. The five that were previously NOT-FROZEN \u2014 SYNC-OP-02 (COSE_Sign1 envelope framing), SYNC-TREE-01 (which side of a concurrent-move cycle loses), SYNC-SNAP-01/02 (canonical observable-state schema) and SYNC-RECON-01 (range-Merkle fingerprint fold) \u2014 were each resolved by adding normative frozen text to the specification FIRST (\u00a74.1, \u00a74.8, \u00a76.1.1, \u00a75.3 respectively, each with its rationale) and only then vectored here. No decision in this file originates in this file: substrate/SYNC.md is authoritative.",
   "vectors": [
     {
       "name": "sync_op_lww_canonical",
@@ -26,6 +26,42 @@
       "note": "\u00a74.1 SyncOp{kind:3 (lww-set), ns:\"\", target:\"a\", field:\"x\", value:\"v\", hlc}, keys 1,2,3,4,5,6 ascending (7 observed / 8 ref absent, both OPTIONAL for this kind, \u00a74.2 table). value is the ext-value tstr \"v\" (\u00a718.3.6). Deterministic CBOR (\u00a718.1.1): shortest-form integers, ascending integer keys, definite lengths. Re-decoding MUST round-trip to the same fields and re-encoding MUST reproduce cbor_hex byte-for-byte; the generic canonical-CBOR reject rules (non-preferred ints, unsorted/duplicate keys, indefinite lengths, floats, undefined) already covered by DMTAP-CBOR-05..12 apply identically to SyncOp \u2014 no SYNC-specific reject case is needed for those."
     },
     {
+      "name": "sync_op_cose_sign1_bind",
+      "operation": "sync_op_cose_sign1_verify",
+      "input": {
+        "sync_op_cbor_hex": "a60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "signer_seed_hex": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "signer_pubkey_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "alg": -8,
+        "external_aad_hex": "444d5441502d53594e432d76302f6f7000",
+        "cose_sign1_hex": "845826a20127045820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeba0583fa60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb584054d80d8c792de1595d7f2686efb26b5e8e8a572760091070254aa8009e36b380eb14cfbe28dfbd9b68b77727333f32bdb497fee6d692177a6927232f0fa3180a",
+        "tampered_payload_cose_sign1_hex": "845826a20127045820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeba0583fa60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aea584054d80d8c792de1595d7f2686efb26b5e8e8a572760091070254aa8009e36b380eb14cfbe28dfbd9b68b77727333f32bdb497fee6d692177a6927232f0fa3180a",
+        "substituted_kid_cose_sign1_hex": "845826a2012704582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144a0583fa60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb584054d80d8c792de1595d7f2686efb26b5e8e8a572760091070254aa8009e36b380eb14cfbe28dfbd9b68b77727333f32bdb497fee6d692177a6927232f0fa3180a"
+      },
+      "expected": {
+        "protected_hex": "5826a20127045820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "unprotected_hex": "a0",
+        "payload_hex": "583fa60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "sig_structure_hex": "846a5369676e6174757265315826a20127045820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb51444d5441502d53594e432d76302f6f7000583fa60103026003616104617805617606a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+        "signature_hex": "54d80d8c792de1595d7f2686efb26b5e8e8a572760091070254aa8009e36b380eb14cfbe28dfbd9b68b77727333f32bdb497fee6d692177a6927232f0fa3180a",
+        "op_id_hex": "1e0fbb168d0841e8a865e8eb2270ee6b70b4eaeb1500816e32519bbbfa4393b145",
+        "verifies": true,
+        "tampered_payload": {
+          "verifies": false,
+          "error_code": "0x0A02",
+          "error_name": "ERR_SYNC_OP_SIG_INVALID",
+          "action": "FAIL_CLOSED_BLOCK"
+        },
+        "substituted_kid": {
+          "verifies": false,
+          "error_code": "0x0A02",
+          "error_name": "ERR_SYNC_OP_SIG_INVALID",
+          "action": "FAIL_CLOSED_BLOCK"
+        }
+      },
+      "note": "\u00a74.1 (frozen): the wire object is the RFC 9052 `COSE_Sign1` four-element array [protected, unprotected, payload, signature], itself deterministic CBOR. protected = bstr(det_cbor({1: alg = -8 EdDSA (suite 0x01), 4: kid = hlc.author})) \u2014 kid is inside the INTEGRITY-COVERED header, so substituting a signer key is a verification failure, never a silent mis-attribution (see substituted_kid_cose_sign1_hex, which reuses a valid signature under a different kid and MUST fail). unprotected = the empty map 0xa0. payload = bstr(det_cbor(SyncOp)), always inline. signature = Ed25519(sk_author, det_cbor(Sig_structure)) over [\"Signature1\", protected, external_aad, payload] with external_aad = the DS-tag \"DMTAP-SYNC-v0/op\" || 0x00 \u2014 the RFC-9052-idiomatic realization of \u00a718.1.6's preimage = DS-tag || body, bound into the signature but never transmitted, so a COSE_Sign1 minted for any other DMTAP object can never verify as a SyncOp and no peer-flippable discriminator flag exists. A flipped payload byte is 0x0A02. The op content address op_id = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/op-id\" || 0x00 || det_cbor(SyncOp)) is computed over the SyncOp, NOT the envelope, so per-op-signed and SyncFrame-carried forms of one op share a single dedup/fingerprint identity. Ed25519 is deterministic (RFC 8032), so signature_hex is a reproducible known answer."
+    },
+    {
       "name": "sync_author_unauthorized",
       "operation": "sync_author_admission",
       "input": {
@@ -42,7 +78,7 @@
         "error_name": "ERR_SYNC_AUTHOR_UNAUTHORIZED",
         "action": "FAIL_CLOSED_BLOCK"
       },
-      "note": "\u00a78, \u00a79: a set-add op whose hlc.author (PK_X) is not a member of the namespace's admitted-author set ({PK_A, PK_B} \u2014 a closed multi-owner member-set, \u00a78 row 2, or the analogous single-owner DeviceCert set, \u00a78 row 1) MUST be rejected regardless of whether its (hypothetical) signature verifies \u2014 admission is checked in addition to, not instead of, signature validity (\u00a74.1, \u00a78 'the authorization check is the same'). This vector tests the admission predicate only; it does not assert anything about COSE_Sign1 envelope bytes (see SYNC-OP-02, NOT-FROZEN)."
+      "note": "\u00a78, \u00a79: a set-add op whose hlc.author (PK_X) is not a member of the namespace's admitted-author set ({PK_A, PK_B} \u2014 a closed multi-owner member-set, \u00a78 row 2, or the analogous single-owner DeviceCert set, \u00a78 row 1) MUST be rejected regardless of whether its (hypothetical) signature verifies \u2014 admission is checked in addition to, not instead of, signature validity (\u00a74.1, \u00a78 'the authorization check is the same'). This vector tests the admission predicate ALONE, deliberately independent of the envelope: the COSE_Sign1 framing is exercised separately by SYNC-OP-02, and admission must reject here even if that framing were byte-perfect."
     },
     {
       "name": "sync_lww_hlc_winner",
@@ -335,6 +371,265 @@
         ]
       },
       "note": "\u00a74.7: `seq-remove(x)` tombstones atom \"x\" (tombstones are retained until GC). A concurrent `seq-insert` (\"Z\") whose left-origin `ref` names \"x\" still resolves against the retained tombstone \u2014 it is buffered/rejected only if the origin is genuinely absent (`ERR_SYNC_SEQ_ORIGIN_MISSING`, 0x0A07), never merely because the origin was removed. \"Z\" sorts immediately after \"x\"'s (tombstoned) position; the visible (non-tombstoned) sequence is just [\"Z\"]."
+    },
+    {
+      "name": "sync_tree_concurrent_move_cycle",
+      "operation": "sync_tree_move_replay",
+      "input": {
+        "baseline_ops_cbor_hex": [
+          "a60108026003614104616106a3011b0000018bcfe6eea00200035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb08a10160",
+          "a60108026003614204616206a3011b0000018bcfe6eea0020003582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc14408a10160"
+        ],
+        "baseline_edges": [
+          {
+            "node": "A",
+            "parent": "",
+            "ord": "a"
+          },
+          {
+            "node": "B",
+            "parent": "",
+            "ord": "b"
+          }
+        ],
+        "colliding_ops_cbor_hex": [
+          "a60108026003614104613106a3011b0000018bcfe6eea00201035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb08a1016142",
+          "a60108026003614204613106a3011b0000018bcfe6eea0020203582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc14408a1016141"
+        ],
+        "colliding_moves": [
+          {
+            "label": "h1",
+            "move": "A -> under B",
+            "hlc": {
+              "wall": 1700000100000,
+              "counter": 1,
+              "author_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+            }
+          },
+          {
+            "label": "h2",
+            "move": "B -> under A",
+            "hlc": {
+              "wall": 1700000100000,
+              "counter": 2,
+              "author_hex": "68460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "applied": [
+          "h1"
+        ],
+        "skipped": [
+          "h2"
+        ],
+        "skipped_is_error": false,
+        "final_edges": [
+          {
+            "node": "A",
+            "parent": "B",
+            "ord": "1"
+          },
+          {
+            "node": "B",
+            "parent": "",
+            "ord": "b"
+          }
+        ],
+        "acyclic": true,
+        "apply_order_independent": true
+      },
+      "note": "\u00a74.8 (frozen): moves are replayed in ASCENDING HLC order (oldest first), and a move (node -> new_parent) would create a cycle iff new_parent == node or new_parent is a descendant of node in the tree formed by all strictly-earlier-HLC moves already applied. Replay order here is (W,0,A) (W,0,B) h1 h2. When h1 is evaluated, B is not a descendant of A, so A becomes a child of B. When h2 is then evaluated, A IS already a descendant of B, so moving B under A would close the cycle B->A->B and h2 is SKIPPED (a recorded no-op, never an error); B keeps its pre-swap parent, the root. The observable result is therefore the EARLIER move applied and the LATER move skipped \u2014 the correction to the original stub text, which asserted the reverse. This is Kleppmann's cycle-safe replicated-tree result and is deliberately NOT last-writer-wins for the colliding pair: LWW (\u00a74.4) governs only repeated moves of the SAME node; the ordered replay, not the clock, decides the interaction between moves of DIFFERENT nodes, so every replica reaches this identical acyclic tree regardless of arrival order (a replica receiving h2 before h1 re-evaluates the affected subtree in HLC order and reaches the same result)."
+    },
+    {
+      "name": "sync_snapshot_root_determinism",
+      "operation": "sync_snapshot_state_root",
+      "input": {
+        "observable_state": {
+          "orset": [
+            [
+              "tags",
+              "e1"
+            ]
+          ],
+          "lww": [
+            [
+              "doc1",
+              "title",
+              "n"
+            ]
+          ],
+          "pn": [
+            [
+              "stock1",
+              "qty",
+              3
+            ]
+          ],
+          "death": [
+            [
+              "rec1",
+              "redact"
+            ]
+          ],
+          "rga": [
+            [
+              "line1",
+              [
+                "atom0",
+                "Y",
+                "X"
+              ]
+            ]
+          ],
+          "tree": [
+            [
+              "A",
+              "B",
+              "1"
+            ],
+            [
+              "B",
+              "",
+              "b"
+            ]
+          ]
+        },
+        "ds_tag_hex": "444d5441502d53594e432d76302f736e617073686f742d737461746500",
+        "empty_state_sections": 6
+      },
+      "expected": {
+        "observable_state_cbor_hex": "8681826474616773626531818364646f6331657469746c65616e81836673746f636b31637174790381826472656331667265646163748182656c696e6531836561746f6d30615961588283614161426131836142606162",
+        "root_hex": "1e63918ccc89f4d158e4dda9b09510876d87205348efd6093713379b598559119a",
+        "empty_state_cbor_hex": "86808080808080",
+        "empty_state_root_hex": "1e1610e4e4daff4ab509238e06cd1674e22045cade2d8e079acb167834548826b6",
+        "same_covers_same_root": true,
+        "mismatch_error_code": "0x0A09",
+        "mismatch_error_name": "ERR_SYNC_SNAPSHOT_ROOT_MISMATCH",
+        "mismatch_action": "HALT_ALERT"
+      },
+      "note": "\u00a76.1.1 (frozen): ObservableState is a fixed SIX-element positional array \u2014 [orset, lww, pn, death, rga, tree] in kind-ascending order, positional rather than keyed so no map-key scheme can be a source of divergence, and empty sections are the empty array [] present in position (see empty_state_cbor_hex = 0x86 followed by six 0x80). Every section is sorted ASCENDING by the deterministic-CBOR bytes of each entry; the sole exception is the RGA inner atom list, which is in SEQUENCE order (the \u00a74.7 pre-order walk) and is NOT re-sorted, because for a sequence the order IS the observable value. Only OBSERVABLE state appears \u2014 add-tags, tombstones, per-author P/N maps, RGA element ids, Live death cells and superseded LWW cells are all internal \u2014 so two replicas at the same `covers` vector produce byte-identical bytes regardless of apply order or internal bookkeeping. root = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/snapshot-state\" || 0x00 || det_cbor(ObservableState)), a \u00a718.1.5 v0 hash; the DS-tag is distinct from the snapshot SIGNATURE tag (\"DMTAP-SYNC-v0/snapshot\") so a state-root preimage and a signature preimage can never be confused. A root mismatch at equal `covers` is 0x0A09 (HALT_ALERT) \u2014 evidence of divergence. The state serialized here is exactly the convergence result of this file's earlier vectors (ORSET-01, LWW-01, PN-01, DEATH-01, RGA-01, TREE-01)."
+    },
+    {
+      "name": "sync_snapshot_fast_join_equals_replay",
+      "operation": "sync_snapshot_fast_join",
+      "input": {
+        "snapshot_covers_note": "per-author max HLC folded into the snapshot: A@(W,4), B@(W,7)",
+        "snapshot_covers_cbor_hex": "a201a3011b0000018bcfe6eea00204035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb02a3011b0000018bcfe6eea0020703582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144",
+        "snapshot_observable_state_cbor_hex": "8681826474616773626531818364646f6331657469746c65616e81836673746f636b31637174790381826472656331667265646163748182656c696e6531836561746f6d30615961588283614161426131836142606162",
+        "snapshot_root_hex": "1e63918ccc89f4d158e4dda9b09510876d87205348efd6093713379b598559119a",
+        "post_covers_ops_cbor_hex": [
+          "a6010302600364646f633104657469746c6505617006a3011b0000018bcfe6eea0021403582068460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144"
+        ],
+        "post_covers_ops": [
+          {
+            "kind": 3,
+            "target": "doc1",
+            "field": "title",
+            "value": "p",
+            "hlc": {
+              "wall": 1700000100000,
+              "counter": 20,
+              "author_hex": "68460ebef3b138164ec7fd8610e95800df7598f70f2f2ea7db5172ac74ebc144"
+            }
+          }
+        ]
+      },
+      "expected": {
+        "fast_join_state_cbor_hex": "8681826474616773626531818364646f6331657469746c65617081836673746f636b31637174790381826472656331667265646163748182656c696e6531836561746f6d30615961588283614161426131836142606162",
+        "full_replay_state_cbor_hex": "8681826474616773626531818364646f6331657469746c65617081836673746f636b31637174790381826472656331667265646163748182656c696e6531836561746f6d30615961588283614161426131836142606162",
+        "states_byte_identical": true,
+        "root_hex": "1e89b11f055b4a1625601b5f2520ff5db25f311f265d2e84e878e39aec04854424",
+        "roots_equal": true
+      },
+      "note": "\u00a76.1/\u00a76.1.1 (frozen): a joining replica adopts the snapshot's observable state, sets its local vector to `covers`, and applies only the ops AFTER `covers` \u2014 here one lww-set writing (doc1,title) = \"p\" at (W,20,B), which supersedes the snapshot's winning value \"n\" because its HLC is greater. The resulting ObservableState bytes are IDENTICAL to those of a replica that replayed the entire history from genesis, hence the roots are identical: only the observable projection is serialized, so the two replicas' differing internal bookkeeping (one has the pre-snapshot op log, the other never saw it) cannot show through. This is the strong-eventual-consistency equality the fast-join guarantee rests on, and it is what makes a snapshot VERIFIABLE rather than merely trusted \u2014 a replica that later backfills the pre-`covers` ops MUST recompute this same root."
+    },
+    {
+      "name": "sync_recon_range_merkle_diff",
+      "operation": "sync_recon_fingerprint",
+      "input": {
+        "ops_cbor_hex": {
+          "r1": "a5010102600364746167730562723106a3011b0000018bcfe6eea00201035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+          "r2": "a5010102600364746167730562723206a3011b0000018bcfe6eea00202035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb",
+          "r3": "a5010102600364746167730562723306a3011b0000018bcfe6eea00203035820ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+        },
+        "op_ids_hex": {
+          "r1": "1ea4937bf71467929f54da15e10b30d5a6b932b29e46d4ae9547707bbbfb28017d",
+          "r2": "1ef2567ea84c49db6b9b3dccc814cdc3e938b1eb1d400a9656a7ad43a71639d461",
+          "r3": "1ed30ff86c7dd24e1adb6329add9a9eca57bceb15dc571154e2161866ca5e5fc37"
+        },
+        "replica_A_holds": [
+          "r1",
+          "r2",
+          "r3"
+        ],
+        "replica_B_holds": [
+          "r1",
+          "r2"
+        ],
+        "range": {
+          "lo": {
+            "wall": 1700000100000,
+            "counter": 0,
+            "author_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+          },
+          "hi": {
+            "wall": 1700000100000,
+            "counter": 10,
+            "author_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+          }
+        },
+        "split_at": {
+          "wall": 1700000100000,
+          "counter": 2,
+          "author_hex": "ca57eed30e4a7274ef4c648f56f58f880b20d2ca25725d9e5c13c83c08c09aeb"
+        },
+        "ds_tag_hex": "444d5441502d53594e432d76302f7265636f6e2d667000"
+      },
+      "expected": {
+        "full_range": {
+          "A": {
+            "fp_hex": "1e1e63d3895b957f993f61f629f2b9326d73030e37d3c5e54e8fb5ab4bfe360cee",
+            "count": 3
+          },
+          "B": {
+            "fp_hex": "1e85fa9f4ce96c9ac595444162fa97c0abbb88c8514ee52bb72767610146536a19",
+            "count": 2
+          },
+          "match": false
+        },
+        "subrange_1": {
+          "A": {
+            "fp_hex": "1ec812e47957b80a6acbb056e35044de58845ae316ef57ba30f12a603075166478",
+            "count": 1
+          },
+          "B": {
+            "fp_hex": "1ec812e47957b80a6acbb056e35044de58845ae316ef57ba30f12a603075166478",
+            "count": 1
+          },
+          "match": true,
+          "ops_exchanged": []
+        },
+        "subrange_2": {
+          "A": {
+            "fp_hex": "1ef4ed09234d7fd6a0db995f405ec7fcb361895542a5b15a9f6592dd844095312d",
+            "count": 2
+          },
+          "B": {
+            "fp_hex": "1ecaa6e28d7304b7056d8f3e4e4ae8e8b580dac49a83ebf09a6ef001c6a91e0447",
+            "count": 1
+          },
+          "match": false,
+          "ops_shipped_to_B": [
+            "1ed30ff86c7dd24e1adb6329add9a9eca57bceb15dc571154e2161866ca5e5fc37"
+          ]
+        },
+        "ops_shipped_total": 1,
+        "empty_range_fp_hex": "1e0b2ce56c5d28f89f03a08014bf3b0c5270c9a2651d78ad4a9ac15a26964b31e2",
+        "empty_range_count": 0
+      },
+      "note": "\u00a75.3 (frozen): fp = 0x1e || BLAKE3-256(\"DMTAP-SYNC-v0/recon-fp\" || 0x00 || det_cbor([* op-id])) over the range's op ids sorted ascending by their ops' HLC \u2014 one DS-tagged BLAKE3 hash FOLDING the ordered ids into a single digest (matching the \u00a75.6 `recon` reference fp = ContentId::of(det_cbor([* id]))), shipped with count = |R|. It is deliberately NOT a homomorphic/incremental combiner (XOR- or addition-of-hashes): a homomorphic fold buys O(1) range updates but admits cancellation (an even number of identical insertions vanishes) and adds integer arithmetic to the wire, whereas a changed range is simply re-hashed and BLAKE3 over the length-prefixed deterministic-CBOR array is collision-resistant and unambiguous across a range boundary. `count` guards the degenerate empty-vs-empty and duplicate cases a digest alone cannot distinguish (note empty_range_fp_hex is a well-defined hash of det_cbor([]) = 0x80, not a special case). Round: the full range mismatches, so it is split (fan-out of 2 at (W,2,A) \u2014 the SPLIT POINT is an input here, since \u00a75.3 fixes only \"split by op count into a small fixed fan-out\", not a particular boundary); sub-range 1 has equal (fp,count) on both sides and exchanges NO ops; sub-range 2 mismatches and surfaces exactly the one differing op r3. Range-Merkle is a discovery optimization only \u2014 r3 is still applied through the same \u00a74 verify+merge path."
     },
     {
       "name": "sync_ns_sparse_scoping",
