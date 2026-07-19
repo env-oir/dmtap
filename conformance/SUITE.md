@@ -62,7 +62,8 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Optional** — push wake-signaling (`PUSH`) | 2 | 0 | 0 | 2 | 0 |
 | **Core** — DMTAP-PUB extension, optional `pub-1` (`PUB`) | 21 | 12 | 0 | 8 | 1 |
 | **Core** — CAD/artifact profile, optional `pub-1` (`CAD`) | 11 | 0 | 0 | 11 | 0 |
-| **Total** | **157** | **46** | **6** | **104** | **1** |
+| **Core** — Video/Media profile, optional `pub-1` (`VIDEO`) | 15 | 0 | 0 | 15 | 0 |
+| **Total** | **172** | **46** | **6** | **119** | **1** |
 
 The 46 vectored + 6 self-contained cases (**52**) are fully machine-runnable **today** from
 `vectors.json` / `pub_vectors.json` + the inline bytes here, with **no reference implementation
@@ -72,19 +73,19 @@ cross-checks), the 8-word key-name, safety numbers, suite fail-closed — **and,
 full DMTAP-PUB manifest/announce/feed KAT set** (§22.2/§22.3/§22.4: plaintext chunk hashing +
 DS-tagged Merkle root, the announce and feed-head signing preimages, `announce_id`, the prev-chain,
 type-incompatibility with sealed manifests, the same-author supersede rule, and feed anti-rollback
-incl. the idempotent-refetch and fork/equivocation branches). The 104 `construction-todo` cases give
+incl. the idempotent-refetch and fork/equivocation branches). The 119 `construction-todo` cases give
 the exact recipe and expected §21 error for every remaining normative branch (the full §2.7
 pipeline, identity/KT fail-closed, the higher levels, the wave-2 hardening families —
 `DENIABLE`/`ORG`/`KTV1`/`ATTEST` — the `PROFILE` display-data guards, the pluggable-resolver guards
 (`RESOLVE`), the optional `PUSH` wake-signaling guards, the `FILE` durability guards
 `DMTAP-FILE-05`–`-09`, the remaining `PUB` fail-closed rows not yet vectored, and the profile-level
-`CAD` checklist); each becomes byte-backed when the corresponding subsystem gains a fixed-input KAT
+`CAD` and `VIDEO` checklists); each becomes byte-backed when the corresponding subsystem gains a fixed-input KAT
 (see README "Coverage vs. deferred"). The single `manual-attestation` case (`DMTAP-PUB-21`) is a
 client-UX MUST with no wire bytes to recompute (§22.7). **Sync status:** `SUITE.md` and
-[`suite.json`](suite.json) are **in sync** — both carry the same **157** case ids (the wave-2
+[`suite.json`](suite.json) are **in sync** — both carry the same **172** case ids (the wave-2
 `DENIABLE`/`KTV1` families, the `PROFILE` cases, the optional `PUSH` cases, the `FILE` durability
 cases, the wave-3 `SYNC` (device-cluster), `ALIAS`, `GWALIAS`, and `RESOLVE` families, and the
-wave-4 `PUB`/`CAD` families are all mirrored into `suite.json`). The changed deniable objects
+wave-4 `PUB`/`CAD` and wave-5 `VIDEO` families are all mirrored into `suite.json`). The changed deniable objects
 (§5.2.1 dedicated-`idk`) are still to be re-vectored when the reference regenerates `vectors.json`.
 
 > All 46 vectored cases correspond one-for-one to entries in `vectors.json` (34 cases / 33 of its
@@ -535,6 +536,40 @@ non-CAD-aware §22 node stores and serves the same bytes unaffected (§23.2).
 
 ---
 
+## Video/Media profile (§24) — `VIDEO`
+
+An **application profile** over DMTAP-PUB (§24.1), the convergence path for the *vidmesh* protocol.
+Like `CAD`, it is **additive and orthogonal** to §22/§21 conformance: a node can be Core/`pub-1`-conformant
+without parsing any of it, and a video-aware client is `pub-1`-conformant-by-construction because it only
+ever produces/consumes ordinary §22 objects (its metadata rides inside an already-signed
+`pub_announce.meta[<key>]`, §24.4.1). The 15 checks below are the **§24.15 conformance checklist**, one
+case per row, in checklist order. The profile allocates **no §21 error code** (so "reject" means a
+video-aware client MUST refuse to treat the object as usable/well-formed — a non-video §22 node stores and
+serves the same bytes unaffected). **The one exception is VID-3/VID-5**, the rendition-derivation statement
+(§24.4.4): it *does* have a signable preimage (DS-tag `"DMTAP-VID-v0/derivation"`), so those two become
+byte-backed KATs once a fixed-input derivation vector is generated — until then they carry a construction
+recipe like the rest.
+
+| id | req | clause | checks | input | expect | status |
+|----|-----|--------|--------|-------|--------|--------|
+| DMTAP-VIDEO-01 | MUST | §24.11, §24.15 VID-1 | every `VideoManifest` carries a `license` field (SPDX expression or a profile consent token `all-rights-reserved`/`mirror-freely`/`endorsed-only`) | construction: `VideoManifest` with key 9 (`license`) omitted | reject (profile-level; generic §22 node still stores/serves it) | construction-todo |
+| DMTAP-VIDEO-02 | MUST | §24.4.3, §24.15 VID-2 | `original` (key 5) is present and is the canonical rendition — a `Rendition` is never the artifact of record | construction: `VideoManifest` with `original` (key 5) omitted; and separately, a client treating a `Rendition.blob` as the source of truth | reject (both variants) | construction-todo |
+| DMTAP-VIDEO-03 | MUST | §24.4.3, §24.4.4, §24.15 VID-3 | every `Rendition` carries `produced_by` (key 8) and a `derivation_sig` (key 9) that verifies over the derivation statement | construction: `Rendition` with `derivation_sig` omitted; and separately, a `derivation_sig` that fails to verify over the reconstructed statement | reject (not an authorized rendition; MAY be shown labeled as unverified, or dropped) | construction-todo |
+| DMTAP-VIDEO-04 | MUST | §24.4.4, §24.4.6, §24.15 VID-4 | a rendition is treated as *authorized* only if `produced_by` is the manifest author or holds an unrevoked, unexpired `rendition` delegate grant from the author | construction: a validly-signed `Rendition` whose `produced_by` is neither the author nor a valid delegate | reject-as-authorized (present only as a labeled third-party encoding, never as an equivalent authorized rendition) | construction-todo |
+| DMTAP-VIDEO-05 | MUST | §24.4.4, §24.15 VID-5 | the derivation statement binds `derived_from`→`rendition.blob` + codec/width/height/bitrate, signed under `"DMTAP-VID-v0/derivation"` by a device key chaining to `produced_by` | construction (signable KAT recipe): `stmt = det_cbor([derived_from, rendition.blob, codec, width, height, bitrate])`; `sig = Sign(dev_key, "DMTAP-VID-v0/derivation" ‖ 0x00 ‖ BLAKE3-256(stmt))`; mutate any tuple element ⇒ signature MUST fail | reject (replayed/mismatched statement); accept (matching) | construction-todo |
+| DMTAP-VIDEO-06 | MUST | §24.5, §24.15 VID-6 | a video's `channel` (key 10) reference resolves to an announce with the **same `pub`** as the video's author (a video cannot join another identity's channel) | construction: `VideoManifest.channel` naming a `Channel` announce with a different `pub` | reject | construction-todo |
+| DMTAP-VIDEO-07 | MUST | §24.4.1, §24.15 VID-7 | `retracted = true` (key 12) is always accompanied by `retract_reason` (key 13) | construction: `VideoManifest{retracted: true}` with key 13 absent | reject (malformed for this profile) | construction-todo |
+| DMTAP-VIDEO-08 | MUST | §24.7, §24.15 VID-8 | retraction/removal is expressed **only** as a successor `supersedes` announcement (`retracted=true`), never as deletion; a client MUST NOT imply deletion of prior bytes | construction: attempt to model "deletion" of a prior revision (no protocol operation exists) | reject (no-such-operation; retracted bytes remain fetchable, only status changes) | construction-todo |
+| DMTAP-VIDEO-09 | MUST | §24.6.1, §24.15 VID-9 | a threaded `Comment` with a `parent` (key 3) references the **same `subject`** (key 1) as its parent | construction: `Comment` whose `parent` references a comment with a different `subject` | reject (parent-subject mismatch) | construction-todo |
+| DMTAP-VIDEO-10 | MUST | §24.6.2, §24.15 VID-10 | a `Reaction` is counted at most once per identity per subject — a later same-author reaction `supersedes` the earlier | construction: two reactions by one identity to one subject, the later `supersedes` the earlier; an index counts both | reject (count the current one only; superseded reactions are discarded) | construction-todo |
+| DMTAP-VIDEO-11 | MUST | §24.9, §24.15 VID-11 | segmented playback verifies segment/range bytes against the signed rendition's Merkle root; the HLS/DASH playlist is unsigned serving output, never authoritative | construction: a gateway-supplied `.m3u8` listing a segment whose bytes do not verify against the rendition root; client accepts on the playlist's say-so | reject (verify against the signed root; the playlist is not an object of record) | construction-todo |
+| DMTAP-VIDEO-12 | MUST | §24.10, §24.15 VID-12 | live streaming is gated behind the `vid-live-1` capability; a consumer lacking it treats its absence as a fact, not a fault (capability-absence rule §21.22) | construction: a peer that has not advertised `vid-live-1` receives a `LiveManifest`; treats non-support as a parse failure | reject-the-error (absence is unsupported-not-fatal; store the announce, do not low-latency-follow) | construction-todo |
+| DMTAP-VIDEO-13 | MUST | §24.8, §24.15 VID-13 | view/reaction/trending aggregates are presented as **per-gateway claims**, never as network-wide truth | construction: a client renders a gateway's view count as an authoritative global number | reject (label as "views on this gateway"; a signed tally is worth only the attester's reputation) | construction-todo |
+| DMTAP-VIDEO-14 | MUST | §24.8, §24.13, §24.15 VID-14 | no client treats any single index (search/recommendation/compliance) as authoritative over the signed announces/feeds it was derived from | construction: two independently-built indexes (or compliance feeds) over the same feed set disagree | accept (neither is "wrong"; ground truth is the signed feeds, re-derivable by any client) | construction-todo |
+| DMTAP-VIDEO-15 | MUST | §24.13, §24.15 VID-15 | encrypted-media fields (`keygrant`/`encryption`) do not appear in a public `VideoManifest` — the public profile makes no confidentiality claim | construction: a `VideoManifest` carrying an `encryption`/`keygrant` field | reject (category error; encrypted media belongs to the sealed path §5.5, not this public profile) | construction-todo |
+
+---
+
 ## Vector cross-reference
 
 Every `vectored` case above maps to an existing entry in `vectors/vectors.json`
@@ -586,4 +621,8 @@ by the `dmtap-core` reference crate (see the `PUB` section above and README.md's
 — it is independently re-derivable by anyone with `pip install blake3 cryptography`, no Rust
 toolchain required. The `CAD` cases carry no vectors (the profile allocates no wire bytes of its
 own, §23.1); all 11 are `construction-todo` recipes over the `ArtifactMetadata`/`AssemblyStructure`
-CDDL of §23.
+CDDL of §23. The `VIDEO` cases (§24) are likewise `construction-todo` recipes over the
+`VideoManifest`/`Rendition`/`Comment`/… CDDL of §24 — with the one exception that
+`DMTAP-VIDEO-03`/`-05` (the rendition-derivation statement, §24.4.4) *do* have a signable preimage
+(DS-tag `"DMTAP-VID-v0/derivation"`) and become byte-backed KATs once a fixed-input derivation vector
+is generated, re-derivable with `blake3` + `ed25519` and no reference implementation.

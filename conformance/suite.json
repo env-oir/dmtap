@@ -3082,6 +3082,291 @@
       "optional_capability": "pub-1",
       "operation": "cad_profile_check",
       "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-01",
+      "clause": [
+        "§24.11",
+        "§24.15 VID-1"
+      ],
+      "checks": "every VideoManifest carries a license field (SPDX expression or a profile consent token all-rights-reserved/mirror-freely/endorsed-only)",
+      "construction": "VideoManifest with key 9 (license) omitted",
+      "expect": {
+        "outcome": "reject",
+        "note": "profile-level; a generic §22 node still stores/serves it unaffected"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-02",
+      "clause": [
+        "§24.4.3",
+        "§24.15 VID-2"
+      ],
+      "checks": "original (key 5) is present and is the canonical rendition — a Rendition is never the artifact of record",
+      "construction": "VideoManifest with original (key 5) omitted; and separately, a client treating a Rendition.blob as the source of truth",
+      "expect": {
+        "outcome": "reject (both variants)"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-03",
+      "clause": [
+        "§24.4.3",
+        "§24.4.4",
+        "§24.15 VID-3"
+      ],
+      "checks": "every Rendition carries produced_by (key 8) and a derivation_sig (key 9) that verifies over the derivation statement",
+      "construction": "Rendition with derivation_sig omitted; and separately, a derivation_sig that fails to verify over the reconstructed statement",
+      "expect": {
+        "outcome": "reject",
+        "note": "not an authorized rendition; MAY be shown labeled as unverified, or dropped"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-04",
+      "clause": [
+        "§24.4.4",
+        "§24.4.6",
+        "§24.15 VID-4"
+      ],
+      "checks": "a rendition is treated as authorized only if produced_by is the manifest author or holds an unrevoked, unexpired rendition delegate grant from the author",
+      "construction": "a validly-signed Rendition whose produced_by is neither the author nor a valid delegate",
+      "expect": {
+        "outcome": "reject-as-authorized",
+        "note": "present only as a labeled third-party encoding, never as an equivalent authorized rendition"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-05",
+      "clause": [
+        "§24.4.4",
+        "§24.15 VID-5"
+      ],
+      "checks": "the derivation statement binds derived_from->rendition.blob + codec/width/height/bitrate, signed under \"DMTAP-VID-v0/derivation\" by a device key chaining to produced_by",
+      "construction": "signable KAT recipe: stmt = det_cbor([derived_from, rendition.blob, codec, width, height, bitrate]); sig = Sign(dev_key, \"DMTAP-VID-v0/derivation\" || 0x00 || BLAKE3-256(stmt)); mutate any tuple element => signature MUST fail",
+      "expect": {
+        "outcome": "reject (replayed/mismatched statement); accept (matching)"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-06",
+      "clause": [
+        "§24.5",
+        "§24.15 VID-6"
+      ],
+      "checks": "a video's channel (key 10) reference resolves to an announce with the same pub as the video's author (a video cannot join another identity's channel)",
+      "construction": "VideoManifest.channel naming a Channel announce with a different pub",
+      "expect": {
+        "outcome": "reject"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-07",
+      "clause": [
+        "§24.4.1",
+        "§24.15 VID-7"
+      ],
+      "checks": "retracted = true (key 12) is always accompanied by retract_reason (key 13)",
+      "construction": "VideoManifest{retracted: true} with key 13 absent",
+      "expect": {
+        "outcome": "reject",
+        "note": "malformed for this profile"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-08",
+      "clause": [
+        "§24.7",
+        "§24.15 VID-8"
+      ],
+      "checks": "retraction/removal is expressed only as a successor supersedes announcement (retracted=true), never as deletion; a client MUST NOT imply deletion of prior bytes",
+      "construction": "attempt to model 'deletion' of a prior revision (no protocol operation exists)",
+      "expect": {
+        "outcome": "reject",
+        "note": "no-such-operation; retracted bytes remain fetchable, only status changes"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-09",
+      "clause": [
+        "§24.6.1",
+        "§24.15 VID-9"
+      ],
+      "checks": "a threaded Comment with a parent (key 3) references the same subject (key 1) as its parent",
+      "construction": "Comment whose parent references a comment with a different subject",
+      "expect": {
+        "outcome": "reject",
+        "note": "parent-subject mismatch"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-10",
+      "clause": [
+        "§24.6.2",
+        "§24.15 VID-10"
+      ],
+      "checks": "a Reaction is counted at most once per identity per subject — a later same-author reaction supersedes the earlier",
+      "construction": "two reactions by one identity to one subject, the later supersedes the earlier; an index counts both",
+      "expect": {
+        "outcome": "reject",
+        "note": "count the current one only; superseded reactions are discarded"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-11",
+      "clause": [
+        "§24.9",
+        "§24.15 VID-11"
+      ],
+      "checks": "segmented playback verifies segment/range bytes against the signed rendition's Merkle root; the HLS/DASH playlist is unsigned serving output, never authoritative",
+      "construction": "a gateway-supplied .m3u8 listing a segment whose bytes do not verify against the rendition root; client accepts on the playlist's say-so",
+      "expect": {
+        "outcome": "reject",
+        "note": "verify against the signed root; the playlist is not an object of record"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-12",
+      "clause": [
+        "§24.10",
+        "§24.15 VID-12"
+      ],
+      "checks": "live streaming is gated behind the vid-live-1 capability; a consumer lacking it treats its absence as a fact, not a fault (capability-absence rule §21.22)",
+      "construction": "a peer that has not advertised vid-live-1 receives a LiveManifest; treats non-support as a parse failure",
+      "expect": {
+        "outcome": "reject-the-error",
+        "note": "absence is unsupported-not-fatal; store the announce, do not low-latency-follow"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-13",
+      "clause": [
+        "§24.8",
+        "§24.15 VID-13"
+      ],
+      "checks": "view/reaction/trending aggregates are presented as per-gateway claims, never as network-wide truth",
+      "construction": "a client renders a gateway's view count as an authoritative global number",
+      "expect": {
+        "outcome": "reject",
+        "note": "label as 'views on this gateway'; a signed tally is worth only the attester's reputation"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-14",
+      "clause": [
+        "§24.8",
+        "§24.13",
+        "§24.15 VID-14"
+      ],
+      "checks": "no client treats any single index (search/recommendation/compliance) as authoritative over the signed announces/feeds it was derived from",
+      "construction": "two independently-built indexes (or compliance feeds) over the same feed set disagree",
+      "expect": {
+        "outcome": "accept",
+        "note": "neither is 'wrong'; ground truth is the signed feeds, re-derivable by any client"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-VIDEO-15",
+      "clause": [
+        "§24.13",
+        "§24.15 VID-15"
+      ],
+      "checks": "encrypted-media fields (keygrant/encryption) do not appear in a public VideoManifest — the public profile makes no confidentiality claim",
+      "construction": "a VideoManifest carrying an encryption/keygrant field",
+      "expect": {
+        "outcome": "reject",
+        "note": "category error; encrypted media belongs to the sealed path §5.5, not this public profile"
+      },
+      "level": "Core",
+      "category": "VIDEO",
+      "req": "MUST",
+      "optional_capability": "pub-1",
+      "operation": "video_profile_check",
+      "status": "construction-todo"
     }
   ],
   "pub_vectors_file": "vectors/pub_vectors.json",
