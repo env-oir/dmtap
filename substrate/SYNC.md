@@ -108,6 +108,20 @@ Hlc = {
 > `"{ms:013d}-{counter:04x}-{author}"`; the §5.6 reference encodes it as an integer-keyed CBOR map.
 > The substrate normative encoding is the CBOR map above (deterministic CBOR is the substrate primitive,
 > §2.2); a string form is an equivalent client-edge convenience and MUST canonicalize to the same order.
+>
+> **A lexically-sortable string form MUST hold two invariants**, or it silently stops matching the
+> normative `(wall, counter, author)` order while still looking well-formed:
+>
+> 1. **Fixed field widths.** Every field MUST render at its declared width, and a timestamp that
+>    would exceed one MUST be rejected rather than encoded wider. `counter` overflowing its width is
+>    reachable from the network — `Observe` folds a *remote* counter forward, so a peer sending the
+>    maximum value pushes the receiver one past it — at which point the wider field sorts *before*
+>    the narrower one and causal order inverts for every timestamp minted afterwards. An
+>    implementation SHOULD spill the overflow into the next `wall` unit, which preserves strict
+>    monotonicity without changing the encoding.
+> 2. **An order-preserving `author` encoding.** The normative comparison is over raw `ik-pub` bytes,
+>    so a textual encoding MUST sort identically to those bytes: fixed-width lowercase (or
+>    consistently uppercase) hex qualifies, mixed-case does not.
 
 ---
 

@@ -17,11 +17,17 @@ const css = readFileSync(join(__dirname, "style.css"), "utf8");
 const hljsCss = readFileSync(join(__dirname, "node_modules/highlight.js/styles/github.css"), "utf8");
 const mermaidJs = readFileSync(join(__dirname, "node_modules/mermaid/dist/mermaid.min.js"), "utf8");
 
-const slugify = (s) =>
+// Anchor slugs are namespaced per source file group. The substrate documents restart their own
+// heading numbering ("## 2. Model"), which collides head-on with the numbered spec's "## 2. ..."
+// anchors; without a prefix the TOC's substrate entries would silently jump to the wrong page.
+// `slugPrefix` is set around each render() call below — renders are sequential, so this is safe.
+let slugPrefix = "";
+const baseSlug = (s) =>
   s.trim().toLowerCase()
     .replace(/[^\w\s.-]/g, "")
     .replace(/[\s.]+/g, "-")
     .replace(/-+/g, "-").replace(/^-|-$/g, "");
+const slugify = (s) => slugPrefix + baseSlug(s);
 
 const md = new MarkdownIt({
   html: true,
@@ -51,16 +57,64 @@ const files = readdirSync(specDir)
   .filter((f) => /^\d\d-.*\.md$/.test(f))
   .sort();
 
+// The substrate documents (substrate/*.md). These are normative and the numbered spec cross-
+// references them by name, but the numeric filter above cannot reach them: they live in a
+// subdirectory and carry no NN- prefix. Excluding them meant the published PDF cited documents it
+// did not contain — notably ROLES.md (the mailbox role and wake/push) and SYNC.md (the HLC
+// tie-break rule). Ordered as the substrate README presents them: overview, capabilities ①–⑤,
+// then the bindings plan and the adoption snapshot.
+const substrateFiles = [
+  "README.md",
+  "IDENTITY.md",
+  "FEEDS.md",
+  "SYNC.md",
+  "ROLES.md",
+  "BINDINGS.md",
+  "ADOPTION.md",
+];
+// Fail loudly rather than silently shipping an incomplete PDF again: if a substrate document is
+// added or renamed and this list is not updated, the build stops instead of dropping it.
+const onDisk = readdirSync(join(specDir, "substrate")).filter((f) => /\.md$/.test(f)).sort();
+const missing = onDisk.filter((f) => !substrateFiles.includes(f));
+if (missing.length) {
+  throw new Error(
+    `substrate/${missing.join(", substrate/")} exists but is not listed in substrateFiles — ` +
+    `add it (in reading order) so it is not silently omitted from the PDF.`
+  );
+}
+
 const toc = [];
 let body = "";
-for (const f of files) {
-  const src = readFileSync(join(specDir, f), "utf8");
+
+const renderInto = (src, prefix) => {
+  slugPrefix = prefix;
   // collect h1/h2 for the TOC (with the same slugs the anchor plugin emits)
   for (const line of src.split("\n")) {
     const m = /^(#{1,2})\s+(.*)$/.exec(line);
     if (m) toc.push({ level: m[1].length, text: m[2].trim(), slug: slugify(m[2].trim()) });
   }
   body += `<section class="section">\n${md.render(src)}\n</section>\n`;
+  slugPrefix = "";
+};
+
+for (const f of files) {
+  renderInto(readFileSync(join(specDir, f), "utf8"), "");
+}
+
+// The substrate part, introduced by its own divider so the reader can see where the numbered
+// Internet-Draft body ends and the substrate profile documents begin.
+const substrateIntro = "# Part II — The DMTAP Substrate\n\n" +
+  "The documents in this part specify the substrate: the narrow waist the numbered sections " +
+  "above profile and refer to by name. They are normative unless a document states otherwise " +
+  "(`ADOPTION.md` is an implementation-status snapshot, not a requirement).\n";
+renderInto(substrateIntro, "");
+for (const f of substrateFiles) {
+  // Namespace each substrate document's anchors by its own name, so its restarted heading
+  // numbering cannot collide with the numbered spec's.
+  renderInto(
+    readFileSync(join(specDir, "substrate", f), "utf8"),
+    `sub-${f.replace(/\.md$/, "").toLowerCase()}-`
+  );
 }
 
 const tocHtml = `<nav class="toc"><h2 class="toc-title">Table of Contents</h2><ol>` +
