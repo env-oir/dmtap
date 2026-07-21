@@ -19,14 +19,14 @@
     "vectored": "byte-backed by a named entry in vectors/vectors.json",
     "self-contained": "input bytes given inline (input.cbor_hex); reference-independent",
     "construction-todo": "byte-exact construction recipe given; vector still to be generated as the subsystem gains a fixed-input KAT",
-    "manual-attestation": "a client-UX/process MUST with no wire bytes to recompute (e.g. §22.7's explicit-publish-act and irrevocability-warning disclosures); verified by implementer/reviewer attestation, not by a byte-level runner"
+    "manual-attestation": "a client-UX, in-product-disclosure or deployment/process MUST with no wire bytes to recompute (§22.7's explicit-publish-act and irrevocability disclosures; §4.4.10a's Bootstrap degradation disclosure and no-anonymity-claim rule; §7.11.4/§9.11's gateway posture; §7.1b's process/privilege separation); verified by implementer/deployment review, not by a byte-level runner"
   },
   "vectors_file": "vectors/vectors.json",
   "vectors_count": 68,
   "referenced_vectors_count": 33,
   "vectors_count_note": "vectors_count is the number of entries in vectors/vectors.json; referenced_vectors_count (33) is how many of them the byte-backed cases currently drive (several drive more than one case). The remaining 35 are pre-generated for construction-todo families not yet wired to a case.",
   "notes": [
-    "reject cases map to spec §21 (137-code registry); error_code + error_name + disposition (Action column) are normative.",
+    "reject cases map to spec §21 (141-code registry); error_code + error_name + disposition (Action column) are normative.",
     "self-contained CBOR reject cases assert a deterministic-CBOR (RFC 8949 §4.2 / §18.1.1) decoder rejects the given bytes.",
     "construction-todo cases are non-deterministic to seal (sealed Envelope/Payload) or belong to subsystems not yet vectored (README 'Coverage vs. deferred')."
   ],
@@ -1262,11 +1262,12 @@
       "req": "MUST",
       "clause": [
         "§4.4.1",
-        "§16.3"
+        "§16.3",
+        "§2.5"
       ],
-      "checks": "Sphinx packet constant-length on the bucket ladder {2,8,32,64} KiB; wrong length rejected",
+      "checks": "Sphinx packet constant-length on the bucket ladder {8, 64} KiB; wrong length rejected (the 2 KiB rung was cut: a conformant PQ envelope, suite 0x02, exceeds it before any body)",
       "operation": "mix_packet_validate",
-      "construction": "Sphinx packet off the bucket ladder",
+      "construction": "Sphinx packet off the {8, 64} KiB bucket ladder",
       "expect": {
         "outcome": "reject",
         "error_code": "0x0307",
@@ -1283,9 +1284,9 @@
         "§4.4.2",
         "§18.5.3"
       ],
-      "checks": "MixDirectory verifies under the pinned authority (> n/2 quorum)",
+      "checks": "a cached MixDirectory is verified against the client's pinned KT log quorum (> n/2), never under a directory authority — there is none (§4.4.2); an absent authority signature is not a failure, an unverifiable descriptor is (the per-descriptor MUST NOT is DMTAP-FLEET-02)",
       "operation": "mix_directory_verify",
-      "construction": "MixDirectory with an invalid authority signature",
+      "construction": "cached MixDirectory whose contents fail independent verification against the client's pinned log quorum",
       "expect": {
         "outcome": "reject",
         "error_code": "0x030B",
@@ -2448,6 +2449,423 @@
         "outcome": "match"
       },
       "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-MIXPROF-01",
+      "level": "Private",
+      "category": "MIXPROF",
+      "req": "MUST",
+      "clause": [
+        "§4.4.10a(1)",
+        "§4.4.11"
+      ],
+      "checks": "user-visible degradation: a client operating on the Bootstrap profile MUST show that metadata privacy is degraded and MUST say why — how many attested mixes and how many disjoint ASNs the network currently offers against the Standard bar (§16.3). Silence converts a temporary shortfall into an invisible one",
+      "operation": "client_ux_attestation",
+      "construction": "client-UX review with the node in a fleet below Standard's bar; no wire bytes to recompute",
+      "expect": {
+        "outcome": "non-conformant if the degradation is not shown, or is shown without the current-vs-required mix/ASN counts"
+      },
+      "status": "manual-attestation"
+    },
+    {
+      "id": "DMTAP-MIXPROF-02",
+      "level": "Private",
+      "category": "MIXPROF",
+      "req": "MUST",
+      "clause": [
+        "§4.4.10a(2)",
+        "§4.4.11"
+      ],
+      "checks": "no anonymity claim in-product: while Bootstrap is in force an implementation or operator MUST NOT present the private tier as anonymous, MUST NOT report an anonymity-set size, and MUST NOT describe the traffic as unlinkable — §4.4.11's prohibition as a property of the profile itself",
+      "operation": "client_ux_attestation",
+      "construction": "review of in-product copy, status surfaces and operator-facing material while Bootstrap is in force",
+      "expect": {
+        "outcome": "non-conformant if any of the three claims appears while Bootstrap is in force"
+      },
+      "status": "manual-attestation"
+    },
+    {
+      "id": "DMTAP-MIXPROF-03",
+      "level": "Private",
+      "category": "MIXPROF",
+      "req": "MUST",
+      "clause": [
+        "§4.4.10a(3)",
+        "§4.4.2",
+        "§4.4.4"
+      ],
+      "checks": "auto-upgrade is mandatory: a node MUST re-evaluate its derived fleet view each mix-key epoch and MUST move to Standard as soon as Standard's bar is satisfiable (>=3 hops one per stratified layer, >=3 disjoint attested operators, >=3 disjoint ASNs, guard sample per §16.3). Remaining on Bootstrap with a satisfiable Standard bar is a silent permanent downgrade",
+      "operation": "mix_profile_enforce",
+      "construction": "derived fleet view below Standard's bar at epoch e (Bootstrap in force); grow the view to satisfy Standard at e+1; step the node's per-epoch re-evaluation with no user action",
+      "expect": {
+        "outcome": "accept",
+        "note": "in-force profile = Standard from epoch e+1 without user action; staying on Bootstrap is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-MIXPROF-04",
+      "level": "Private",
+      "category": "MIXPROF",
+      "req": "MUST",
+      "clause": [
+        "§4.4.10a(3)",
+        "§4.4.9",
+        "§10.7.0"
+      ],
+      "checks": "never fall back: once a node has operated at Standard it MUST NOT return to Bootstrap. If the fleet later shrinks below Standard's bar the sender holds and retries (FAIL-QUEUED) and surfaces the refusal past the retry deadline; it MUST NOT rebuild the path at Bootstrap's bar. Without this rule an attacker who kills mixes forces every sender onto the degraded profile — the §4.4.9 downgrade attack under a friendlier name",
+      "operation": "mix_profile_enforce",
+      "construction": "node already operating at Standard; shrink the derived fleet below Standard's bar (kill attested mixes / collapse ASN diversity); attempt a private-tier send",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0310",
+        "error_name": "ERR_PRIVATE_TIER_DOWNGRADE_REFUSED",
+        "action": "FAIL-QUEUED (§10.7.0): hold in the retry queue and retry; MUST NOT carry the MOTE at Bootstrap's bar and MUST NOT refuse the enqueue"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-MIXPROF-05",
+      "level": "Private",
+      "category": "MIXPROF",
+      "req": "MUST",
+      "clause": [
+        "§4.4.10a(4)",
+        "§1.3",
+        "§4.4.9"
+      ],
+      "checks": "per-contact ratchet: profile level ratchets per correspondent exactly like the §1.3 suite high-water-mark — once any message in a relationship has been carried at Standard (or High-security), a Bootstrap-tier send to that contact MUST fail closed. The granularity is deliberate: a new contact on a still-small network MUST remain reachable at Bootstrap in the same fleet state, so an attacker must defeat one relationship at a time",
+      "operation": "mix_profile_enforce",
+      "construction": "contact A with a Standard-carried message in its history and contact B never carried above Bootstrap; with the fleet below Standard's bar, attempt a private-tier send to each",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0310",
+        "error_name": "ERR_PRIVATE_TIER_DOWNGRADE_REFUSED",
+        "note": "reject for contact A (Standard in its history); accept for contact B (never carried above Bootstrap) — a global rather than per-contact mark fails one branch or the other"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLEET-01",
+      "level": "Private",
+      "category": "FLEET",
+      "req": "MUST",
+      "clause": [
+        "§4.4.2",
+        "§3.5.2(b)"
+      ],
+      "checks": "the fleet view is reconstructable from KT logs alone: with no served MixDirectory available a client MUST still compute its epoch fleet view from its pinned log quorum — descriptors that (i) self-verify under node_ik, (ii) carry a valid _dmtap-mix operator attestation, (iii) name a current-epoch Sphinx key, and (iv) appear with a valid inclusion proof in > n/2 of the pinned logs. An implementation that cannot build a private path without a served directory has re-created the authority §4.4.2 deleted",
+      "operation": "mix_fleet_derive",
+      "construction": "populate the pinned log set with n descriptors, some failing exactly one of the four predicates; withhold every MixDirectory cache; ask the client for its epoch fleet view",
+      "expect": {
+        "outcome": "accept",
+        "note": "derived view = exactly the descriptors satisfying all four predicates, and identical to the view derived when a valid cache is present"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLEET-02",
+      "level": "Private",
+      "category": "FLEET",
+      "req": "MUST",
+      "clause": [
+        "§4.4.2",
+        "§18.5.3"
+      ],
+      "checks": "a cache is never an authority: a client MUST NOT accept a served/cached MixDirectory containing a descriptor it cannot independently verify against its own log quorum (any of the four derivation predicates failing), and MUST reject a cache whose version is older-or-equal to one already accepted (rollback). A hostile cache may withhold or reorder, never inject",
+      "operation": "mix_directory_validate",
+      "construction": "cache of valid descriptors plus one whose _dmtap-mix attestation does not validate (variant: one absent from the log quorum); and separately, replay a cache at an older-or-equal version",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x030B",
+        "error_name": "ERR_MIX_DIRECTORY_SIG_INVALID",
+        "action": "FAIL_CLOSED_BLOCK",
+        "note": "the unverifiable descriptor MUST NOT enter path selection"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLEET-03",
+      "level": "Private",
+      "category": "FLEET",
+      "req": "MUST",
+      "clause": [
+        "§4.4.2",
+        "§10.7.2",
+        "§10.7.0",
+        "§16.3"
+      ],
+      "checks": "freeze defense is FAIL-QUEUED, not fail-closed: a derived view (or cache) older than the mix-directory freshness window (§16.3, <= one mix-key epoch) is stale — the client MUST refresh before building any private path and, if it cannot obtain a fresh one, MUST queue and retry. It MUST NOT downgrade the tier and MUST NOT refuse to enqueue: a directory outage delays mail, it must never stop it",
+      "operation": "mix_fleet_freshness",
+      "construction": "freeze the client's log/cache feed at a view older than the freshness window; submit a private-tier MOTE from the user and inspect both the path build and the queue",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0311",
+        "error_name": "ERR_MIX_DIRECTORY_STALE",
+        "action": "FAIL-QUEUED (§10.7.0): path build fails, enqueue succeeds — the MOTE is durably held and retried",
+        "note": "emitting a tier downgrade (0x0310 as a demotion) or refusing the enqueue is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-GUARD-01",
+      "level": "Private",
+      "category": "GUARD",
+      "req": "MUST",
+      "clause": [
+        "§4.4.8",
+        "§16.3"
+      ],
+      "checks": "guards are drawn from a persistent sampled set, never re-sampled from the fleet on rotation: the active G guards MUST come only from the node's guard sample, chosen once; rotation moves the active guards inside the sample. The sample is refreshed only on exhaustion (sampled nodes permanently offline) or an explicit owner re-sample (a disclosed exposure event). Independent redraws turn the (1-f)^G bound into (1-f)^(G*r) — at G=2, 30-day rotation, f=0.05 a decade is 0.95^244 ~= 3e-7, i.e. near-certain eventual exposure (Tor proposal 271)",
+      "operation": "guard_selection",
+      "construction": "fleet of N attested, ASN-disjoint mixes held unchanged; record the node's initial guard sample; advance r >= 10 guard-rotation periods (§16.3) and record the active guards at each",
+      "expect": {
+        "outcome": "accept",
+        "note": "every active guard at every rotation is a member of the initial sample and the sample itself is unchanged; any guard outside it, absent exhaustion or an explicit re-sample, is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-GUARD-02",
+      "level": "Private",
+      "category": "GUARD",
+      "req": "MUST",
+      "clause": [
+        "§4.4.8",
+        "§4.4.9"
+      ],
+      "checks": "ASN-disjointness in path selection: a path MUST traverse mixes under disjoint announced BGP origin ASNs. A candidate path whose hops carry three distinct attested operators but announce from one ASN MUST NOT be built — domains are cheap, attestation proves accountability rather than independence, and ASN is the axis rented capacity cannot cheaply diversify",
+      "operation": "mix_path_select",
+      "construction": "three mixes with distinct, validly-attested operator domains, all reachable via addresses announced by a single BGP origin ASN; request a Standard-profile path",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x030D",
+        "error_name": "ERR_MIX_PATH_UNBUILDABLE",
+        "note": "the sender holds per §4.4.9 (0x0310 past the retry deadline) and MUST NOT route over the ASN-colliding path"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-GUARD-03",
+      "level": "Private",
+      "category": "GUARD",
+      "req": "MUST",
+      "clause": [
+        "§4.4.8"
+      ],
+      "checks": "an un-attested operator claim confers no diversity: a mix whose operator is absent or not backed by a valid _dmtap-mix attestation under that domain MUST NOT count as its own operator for the disjoint-operator rule — it is excluded from selection or counted as one unknown/shared operator. Otherwise a single adversary publishes N self-claimed operators and collapses the ~a^2 compromised-path bound to ~a",
+      "operation": "mix_path_select",
+      "construction": "three mixes each self-asserting a different operator value, none carrying a resolvable/valid _dmtap-mix record; request a Standard-profile path",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x030D",
+        "error_name": "ERR_MIX_PATH_UNBUILDABLE",
+        "note": "counting the three self-claimed operators as three distinct operators is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-LOC-01",
+      "level": "Core",
+      "category": "LOC",
+      "req": "MUST",
+      "clause": [
+        "§4.2",
+        "§16.2",
+        "§4.4.12"
+      ],
+      "checks": "peer_id is per-epoch unlinkable: a node MUST derive peer_id freshly per location epoch rather than holding one identifier across its lifetime, so a peer_id observed at T cannot be linked to the same node at T+delta by the identifier alone. This is what bounds the harvest-now-decrypt-later exposure of the routing layer — a route recovered later resolves to an identifier that has expired",
+      "operation": "location_record_publish",
+      "construction": "publish the node's LocationRecord for two consecutive location epochs e and e+1 under the same ik, both validly signed with strictly increasing seq; compare the peer_id fields",
+      "expect": {
+        "outcome": "match",
+        "note": "peer_id(e) != peer_id(e+1) and both records verify; a stable lifetime peer_id is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-LOC-02",
+      "level": "Core",
+      "category": "LOC",
+      "req": "MUST",
+      "clause": [
+        "§4.2.1"
+      ],
+      "checks": "piggybacked location precedes every lookup: a resolver MUST try, in order, (1) the sender's signed LocationRecord carried by the MOTE itself, (2) cached direct addresses, (3) the home rendezvous set (>= 3 disjoint operators), (4) the DHT — opportunistic only, and a DHT-only record is a hint usable to attempt a connection but never to authenticate (identity is authenticated by the pinned IK, §3.4). Replying to a MOTE that carried a fresh valid record MUST perform no rendezvous query and no DHT lookup",
+      "operation": "location_resolve",
+      "construction": "instrumented resolver counting rendezvous and DHT queries; deliver a MOTE carrying the sender's current signed LocationRecord, then send a reply and read the counters",
+      "expect": {
+        "outcome": "accept",
+        "note": "zero lookups of any kind; the piggybacked record is used. Any lookup on this path is non-conformant — eclipse is an attack on lookup, and an established relationship must never depend on one"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLOOR-01",
+      "level": "Core",
+      "category": "FLOOR",
+      "req": "MUST",
+      "clause": [
+        "§9.7a",
+        "§16.5",
+        "§2.7a"
+      ],
+      "checks": "the zero-relationship floor delivers: a recipient MUST accept at least N_floor (§16.5, >= 5) cold MOTEs per sender-key per day from a sender presenting only a valid work proof — a sequential-work vdf (§9.4.1) or a memory-hard PoW (§9.4) — bound to the recipient's current epoch beacon, with no token, no postage and no vouch. Floor deliveries land in the requests area (§2.7a), never the inbox, and are not acked (DMTAP-VAL-12)",
+      "operation": "cold_sender_admit",
+      "construction": "N_floor cold MOTEs from one fresh sender key inside 24 h, each carrying a valid work proof scoped per §9.2a (including sender_key) and no other credential; recipient has no relationship with the sender",
+      "expect": {
+        "outcome": "accept",
+        "no_ack": true,
+        "note": "all N_floor MOTEs durably held in the requests area for the §16.5 retention; dropping any of them is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLOOR-02",
+      "level": "Core",
+      "category": "FLOOR",
+      "req": "MUST",
+      "clause": [
+        "§9.7a",
+        "§16.5"
+      ],
+      "checks": "a zero floor is a non-conformant policy: a recipient MAY grant far more than the floor to trusted issuers, vouched senders or paid postage, but MUST NOT grant less. N_floor = 0 (or below the §16.5 minimum) as a standing policy — including a shipped default, and including a reject-all-unknown-senders configuration offered without the §9.7a disclosure — MUST be refused rather than silently clamped. The §9.4 deferral budget under active flood is a transient budget, not a standing floor of zero",
+      "operation": "policy_validate",
+      "construction": "apply a recipient Policy (§9.2) with N_floor = 0; variant: a policy UI offering \"reject all unknown senders\" as a reachable configuration with no disclosure",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x070F",
+        "error_name": "ERR_POLICY_BELOW_FLOOR",
+        "action": "REJECT_NOTIFY",
+        "note": "the node MUST NOT apply the sub-floor policy while reporting conformance"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLOOR-03",
+      "level": "Core",
+      "category": "FLOOR",
+      "req": "MUST",
+      "clause": [
+        "§9.4.1",
+        "§9.7a",
+        "§16.5"
+      ],
+      "checks": "memory-hard PoW is the interoperable MUST floor: a conformant recipient MUST accept a valid memory-hard PoW solution (Argon2id at or above its advertised difficulty, scope including sender_key per §9.2a) as satisfying its cold-contact requirement, subject only to the §9.4 verification budget and its own rate policy. VDF is the preferred cost (SHOULD) because sequential work is the scarcity a compute-rich adversary cannot buy, but it has no IETF standard and no interoperable parameter set, so it cannot be the floor",
+      "operation": "cold_sender_admit",
+      "construction": "cold MOTE carrying a valid Argon2id solution at the recipient's advertised difficulty and no VDF proof, from a sender with no relationship",
+      "expect": {
+        "outcome": "accept",
+        "no_ack": true,
+        "note": "routed to the requests area exactly as DMTAP-FLOOR-01; rejecting it because it is not a VDF is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FLOOR-04",
+      "level": "Core",
+      "category": "FLOOR",
+      "req": "MUST",
+      "clause": [
+        "§9.4.1",
+        "§9.7a"
+      ],
+      "checks": "VDF-only is a non-conformant policy: a recipient MUST NOT require a VDF as the only acceptable proof. A recipient that would accept only a VDF has made an unstandardized construction the price of contacting it, and a sender who cannot produce the one proof a recipient will take is simply undeliverable — the floor failing in a new way rather than holding",
+      "operation": "policy_validate",
+      "construction": "apply a ChallengeSpec/policy accepting vdf only, such that the valid memory-hard PoW of DMTAP-FLOOR-03 would be refused",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x070F",
+        "error_name": "ERR_POLICY_BELOW_FLOOR",
+        "action": "REJECT_NOTIFY"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FAILCLASS-01",
+      "level": "Core",
+      "category": "FAILCLASS",
+      "req": "MUST",
+      "clause": [
+        "§10.7.0"
+      ],
+      "checks": "no liveness failure may prevent enqueue: whatever is unreachable — KT logs, the derived fleet view, a postage issuer, the rendezvous set, every peer — a node MUST always be able to accept a message from its own user, hold it durably, and keep retrying under the guarantees in force. An offline-first store-and-forward protocol must never be unable to queue; email degrades to late, never to blocked",
+      "operation": "enqueue",
+      "construction": "partition the node from every external dependency simultaneously; submit a private-tier message over the node's native client surface (§8.1); restart the node and re-inspect the queue",
+      "expect": {
+        "outcome": "accept",
+        "note": "message enqueued, still present and still retrying after a restart; refusing the submission for any unreachable dependency is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-FAILCLASS-02",
+      "level": "Core",
+      "category": "FAILCLASS",
+      "req": "MUST",
+      "clause": [
+        "§10.7.0",
+        "§21.2"
+      ],
+      "checks": "each condition takes exactly its class's disposition: a FAIL-CLOSED-AUTH condition (a signature that does not verify, a pin mismatch, a log equivocation, a suite below the ratchet) is refused permanently — retrying cannot help and MUST NOT be offered or silently performed; a FAIL-QUEUED condition (an external service unreachable right now) MUST NOT be surfaced as a permanent rejection before the retry deadline (§16) and MUST NOT weaken any guarantee meanwhile. Classifying a liveness failure as fail-closed hands a denial-of-service surface to anyone who can take a service offline",
+      "operation": "failure_class_map",
+      "construction": "drive one instance of each class against the same node — a tampered Payload.sig (§2.7 step 8, 0x0208) and a stale derived fleet view (§4.4.2, 0x0311) — and inspect the retry queue and the user-facing outcome for both",
+      "expect": {
+        "outcome": "accept",
+        "note": "the 0x0208 condition is permanent, never queued and never offered as retryable; the 0x0311 condition is queued and retried, never presented as a rejection before the retry deadline. Either mapping inverted is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-GWROLE-01",
+      "level": "Legacy",
+      "category": "GWROLE",
+      "req": "MUST",
+      "clause": [
+        "§7.11.4",
+        "§9.11"
+      ],
+      "checks": "authorize, never classify (differential test): the gateway's admission decision MUST be a function of its permitted inputs only — SPF/DKIM/DMARC results, sending-IP standing, authenticated sender identity, cold-sender state, rate/volume counters. It MUST NOT run content-based scoring, Bayesian or learned filters, keyword/URL reputation or attachment-content heuristics, and MUST NOT drop, quarantine, re-rank or annotate a message on such a basis",
+      "operation": "gateway_inbound_admit",
+      "construction": "two inbound legacy messages from the same authenticated sender inside its rate budget, identical in every authorization input (same envelope sender, same SPF/DKIM/DMARC result, same source IP, same cold-sender state), differing only in body/subject content — one carrying canonical spam-corpus text, one benign",
+      "expect": {
+        "outcome": "accept",
+        "note": "byte-identical admission decision, disposition and annotation for both messages; any divergence between them is proof of content classification and is non-conformant"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-GWROLE-02",
+      "level": "Legacy",
+      "category": "GWROLE",
+      "req": "MUST",
+      "clause": [
+        "§7.11.4",
+        "§9.11"
+      ],
+      "checks": "no filter posture, no decryption for anti-abuse: a gateway MUST NOT be required to decrypt for anti-abuse purposes and MUST NOT present its authorization checks to users as a spam filter. Classification, where it happens at all, is recipient-side and on-device against the user's own corpus, and a recipient MUST be able to run no classifier and still be protected — the §9.1-§9.7a mechanisms are sender-cost and policy mechanisms, not content judgements",
+      "operation": "gateway_posture_attestation",
+      "construction": "review of the gateway's user-facing copy, admin surfaces and operator documentation; no wire bytes to recompute",
+      "expect": {
+        "outcome": "non-conformant if the authorization gate is described to users as spam filtering, or if any anti-abuse path requires access to plaintext the gateway would not otherwise hold"
+      },
+      "status": "manual-attestation"
+    },
+    {
+      "id": "DMTAP-GWROLE-03",
+      "level": "Legacy",
+      "category": "GWROLE",
+      "req": "MUST",
+      "clause": [
+        "§7.1b"
+      ],
+      "checks": "privilege separation: gateway mode MUST run as a separate process in a separate privilege domain (distinct OS user; a distinct container/jail/namespace where the platform provides one) from the node's identity and store processes; it MUST NOT have access to identity key material (IK, device private keys, recovery material) and MUST NOT have read access to the local MOTE store. Legacy parsers (SMTP/IMAP/POP3/MIME/iCalendar/vCard) SHOULD be sandboxed further. One binary is a distribution property, never an isolation property, and the rule holds for a self-operated gateway too because the threat is remote code execution by a stranger, not the operator",
+      "operation": "process_isolation_attestation",
+      "construction": "deployment review: process table and uid separation, keystore and MOTE-store access permissions, sandbox profile; no wire bytes to recompute",
+      "expect": {
+        "outcome": "non-conformant if gateway mode shares an address space or privilege domain with the identity/store processes, or can read either"
+      },
+      "status": "manual-attestation"
     },
     {
       "id": "DMTAP-PUB-01",

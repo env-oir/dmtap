@@ -179,7 +179,8 @@ floor is the older mechanism, deliberately:
   own rate policy. It **MUST NOT** require a VDF as the *only* acceptable proof, because that would
   make reachability conditional on an unstandardized construction (below) — and a sender who cannot
   produce the one proof a recipient will take is simply undeliverable, which §9.7a exists to
-  prevent.
+  prevent. A VDF-only cold-contact policy is therefore itself non-conformant
+  (`ERR_POLICY_BELOW_FLOOR`, `0x070F`, §21.10), exactly as a zero `N_floor` is.
 - The binding rule of §9.2a applies to both: the proof's scope MUST include `sender_key`, so a
   stolen proof is worthless under any other ephemeral key. Parameters are pinned in §16.5.
 
@@ -306,7 +307,7 @@ and can therefore be found, replied to, and promoted to a contact by a human dec
   vouched senders, or paid postage. It MUST NOT grant less.
 - A recipient under active flood MAY apply the §9.4 deferral budget to floor traffic as it does to
   any other, but MUST NOT set `N_floor` to zero as a standing policy
-  (`ERR_POLICY_BELOW_FLOOR`, §21).
+  (`ERR_POLICY_BELOW_FLOOR`, `0x070F`, §21.10 — the policy is refused, not silently clamped).
 - Implementations MUST NOT ship a default policy that violates the floor, and a policy UI MUST
   NOT offer "reject all unknown senders" as a reachable configuration without disclosing that it
   makes the identity uncontactable by anyone not already known.

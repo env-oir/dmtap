@@ -167,11 +167,11 @@ to a MOTE) is a distinct concept scoped to the Auth ceremony; see `0x0502` (§21
 | `0x030A` | `ERR_CAPABILITY_ANNOUNCE_ROLLBACK` | `system`-MOTE capability announcement version check (§10.2) | A capability announcement's `caps_version` is older-than-or-equal-to the last accepted from that peer — a stale replay attempting to suppress an advertised capability (downgrade). | No (this announcement) | FAIL_CLOSED_BLOCK — retain the higher-versioned capability set; do not roll back |
 | `0x030B` | `ERR_MIX_DIRECTORY_SIG_INVALID` | `MixDirectory` verification (§4.4.2, §18.5.3) | The mix directory is not validly signed by the pinned directory authority (or fails the `> n/2` authority quorum). | No | FAIL_CLOSED_BLOCK — do not use the fleet; a KT split view over the directory is `0x0107` |
 | `0x030C` | `ERR_MIX_DESCRIPTOR_STALE` | Sphinx path build / mix key epoch check (§4.4.4, §18.5.2) | A `MixNodeDescriptor` has no key for a usable epoch, or a packet was built to an expired/rotated mix key (`valid_until` passed). | Yes (refresh the `MixDirectory` and rebuild for the current epoch) | ROTATE_RETRY — re-fetch the directory, rebuild the path for the current epoch |
-| `0x030D` | `ERR_MIX_PATH_UNBUILDABLE` | Stratified path selection (§4.4.3) | Cannot build a conformant 3-hop stratified path — a layer has no live/reachable mix in the current directory. | Yes (later directory epoch may repopulate) | ROTATE_RETRY; REJECT_NOTIFY once the sender's retry budget (§4.7) is exhausted |
+| `0x030D` | `ERR_MIX_PATH_UNBUILDABLE` | Stratified path selection (§4.4.3, §4.4.8) | Cannot build a path meeting the **in-force profile's** bar (§4.4.9) from the derived fleet view — a stratified layer has no live/reachable mix, **or** no candidate set satisfies the attested-operator / ASN-disjointness rules of §4.4.8 (an un-attested `operator` claim contributes no diversity). | Yes (a later mix-key epoch may repopulate the view) | ROTATE_RETRY; REJECT_NOTIFY once the sender's retry budget (§4.7) is exhausted — and never by relaxing the bar (`0x0310`) |
 | `0x030E` | `ERR_MIX_REPLAY_DETECTED` | Per-epoch mix replay cache (§4.4.6) | A mix received a Sphinx packet whose per-hop tag is already in its current-epoch replay cache — a replayed packet (correlation / n−1 replay attempt). | No | DROP_SILENT — a content-blind mix has no channel to notify; the duplicate is simply dropped |
 | `0x030F` | `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` | Loop-cover detection (§4.4.7) | A node's loop-cover return fraction fell below the loss threshold (or latency inflated beyond the delay budget), inferring an active drop/delay/flooding attack on its paths. | Yes (after rotation) | HALT_ALERT — rotate away from implicated mixes/guards, alert the user, and **fail closed for `private`** (MUST NOT auto-downgrade to `fast`, §4.4.9) |
 | `0x0310` | `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` | Minimum-viable-path check (§4.4.9) | No path meeting the **in-force profile's** bar is buildable (Standard: ≥ 3 hops, 1/layer, ≥ 3 disjoint operators; **High-security: ≥ 5 hops, ≥ 5 disjoint operators**), all current-epoch keys — an adversary DoSing mixes to force a downgrade, or genuine outage. **Covers both a tier downgrade (`private → fast`) and a profile downgrade (High-security → Standard):** a high-security message that can only build a lesser-bar path fails here rather than silently shipping over Standard strength. | Yes (hold + retry until a viable path exists) | FAIL_CLOSED_BLOCK — hold the MOTE in the sender queue (§4.7), never silently route it over `fast`, a shorter/non-diverse path, or a lower profile's bar; surface to the user if it persists past the retry deadline |
-| `0x0311` | `ERR_MIX_DIRECTORY_STALE` | `MixDirectory` freshness check (§4.4.2, §16.3) | The served mix directory is older than the mix-directory freshness window (≤ one mix-key epoch) — a stale, possibly frozen fleet view an adversary serves to keep the client's diversity/anonymity set small (freeze attack, analogue of KT STH-freshness `0x0112`). | Yes (re-fetch a fresh directory) | FAIL_CLOSED_BLOCK — refresh before building any `private` path; hold + fail closed (§4.4.9) if no fresh directory is obtainable, never build over the stale view |
+| `0x0311` | `ERR_MIX_DIRECTORY_STALE` | Fleet-view freshness check (§4.4.2, §16.3) | The client's **derived fleet view** (or a served cache of it) is older than the mix-directory freshness window (≤ one mix-key epoch) — a stale, possibly frozen fleet view kept on the client to hold its diversity/anonymity set small (freeze attack, analogue of KT STH-freshness `0x0112`). | Yes (re-derive from the log quorum / re-fetch) | **FAIL-QUEUED** (§10.7.0), not fail-closed-auth: refresh before building any `private` path; if no fresh view is obtainable, **hold the MOTE in the retry queue** and keep retrying (ROTATE_RETRY; REJECT_NOTIFY only past the retry deadline). MUST NOT downgrade the tier (§4.4.9) and MUST NOT refuse to enqueue — a liveness failure delays mail, it never stops it |
 | `0x0312` | `ERR_PUSH_SUBSCRIPTION_SIG_INVALID` | `PushSubscription` verification (§4.9.1, §4.9.4, §18.5.5, §18.9.15) | A `PushSubscription`'s signature does not verify under its claimed `device_key`, or that key is not an `IK`-authorized device key of the owner (§1.2) — the subscription is not authenticated to the identity, so acting on it could register/redirect a device's wakes. | No | FAIL_CLOSED_BLOCK — discard the subscription; never wake against it |
 | `0x0313` | `ERR_WAKEPING_CONTENT_PRESENT` | `WakePing` decode (§4.9.1, §18.5.6) | A `WakePing` carries any field beyond the opaque sealed token (key `1`), or its opened plaintext decodes to anything bearing sender/subject/recipient/content — a wake must be content-free and sender-blind. | No | FAIL_CLOSED_BLOCK — reject the wake; a `WakePing` MUST carry only the RFC 8291-sealed sync token |
 | `0x0314` | `ERR_WAKEPING_AUTH_FAILED` | `WakePing` open (RFC 8291 AEAD, §4.9.4, §18.9.15) | The wake token's `aes128gcm` AEAD fails to open under the subscription's `push_key`/`auth_secret` — a forged or unauthenticated wake (the push relay lacks the auth secret and cannot forge one). | No | DROP_SILENT — drop; MUST NOT be surfaced as a real sync trigger (an unauthenticated wake reveals nothing to notify) |
@@ -290,6 +290,7 @@ loss window is disclosed and irreducible; here it is fully closed by never `250`
 | `0x070C` | `ERR_RATE_LIMIT_EXCEEDED` | Recipient `Policy.rate` (§9.2) | Per-sender-token rate limit exceeded. | Yes, after the window resets | DEFER_REQUESTS below a hard cap; DROP_SILENT beyond it |
 | `0x070D` | `ERR_QUOTA_POLICY_DENY` | Operator `Policy` capability, operations only (§12.2) | A hosted-operator storage/send/domain-count quota is exceeded. Self-host default is unlimited (§12.2, §12.3 — this MUST NOT be a security or crypto gate). | Yes (quota reset / plan change) | DENY_POLICY |
 | `0x070E` | `ERR_GATEWAYAUTHZ_DENIED` | Operator `GatewayAuthz`, operator-unreachable safe default (§12.2) | Legacy egress for a cold/unproven sender is denied during an operator outage (fail-safe, never fail-open for this specific capability). | Yes (once the operator is reachable, or with self-contained proof) | DENY_POLICY |
+| `0x070F` | `ERR_POLICY_BELOW_FLOOR` | Recipient anti-abuse **policy validation** (§9.7a, §9.4.1, §16.5) | The recipient's own policy sits **below the zero-relationship delivery floor**: `N_floor` set to zero (or below the §16.5 minimum) as a standing policy, or a cold-contact requirement that accepts **only** a VDF and would therefore refuse a valid memory-hard PoW (§9.4.1). Unlike every other code in this block, the fault is in the **local configuration**, not in an inbound object — the condition is detected when the policy is applied, not when a MOTE arrives, so a node MUST NOT start (or MUST NOT commit the change) carrying it. Normative because each recipient's local incentive is to set the floor to zero, and the aggregate is a network only the already-connected can enter (§9.7a). | Yes (raise the floor to ≥ the §16.5 minimum, or accept memory-hard PoW) | REJECT_NOTIFY — refuse the policy and surface it to the operator/user; MUST NOT silently clamp, and MUST NOT apply the sub-floor policy while reporting conformance |
 
 ## 21.11 Files errors (`0x08xx`)
 
@@ -381,8 +382,9 @@ its defining clause or from this matrix.
 | Gateway inbound cold legacy sender gated (bidirectional floor, §7.11.1, §9.10) | `0x0701`/`0x0702` (cold-sender gate); SPF/DKIM/DMARC hard-fail → SMTP `550 5.7.1` (§21.9) |
 | Postage-double-spend | `0x0708` |
 | Issuer-untrusted | `0x0704` (token issuer), `0x0707` (postage issuer), `0x0509` (OIDC issuer) |
+| Recipient policy below the zero-relationship delivery floor (`N_floor` = 0, or VDF-only) | `0x070F` |
 | Capability-announcement rollback | `0x030A` |
-| Mix directory not authority-signed | `0x030B` (a directory split-view is `0x0107`) |
+| Cached mix directory fails independent verification against the KT log quorum | `0x030B` (there is no directory authority, §4.4.2; a log split-view over the mix set is `0x0107`) |
 | Mix directory stale / frozen (freeze attack) | `0x0311` |
 | Mix descriptor / key epoch stale | `0x030C` |
 | Mix path unbuildable / min-viable-path unmet | `0x030D` (no path), `0x0310` (viable-path refused, no downgrade) |
@@ -424,7 +426,7 @@ extension procedure in §21.25. Allocation policies use the standard terms of RF
 | **Registry name** | DMTAP Error/Status Codes |
 | **Reference** | §21.1–§21.11 (this document) |
 | **Allocation policy** | New subsystem byte (`0x09`–`0xEF`): Standards Action. New code point within an existing subsystem (`NN` = `0x01`–`0x7F`): Specification Required. `NN` = `0x80`–`0xFE` within any subsystem: Private Use (implementation-local diagnostics; MUST map to the nearest standard code's Responder Action, §21.2, for any behavior visible to another implementation). `SS`/`NN` = `0x00` or `0xFF`: Reserved. |
-| **Initial contents** | The 140 codes enumerated in §21.3–§21.11. |
+| **Initial contents** | The 141 codes enumerated in §21.3–§21.11. |
 | **Registry discipline** | Append-only. A retired code MUST be marked Deprecated, never deleted or reassigned to a different meaning (mirroring the append-only philosophy of the KT log, §3.5). |
 
 ## 21.15 Algorithm Suites Registry (`suite` u8)
@@ -637,7 +639,7 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 140 (`0x0101`–`0x0124`: 36, incl. the KT-v1 detection codes
+- **Error/status codes defined:** 141 (`0x0101`–`0x0124`: 36, incl. the KT-v1 detection codes
   `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
   device-attestation and `0x0118` attestation-expired (§1.2a), `0x0117` KT leaf-hash mismatch
   (§3.5, §18.4.9), the `Profile` display-data codes `0x0119` (signature invalid), `0x011A`
@@ -663,7 +665,7 @@ fragmenting."
   alias non-reversible/over-length) (§7.10) and the outbound open-relay-prevention code `0x0607`
   (`ERR_GATEWAY_SENDER_UNAUTHENTICATED`, the §7.11.2/§9.10 authenticated-sender floor), plus the
   informative SMTP mapping table of §21.9;
-  `0x0701`–`0x070E`: 14; `0x0801`–`0x080D`: 13, incl. `0x0808` manifest-key-present (§5.5), the
+  `0x0701`–`0x070F`: 15, incl. `0x070F` `ERR_POLICY_BELOW_FLOOR` (§9.7a/§9.4.1 — the only code in the block whose fault is the recipient's **own** policy rather than an inbound object); `0x0801`–`0x080D`: 13, incl. `0x0808` manifest-key-present (§5.5), the
   file-durability codes `0x0809`–`0x080C` (§5.5.1–§5.5.5) — file-unavailable (origin-hold residual),
   manifest-durability-invalid, retention-expired, and spool-overflow (pushed-attachment storage DoS) —
   and `0x080D` file-size-tier-violation (attachment delivery-mechanism/size self-inconsistent, §5.5.1)),

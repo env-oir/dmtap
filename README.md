@@ -273,14 +273,18 @@ them (the numbered sections govern the normative bytes).
 | [`substrate/SYNC.md`](substrate/SYNC.md) | ③ Sync | **The one new spec** — signed multi-author CRDT ops, version-vector + range-Merkle reconciliation, signed snapshots, sparse namespace sync |
 | [`substrate/ROLES.md`](substrate/ROLES.md) | ④ Roles + ⑤ Wake | Infrastructure roles as an open key-addressed protocol + content-free wake (RFC 8030/8291/8292) |
 
-**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **172
+**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **194
 numbered cases** (SUITE.md ≡ suite.json). **52 are byte-runnable today** — 46 vectored cases
 backed by known-answer vectors (**68 core vectors** in `vectors/vectors.json` + **15 DMTAP-PUB
-vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **119
+vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **137
 carry an exact construction recipe** and expected §21 error, pending vectors for subsystems not
-yet byte-pinned (mixnet / MLS / gateway / auth and the wave-2/3 families, plus the profile-level
-`CAD`/`VIDEO` checklists); and 1 is a manual-attestation case (46 + 6 + 119 + 1 = 172). Every reject
-case names one of the **140 codes** in the §21 registry. So the runnable ratio is **52/172 today**,
+yet byte-pinned (mixnet / MLS / gateway / auth and the wave-2/3 families, the wave-6 anti-drift
+families `MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`, plus the profile-level
+`CAD`/`VIDEO` checklists); and 5 are manual-attestation cases — the MUSTs with no wire bytes to
+recompute at all (§22.7 publish consent, §4.4.10a's Bootstrap disclosure and no-anonymity-claim
+rule, §7.11.4/§9.11's gateway posture, §7.1b's privilege separation), verified by implementer or
+deployment review rather than by a runner (46 + 6 + 137 + 5 = 194). Every reject
+case names one of the **141 codes** in the §21 registry. So the runnable ratio is **52/194 today**,
 growing as each subsystem gains a fixed-input KAT.
 
 ## Building the PDF
