@@ -121,6 +121,7 @@ fixed here once so the tables can cite them tersely without re-explaining each t
 | `0x0123` | `ERR_NAME_CONFUSABLE_WITH_PIN` | Confusable-skeleton check at pin time (§3.9.7, §3.4) | A name reduces (UTS #39 confusable skeleton) to the **same skeleton** as an already-pinned contact's name — a visually-confusable impersonation of an existing pin. | No | FAIL_CLOSED_BLOCK — reject the pin; surface the collision to the user; prefer OOB verification (§3.4.1) |
 | `0x0124` | `ERR_DEVICE_UNAUTHORIZED` | Device authorization-policy check (§1.4) | An authorization-**policy** failure: a well-attested device (valid `DeviceCert`, valid attestation) is nonetheless **not authorized** by the identity's §1.4 policy for the attempted act. Distinct from `0x010D` (`ERR_DEVICE_CERT_INVALID`, a cryptographically bad/over-capped cert): here the cert is valid but the policy says no. | No, without a policy change | FAIL_CLOSED_BLOCK — refuse the act; MUST NOT proceed on an unauthorized device |
 | `0x0125` | `ERR_SUITE_BELOW_FLOOR` | Originating-suite floor check (§1.1) | The sender selected, or attempted to originate under, an algorithm suite **below the v0 originating floor**. Suite `0x01` is retained for *verification* of historical or constrained-peer objects only; a conformant node MUST NOT originate it, nor select it for a new relationship. Distinct from `0x020F` (`ERR_SUITE_DOWNGRADE`, the recipient-side per-contact high-water-mark ratchet, §1.3): `0x020F` polices a *peer's* regression against a mark, while `0x0125` polices the *absolute* floor every originator owes the network regardless of contact history. | No | FAIL_CLOSED_BLOCK — refuse to originate; the object is not sent |
+| `0x0126` | `ERR_VOUCH_SUBJECT_MISMATCH` | Vouch subject binding (§2.7 step 8(b2), §9.2a) | The accepted cold-sender challenge was a **vouch**, but the decrypted `Payload.from` is not the `VouchToken.subject` the voucher named — i.e. the presenter is not the party vouched for. A vouch travels in the cleartext envelope and cannot be bound to the ephemeral `sender_key` at mint time (the voucher cannot know a key the vouchee has not generated, and a cleartext proof-of-possession would break sealed sender, §6.2), so a lifted vouch is otherwise fully usable by whoever copies it. Distinct from `0x0202` (`ERR_PAYLOAD_SIG_INVALID`): the payload signature here is **valid** — it is simply the thief's. | No | DROP_SILENT — discard and do **not** `ack`, matching the step-8 failure posture; the vouch MUST also be counted against `subject`'s §9.7 rate limit at the gate |
 
 ## 21.4 Delivery & Validation — the MOTE object (`0x02xx`)
 
@@ -663,7 +664,7 @@ fragmenting."
 
 ## 21.26 Summary
 
-- **Error/status codes defined:** 144 (`0x0101`–`0x0125`: 37, incl. the KT-v1 detection codes
+- **Error/status codes defined:** 145 (`0x0101`–`0x0126`: 38, incl. the KT-v1 detection codes
   `0x0110`–`0x0112`, the org-administration codes `0x0113`–`0x0115` (§3.10), `0x0116`
   device-attestation and `0x0118` attestation-expired (§1.2a), `0x0117` KT leaf-hash mismatch
   (§3.5, §18.4.9), the `Profile` display-data codes `0x0119` (signature invalid), `0x011A`

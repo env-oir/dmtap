@@ -31,6 +31,10 @@ because a real defect got through review:
                                        three commits. C8 only catches values already known wrong;
                                        C11 catches a restatement that disagrees with §16 whatever
                                        it drifted to
+  C13 conformance case schema       13 PUBSUB cases shipped with no `operation` field. lint was
+                                       GREEN — C5 checks counts and id set-equality, never whether
+                                       a case is well-formed — while the reference runner could not
+                                       parse suite.json at all and three envoir tests were red
   C12 this list is complete          the header above drifted from the code within one session —
                                        C9 and C11 shipped undocumented. A linter whose own
                                        documentation is stale has no standing to enforce anyone
@@ -309,6 +313,32 @@ def check_conformance() -> list[Finding]:
         out.append(("ERROR", "conformance/SUITE.md", f"{missing} in suite.json but not catalogued"))
 
     n = len(ids_json)
+
+    # C5b: the stated PARTITION must both match suite.json's real status counts and
+    # sum to the total. Only the total was ever checked, so "56 + 6 + 263 + 18 = 343"
+    # could ship with a component stale and a sum that does not add up — which it
+    # nearly did when a case was added and three of the four components were updated.
+    from collections import Counter as _C
+    actual = _C(c.get("status") for c in cases if isinstance(c, dict))
+    for p2 in [ROOT / "10-conformance.md", ROOT / "README.md",
+               ROOT / "conformance" / "README.md"]:
+        if not p2.exists():
+            continue
+        plain = re.sub(r"[*`_]", "", read(p2))
+        for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*\+\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)", plain):
+            parts = [int(x) for x in m.groups()[:4]]
+            total = int(m.group(5))
+            if sum(parts) != total:
+                out.append(("ERROR", p2.name,
+                            f"partition {' + '.join(map(str, parts))} = {total} does not sum "
+                            f"(actual sum {sum(parts)})"))
+            elif total != n:
+                out.append(("ERROR", p2.name,
+                            f"partition totals {total} but suite.json has {n} cases"))
+            elif sorted(parts) != sorted(actual.values()):
+                out.append(("ERROR", p2.name,
+                            f"partition components {sorted(parts)} do not match suite.json "
+                            f"status counts {sorted(actual.values())}"))
     # C5 — every document that states the count must state the same one.
     for p in [ROOT / "10-conformance.md", ROOT / "README.md",
               ROOT / "conformance" / "README.md"]:
@@ -354,6 +384,61 @@ def check_param_drift() -> list[Finding]:
                 if not re.search(want, line, re.IGNORECASE):
                     out.append(("ERROR", f"{p.name}:{n}",
                                 f"{label}: restated value disagrees with {owner}"))
+    return out
+
+
+def check_case_schema() -> list[Finding]:
+    """C13: every conformance case must carry the fields a runner dispatches on.
+
+    C5 verifies that SUITE.md and suite.json agree on how MANY cases exist and
+    WHICH ids. It never looks inside one. So 13 PUBSUB cases shipped with no
+    `operation` field — the field a runner dispatches on — and `make lint` stayed
+    at 0 errors while the reference runner could not parse the file at all and
+    three tests in the envoir workspace were red because of it.
+
+    A catalogue that is counted but not validated is a catalogue whose entries can
+    be individually meaningless while the totals look perfect.
+    """
+    out: list[Finding] = []
+    path = ROOT / "conformance" / "suite.json"
+    if not path.exists():
+        return out
+    try:
+        cases = json.loads(read(path)).get("cases", [])
+    except json.JSONDecodeError:
+        return out  # C5 already reports unparseable JSON
+
+    REQUIRED = ("id", "level", "category", "req", "clause", "checks",
+                "operation", "expect", "status")
+    STATUSES = {"vectored", "self-contained", "construction-todo", "manual-attestation"}
+    LEVELS = {"Core", "Private", "Groups & Files", "Legacy", "Clients", "Auth"}
+
+    for c in cases:
+        cid = c.get("id", "<no id>")
+        for f in REQUIRED:
+            if f not in c:
+                out.append(("ERROR", "conformance/suite.json",
+                            f"{cid}: missing required field `{f}`"))
+        st = c.get("status")
+        if st is not None and st not in STATUSES:
+            out.append(("ERROR", "conformance/suite.json",
+                        f"{cid}: unknown status {st!r} (expected one of {sorted(STATUSES)})"))
+        if c.get("req") not in (None, "MUST", "SHOULD"):
+            out.append(("ERROR", "conformance/suite.json",
+                        f"{cid}: req must be MUST or SHOULD, got {c['req']!r}"))
+        if c.get("level") is not None and c["level"] not in LEVELS:
+            out.append(("ERROR", "conformance/suite.json",
+                        f"{cid}: unknown conformance level {c['level']!r} (§10.3)"))
+        # A vectored case must name the vector it dispatches on, and only a
+        # vectored case may — otherwise the status field and the corpus disagree
+        # about what is actually executed.
+        has_vec = "vector" in c or "reuses_vector" in c
+        if st == "vectored" and not has_vec:
+            out.append(("ERROR", "conformance/suite.json",
+                        f"{cid}: status 'vectored' but names no vector"))
+        if st is not None and st != "vectored" and "vector" in c:
+            out.append(("ERROR", "conformance/suite.json",
+                        f"{cid}: names a vector but status is {st!r}, not 'vectored'"))
     return out
 
 
@@ -592,6 +677,7 @@ def main() -> int:
     findings += check_stale_terms()
     findings += check_suite_status()
     findings += check_param_drift()
+    findings += check_case_schema()
     findings += check_self_documented()
     findings += load_scope()[1]
 

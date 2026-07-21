@@ -273,6 +273,22 @@ in order:
      anyone-can-mint `sender_sig` (step 3) over an altered `kind`/`ts`/`to` — rewriting the
      timestamp/causal order, or relabeling `kind` to change rendering or force a silent
      decrypt-fail.
+   - **(b2) Vouch subject binding.** If the accepted `challenge` at step 6 was a **vouch**
+     (§9.2a, §9.7), verify that **`Payload.from` equals `VouchToken.subject`**; on mismatch,
+     discard silently and do not `ack` (`ERR_VOUCH_SUBJECT_MISMATCH`, `0x0126`).
+     **Why this is required.** Unlike an ARC token, a PoW solution or a postage stamp, a vouch
+     cannot be bound to the envelope's ephemeral `sender_key` at mint time — the voucher cannot
+     know a key the vouchee has not yet generated, and a cleartext proof-of-possession over
+     `sender_key` would break sealed sender (§6.2). §9.2a previously concluded from this that a
+     stolen vouch needs no binding, because "the message still fails identity authentication at
+     step 8". **That conclusion was wrong.** Step 8(a) verifies `Payload.sig` under
+     `Payload.from` — a field the *thief* chooses and signs with their own key, so it succeeds.
+     A vouch travels in the **cleartext** envelope by construction (§9.2a), so anyone on path can
+     lift one and present it as their own, obtaining the strongest standing in the protocol
+     (§9.7 bypasses VDF/PoW/stamp entirely) at zero cost — in a tier §9.7 describes as the one an
+     adversary "cannot buy with either compute or money". Binding the vouch to the *subject it
+     names* is the only check that can close this, and it necessarily lands here, after
+     decryption, because `from` is not visible before it.
    - **(c) Pin check.** Otherwise verify `from` matches the pinned identity for a known contact,
      or TOFU-pin on first contact (§3.4). For a cold sender whose `from` is now revealed,
      re-apply block/allow lists.

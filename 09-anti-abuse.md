@@ -53,9 +53,25 @@ signs — both `sender_sig` and the stolen proof then verify). To close this, **
   first party to redeem `serial` wins and the stamp is spent, so a stolen stamp cannot be
   redeemed twice. The presentation MUST additionally name `sender_key` in the redemption request
   so the issuer binds the spend to the presenting ephemeral key.
-- **Vouch** — a stolen vouch lets an attacker past the *abuse gate* only; the message still fails
-  identity authentication inside `ciphertext` at §2.7 step 8, so it is discarded. No additional
-  binding is required, but a vouch MUST still be rate-limited per `subject` (§9.7).
+- **Vouch** — a vouch **cannot** be bound to `sender_key` at mint time: the voucher cannot know a
+  key the vouchee has not yet generated, and a cleartext proof-of-possession over `sender_key`
+  would break sealed sender (§6.2). It is therefore bound to the **subject it names** instead:
+  §2.7 step 8(b2) requires `Payload.from == VouchToken.subject`, and a mismatch is discarded
+  without an `ack` (`ERR_VOUCH_SUBJECT_MISMATCH`, `0x0126`).
+  **Correcting an earlier claim in this section.** This bullet previously stated that a stolen
+  vouch "still fails identity authentication inside `ciphertext` at §2.7 step 8, so it is
+  discarded. No additional binding is required." That was **wrong**. Step 8(a) verifies
+  `Payload.sig` under `Payload.from`, a field the thief chooses and signs with their own key, so
+  it succeeds. Since a vouch travels in the cleartext envelope (this section's own premise), any
+  on-path observer could lift one and present it as their own — acquiring, at zero cost, the tier
+  §9.7 calls the only one "an adversary cannot buy with either compute or money" and which bypasses
+  VDF/PoW/stamp entirely.
+  **Honest residual.** The binding is necessarily **post-decryption** — `from` is not visible
+  earlier — so a lifted vouch still buys the thief one decryption before rejection. The per-
+  `subject` rate limit (§9.7) MUST therefore be applied at the **gate**, and because a replayed
+  vouch is charged against the *subject's* budget rather than the thief's, a subject whose vouch is
+  being replayed MUST be surfaced to the recipient rather than silently rate-limited into
+  invisibility — otherwise the mechanism becomes a way to frame the vouched-for party.
 
 Because `challenge` is inside the `sender_sig` preimage (§18.9.1) and `sender_sig` is made by
 `sender_key`, this binding also proves the proof and the signature came from the *same* ephemeral

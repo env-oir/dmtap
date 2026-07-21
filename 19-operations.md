@@ -892,8 +892,14 @@ B: step6 evaluate challenge: ARC token, but issuer "unknown-node-xyz" is unvette
          → falls back to policy: no PoW/postage attached either → BELOW THRESHOLD
 B: DEFER → store in requests area (undecrypted or preview-decrypted per implementation),
            rate-limit counter for this challenge-class incremented, retention clock started (30d)
-B → C: ack(id)                                                    # deferred MOTEs ARE acked —
-                                                                   # only invalid/forged ones are not
+B → C: (no ack)                                                   # a DEFERRED MOTE IS NEVER ACKED
+                                                                   # (§2.7a). Acking it would confirm,
+                                                                   # to an unproven sender probing with
+                                                                   # a duplicate, that this identity
+                                                                   # exists and this node holds it —
+                                                                   # exactly the existence oracle §2.6
+                                                                   # withholds. Only a STORED (inbox)
+                                                                   # MOTE is acked.
 ```
 
 ### 19.3.2 `ack(id)`
@@ -911,8 +917,20 @@ sender-side retry loop (§4.7).
   implementation hardening, not specified further at the object-format level in v0.
 
 **Preconditions.** The recipient has completed `deliver`'s procedure for `id` to a terminal state
-that the §2.7a table marks as ack-eligible: **stored** (inbox) or **deferred** (requests area).
-A **silently dropped** MOTE MUST NOT be acked (§2.7a).
+the §2.7a table marks as ack-eligible: **stored** (inbox), or a de-duplication of an `id` it has
+**previously acked** (§2.6). A **deferred** (requests area), **dropped**, or **silently dropped**
+MOTE MUST NOT be acked (§2.7a).
+
+**Why deferred is not ack-eligible (normative rationale).** An earlier revision of this section
+listed *deferred* as ack-eligible and its worked example ended in an `ack`. That contradicted
+§2.6, §2.7a, §19.3.1 step 9 and §20.2, and it was not a documentation nit: it handed an attacker
+an **existence oracle over the entire key space**. A prober sends an unchallenged cold MOTE to
+each candidate identity key; a non-recipient drops at step 4 and stays silent, while a real
+recipient defers and — under the old rule — acked. The ack is the whole signal. It confirms both
+that the identity exists and, with a plain `KeyTag` (§2.2a), *which always-on node holds it*. The
+§9.7a floor guarantees the probe is always accepted far enough to reach that branch, so the oracle
+could not be closed by policy. The ack asymmetry between **stored** and **deferred** is therefore
+load-bearing for §6.4 and §6.6 recipient exposure, not an implementation detail.
 
 **Procedure (normative).**
 1. Construct a minimal `ack{id}` message.
