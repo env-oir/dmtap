@@ -249,7 +249,8 @@ crypto/encoding case below is a prerequisite the higher levels inherit.
 | DMTAP-SUITE-04 | MUST | §1.1, §18.1.4 | unknown suite `0xff` rejected | vector `suite_reject_0xff` | reject → 0x0101 / 0x0201 | vectored |
 | DMTAP-SUITE-05 | MUST | §1.1, §18.1.4 | known suite id `0x01` (classical) decodes | vector `suite_accept_0x01` | accept | vectored |
 | DMTAP-SUITE-06 | MUST | §1.1, §18.1.4, §18.2 | suite id `0x02` (reserved PQ) is a **known id** and decodes; note an object whose crypto actually **uses** `0x02` MUST still fail closed until the PQ suite is implemented (§18.2) | vector `suite_accept_0x02` | accept (id) | vectored |
-| DMTAP-SUITE-07 | MUST | §1.1, §18.1.4 | unregistered suite `0x04` rejected on decode (never guess) | vector `suite_reject_0x04` | reject → 0x0101 / 0x0201 | vectored |
+| DMTAP-SUITE-07 | MUST | §1.1, §1.2.0, §18.1.4 | registered-but-reserved suite `0x04` (the SLH-DSA anchor profile) **decodes** as a known id — registered and implemented are different questions; any *use* under it still fails closed | vector `suite_accept_0x04` | accept (decode only) | vectored |
+| DMTAP-SUITE-11 | MUST | §1.1, §18.1.4 | an **unregistered** suite byte (`0x7f`) is rejected on decode — never guessed | vector `suite_reject_0x7f` | reject → 0x0101 / 0x0201 | vectored |
 
 ### VAL — the §2.7 ordered recipient-validation pipeline
 

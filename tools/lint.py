@@ -250,7 +250,11 @@ def check_conformance() -> list[Finding]:
         if not p.exists():
             continue
         text = read(p)
-        claimed = {int(x) for x in re.findall(r"\b(\d{3})\s+(?:numbered\s+)?cases\b", text)}
+        # Numbers are often emphasised (**328**) or wrapped in backticks, so strip
+        # markup before matching — C5 missed a stale count in conformance/README.md
+        # for exactly this reason.
+        plain = re.sub(r"[*`_]", "", text)
+        claimed = {int(x) for x in re.findall(r"\b(\d{3})\s+(?:numbered\s+)?cases\b", plain)}
         for c in claimed:
             if c != n:
                 out.append(("ERROR", p.name,

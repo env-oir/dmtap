@@ -273,9 +273,9 @@ them (the numbered sections govern the normative bytes).
 | [`substrate/SYNC.md`](substrate/SYNC.md) | ③ Sync | **The one new spec** — signed multi-author CRDT ops, version-vector + range-Merkle reconciliation, signed snapshots, sparse namespace sync |
 | [`substrate/ROLES.md`](substrate/ROLES.md) | ④ Roles + ⑤ Wake | Infrastructure roles as an open key-addressed protocol + content-free wake (RFC 8030/8291/8292) |
 
-**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **327
-numbered cases** (SUITE.md ≡ suite.json). **61 are byte-runnable today** — 55 vectored cases
-backed by known-answer vectors (**68 core vectors** in `vectors/vectors.json` + **15 DMTAP-PUB
+**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **328
+numbered cases** (SUITE.md ≡ suite.json). **62 are byte-runnable today** — 56 vectored cases
+backed by known-answer vectors (**69 core vectors** in `vectors/vectors.json` + **15 DMTAP-PUB
 vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **249
 carry an exact construction recipe** and expected §21 error, pending vectors for subsystems not
 yet byte-pinned (mixnet / MLS / gateway / auth and the wave-2/3 families, the wave-6 anti-drift
@@ -284,7 +284,7 @@ families `MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`, the gatew
 checklists); and 17 are manual-attestation cases — the MUSTs with no wire bytes to
 recompute at all (an in-product disclosure, a client's claim about a session or an address, a
 process boundary, or the population a deployment serves), verified by implementer or
-deployment review rather than by a runner (55 + 6 + 249 + 17 = 327). 157 of the 183 reject
+deployment review rather than by a runner (56 + 6 + 249 + 17 = 328). 157 of the 183 reject
 cases name one of the **144 codes** in the §21 registry; the other 26 reject at a level the
 registry does not code for — a known-answer verification that simply returns false, a
 profile-checklist item (`CAD`/`VIDEO`), or an offline validation of a descriptor, a `BootstrapSet`
