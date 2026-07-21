@@ -1,0 +1,33 @@
+# Internal-consistency gate for the DMTAP specification.
+#
+# Every check in tools/lint.py exists because a real contradiction survived human
+# review — nine of them across four passes on 2026-07-21, including a wire-format
+# section that instructed implementers to reject the suite §1.1 requires them to
+# originate. Reading found them the fourth time; this finds them on the first push.
+name: spec-lint
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # No dependencies by design: the linter is stdlib-only so it cannot rot or
+      # be blocked by a supply-chain problem in a docs gate.
+      - name: Lint the specification
+        run: make lint
+
+      # suite.json is the machine-readable mirror the conformance runners drive.
+      # A syntax error here breaks every downstream implementation's test run.
+      - name: Validate conformance mirror parses
+        run: python3 -c "import json;json.load(open('conformance/suite.json'))"
