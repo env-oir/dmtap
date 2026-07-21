@@ -325,7 +325,23 @@ Its actual current state is **better than that document's text**, which had gone
   remaining gap:** implement `DeviceCert` chain verification **with** §1.5 revocation checking (not
   without it) per [`FEEDS.md § 4.2`](FEEDS.md#42-the-pubannounce-kind-0x40-223) step 4 — a strict
   superset of the current behavior, never a loosening of it.
+  **Fixed-width `seq`/`ts` decode guards — closed 2026-07-21.** kerf-pub compared feed `seq`
+  **numerically** (Python `int`), so it never had the lexical-vs-numeric ordering bug that the
+  flowstock HLC counter had — but it decoded `seq`, `ts`, `size` and `chunk_sz` with a bare
+  `int(m[k])`, admitting **negative** values (CBOR major type 1) and, for `chunk_sz`, values
+  outside `u32`. Verified reachable: `FeedEntry.from_cbor` accepted `seq = -1` and
+  `FeedHead.from_cbor` accepted `seq = -5`, both spec-illegal against the `u64` of §22.4.1. The
+  values were caught downstream *incidentally* (the tip lookup in `_walk_and_verify` misses, so
+  the chain walk raises `0x0908`) rather than by any range check, so the safety depended on an
+  unrelated lookup and would not have survived a refactor. Now enforced at the decode boundary by
+  a shared `_require_uint(value, what, bits, err)` helper, with the boundary value `2⁶⁴−1` still
+  accepted — the guard rejects *outside* `u64`, not *at* it. This is the cross-capability
+  ordered-domain invariant of [`FEEDS.md § 4.3`](FEEDS.md#43-anti-rollback-and-equivocation-2242),
+  the Feeds twin of [`SYNC.md § 3`](SYNC.md)'s fixed-width HLC rule.
 - **Sync — n/a.** Not attempted; kerf-pub is a Feeds/Blobs (+ Wake) server, not a state-sync engine.
+  The ordered-domain invariant above is therefore **not** inherited via Sync — it binds kerf-pub
+  directly as a §22 Feeds adopter, which is exactly why it is stated in `FEEDS.md` rather than
+  left as a Sync-specific footnote.
 - **Roles — to-spec, cache/pin only.** The `/.well-known/dmtap-pub/*` gateway itself **is** the cache/pin
   role ([`ROLES.md § 6`](ROLES.md#6-cache--pin--serve-content-addressed-objects-profile-of-225-55)),
   correctly implemented (immutable `Cache-Control`/`ETag` on the four content-addressed endpoints). No

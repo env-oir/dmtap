@@ -203,6 +203,32 @@ only to *display* who `pub` is — verification never needs a name lookup (§3.1
   HALT_ALERT — the same posture as a committer fork `0x0404` and a cluster-journal break `0x0412`). A
   publisher cannot honestly present two histories; a reader that sees both holds transferable evidence.
 
+> **The ordered-domain invariant (cross-capability, normative).** An anti-rollback rule is a claim
+> about a **total order**, and it is only as sound as the domain the counter is decoded into. A
+> `seq` typed `u64` by the §22 field tables MUST be decoded into exactly that domain: an
+> implementation MUST reject a `seq` that is **negative** or **outside `u64`** at the decode
+> boundary, rather than admitting it into the comparison and relying on a downstream lookup to
+> fail. Two properties break otherwise, both silently:
+>
+> 1. **Cross-engine agreement on well-formedness.** A language whose integers are signed and
+>    arbitrary-precision (Python, JS `BigInt`) will accept objects a `u64`-typed implementation
+>    (the Rust `dmtap-core::pubobj`) cannot represent at all. The two engines then disagree about
+>    whether a feed is *valid* — not about its contents, but about whether it parses — which is
+>    indistinguishable from a fork to anyone comparing their outputs.
+> 2. **The monotonicity claim itself.** "Strictly greater than the highest accepted" presumes a
+>    domain with a floor and a ceiling. Admit negatives and the floor is gone; admit bignums and
+>    the ceiling is, along with the guarantee that `seq + 1` is representable.
+>
+> **This is the same invariant [`SYNC.md` §3](SYNC.md) states for the HLC's fixed-width fields, and
+> it is deliberately stated in both places because it is not a Sync-specific footnote:** it binds
+> wherever a monotonic counter is *reachable from the network* — the Feeds `seq` here, the HLC
+> `counter` there, and by the same reasoning `caps_version` (§10.2), `Identity.version` (§1.3),
+> `LocationRecord.seq` (§4.2) and `GroupState.version` (§5.8.2). The failure mode is identical in
+> every case: a value that is well-formed to one implementation and unrepresentable to another
+> makes an order-dependent rule produce two different answers, while both implementations believe
+> they are conformant. Enforce the declared width at the decode boundary; never infer it from
+> whatever check happens to reject the value today.
+
 ### 4.4 Retraction is supersede-only; irrevocability (§22.3.4, §22.7, §22.9)
 
 There is **no deletion**. Each announce is immutable and content-addressed, so a revision is a **new**
