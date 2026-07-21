@@ -22,6 +22,19 @@ because a real defect got through review:
   C8  stale terminology                "directory authority" survived its own deletion
   C10 unclassified MUST section        a section gained MUSTs after conformance/scope.json was
                                        written, so the curated coverage denominator silently
+  C9  suite status contradiction     §18.2 labelled 0x01 "v0 REQUIRED" and 0x02 "RESERVED"
+                                       long after §1.1 inverted them, and told implementers to
+                                       reject the suite they must originate — the spec was not
+                                       implementable as written
+  C11 parameter drift                §16.3 was corrected to a {16, 64} KiB ladder while §2.5 and
+                                       §18.2 went on asserting the old one, in two spellings, for
+                                       three commits. C8 only catches values already known wrong;
+                                       C11 catches a restatement that disagrees with §16 whatever
+                                       it drifted to
+  C12 this list is complete          the header above drifted from the code within one session —
+                                       C9 and C11 shipped undocumented. A linter whose own
+                                       documentation is stale has no standing to enforce anyone
+                                       else's
                                        stopped covering the whole spec
 
 Exit status is non-zero if any ERROR-level finding fires, so this belongs in CI.
@@ -339,6 +352,43 @@ def check_param_drift() -> list[Finding]:
     return out
 
 
+def check_self_documented() -> list[Finding]:
+    """C12: every implemented check must appear in this module's own header.
+
+    Added because the header drifted from the code inside a single session: C9 and
+    C11 both shipped without a header entry. A tool that enforces documentation
+    consistency across 25 spec files while its own docstring is stale is not a
+    small irony — it is the exact failure it exists to prevent, in the one place
+    nobody thinks to look.
+    """
+    src = read(Path(__file__))
+    # Split the module docstring from the code by LOCATING its closing delimiter
+    # in the source, not by slicing the source to the docstring's length — that
+    # earlier version compared the header against a meaningless slice and silently
+    # never fired. Caught by negative test; a check that cannot fail is worse than
+    # no check, because it reports success.
+    first = src.find('"""')
+    close = src.find('"""', first + 3)
+    header, body = (src[first:close], src[close + 3:]) if first != -1 and close != -1 else ("", src)
+    # Match only LIST-ENTRY position (start of a header line), not prose. C12's own
+    # description names "C9 and C11" as the drift that motivated it, so a
+    # whole-header match found those mentions and the check stayed silent when the
+    # real entries were deleted — it was documentation ABOUT a check standing in
+    # for the check being documented.
+    # EXACTLY the two-space list-entry indent. `^\s*` also matched deeply-indented
+    # CONTINUATION lines that happen to begin with a cross-reference ("C11 catches
+    # a restatement...", "C9 and C11 shipped undocumented"), so a deleted entry
+    # still counted as documented via the prose describing it. Three attempts at
+    # this check were silently inert before a negative test caught each one.
+    documented = set(re.findall(r"^  C(\d+)\s", header, re.MULTILINE))
+    implemented = set(re.findall(r"\bC(\d+)[ :]", body))
+    out: list[Finding] = []
+    for c in sorted(implemented - documented, key=int):
+        out.append(("ERROR", "tools/lint.py",
+                    f"check C{c} is implemented but missing from the module header"))
+    return out
+
+
 def check_suite_status() -> list[Finding]:
     """C9: no suite table may contradict §1.1 on a suite's normative status."""
     out: list[Finding] = []
@@ -537,6 +587,7 @@ def main() -> int:
     findings += check_stale_terms()
     findings += check_suite_status()
     findings += check_param_drift()
+    findings += check_self_documented()
     findings += load_scope()[1]
 
     errors = [f for f in findings if f[0] == "ERROR"]
