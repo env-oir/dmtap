@@ -697,8 +697,12 @@ disclosed.
   is a **KT-auditable DMTAP identity** (§4.4.2), and its **operator control MUST be attested by a
   DNS/KT record under the operator's domain** — a `_dmtap-mix` attestation directly analogous to
   the gateway attestation `_dmtap-gw` (§7.2a) — so every mix is bound to an **accountable,
-  rate-limited real-world operator**; the directory authority (§4.4.2) admits only attested mixes,
-  and — per the operator-diversity rule above — an **un-attested `operator` claim confers no
+  rate-limited real-world operator**. Admission is **not** granted by any authority: because the
+  fleet view is *derived* (§4.4.2), a client admits a mix into its own path-selection set exactly
+  when that mix's descriptor self-verifies, carries a valid `_dmtap-mix` attestation, names a
+  current-epoch key, and appears in a quorum of the client's pinned KT logs — so an unattested mix
+  is simply never selected by anyone, rather than being refused entry by a gatekeeper.
+  Per the operator-diversity rule above, an **un-attested `operator` claim confers no
   diversity** (a mix counts as a distinct operator toward the disjoint-operator requirement **iff**
   its `_dmtap-mix` attestation validates), which is what stops one adversary minting *N* fake
   operators to defeat the a² bound.
