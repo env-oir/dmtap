@@ -100,6 +100,53 @@ SUITE_STATUS: dict[str, str] = {
 }
 SUITE_ROW_RE = re.compile(r"^\|\s*`(0x0[1-4])`\s*\|(.+)$")
 
+# C11: load-bearing numbers that §16 owns and prose restates. Parameter drift is
+# the class that caused the worst defect of the 2026-07-21 waves: §16.3 was
+# corrected to a {16, 64} KiB ladder while §2.5 and §18.2 went on asserting the
+# old one, in two different spellings, for three commits. A stale-term rule (C8)
+# only catches values already known to be wrong; this catches a restatement that
+# disagrees with §16 whatever it says.
+#
+# Each entry: (label, line-context regex, regex the line MUST then satisfy, §16 row).
+# The context regex must be specific enough that it only fires on lines actually
+# asserting the parameter — a false positive here is CI noise forever.
+PARAM_DRIFT: list[tuple[str, str, str, str, str]] = [
+    # (label, context regex, value-shape regex, expected-value regex, §16 owner)
+    #
+    # A line is only checked when it BOTH names the parameter AND states a value of
+    # the right shape. Merely cross-referencing a parameter ("padded to the bucket
+    # ladder (§4.4.1)") must not fire, or the check becomes noise and gets switched
+    # off — which is worse than not having it.
+    ("bucket ladder",
+     r"bucket ladder|payload bucket|size ladder",
+     # A ladder restatement is always a BRACED SET. A bare "N KiB" near the word
+     # "ladder" is usually the 2 KiB cell the ladder is defined in terms of, so
+     # matching it produced a false positive on §4.4.1's own defining sentence.
+     r"\{[^}]*\d[^}]*\}",
+     r"\{\s*16\s*,\s*64\s*\}",
+     "§16.3 Payload bucket ladder = {16, 64} KiB"),
+    ("Sphinx cell size",
+     r"Sphinx cell (?:size|payload)|cell size \(`?\u03b4`?\)",
+     r"\b\d+ ?KiB\b",
+     r"\b2 ?KiB\b",
+     "§16.3 Sphinx cell size (\u03b4) = 2 KiB"),
+    ("guard rotation period",
+     r"guard[- ]rotation period",
+     r"\b\d+ ?(?:days?|d)\b",
+     r"\b30 ?days?\b",
+     "§16.3 Entry-guard rotation period = 30 days"),
+    ("mix key epoch",
+     r"mix[- ]key epoch\b",
+     r"\b\d+ ?h\b",
+     r"\b24 ?h\b",
+     "§16.3 Mix key epoch = 24 h"),
+    ("zero-relationship floor",
+     r"`?N_floor`?\b",
+     r"\u2265 ?\d+|\b\d+ cold\b",
+     r"\u2265 ?5|\b5 cold\b",
+     "§16.5 N_floor \u2265 5 cold MOTEs / sender-key / day"),
+]
+
 Finding = tuple[str, str, str]  # (level, location, message)
 
 
@@ -271,6 +318,24 @@ def check_stale_terms() -> list[Finding]:
             for pat, why in STALE_TERMS:
                 if re.search(pat, line, re.IGNORECASE):
                     out.append(("ERROR", f"{p.name}:{n}", f"stale: {why}"))
+    return out
+
+
+def check_param_drift() -> list[Finding]:
+    """C11: a prose restatement of a §16 parameter must agree with §16."""
+    out: list[Finding] = []
+    for p in SPEC_FILES + SUBSTRATE_FILES:
+        if p.name.startswith("16-"):
+            continue  # §16 is the source of truth, not a restatement of itself
+        for n, line in enumerate(read(p).splitlines(), 1):
+            for label, ctx, shape, want, owner in PARAM_DRIFT:
+                if not re.search(ctx, line, re.IGNORECASE):
+                    continue
+                if not re.search(shape, line, re.IGNORECASE):
+                    continue  # names the parameter but states no value — a cross-ref, not a claim
+                if not re.search(want, line, re.IGNORECASE):
+                    out.append(("ERROR", f"{p.name}:{n}",
+                                f"{label}: restated value disagrees with {owner}"))
     return out
 
 
@@ -471,6 +536,7 @@ def main() -> int:
     findings += check_conformance()
     findings += check_stale_terms()
     findings += check_suite_status()
+    findings += check_param_drift()
     findings += load_scope()[1]
 
     errors = [f for f in findings if f[0] == "ERROR"]
