@@ -21,6 +21,17 @@ capability ① (Identity) unchanged and adds only the commerce-specific roles an
   (repeat-customer recognition, reviews) but not *across* sellers.
 - **Reachability**: how a seller behind CGNAT is reached by key, and how an order is delivered to a
   node that is asleep or offline — the ladder, the mailbox, and wake.
+- **The liveness asymmetry** (§21.5, §21.9). Durability at the edges covers *orders* and not
+  *catalogues*, and this section has to make the distinction rather than let "reachable by key"
+  imply both. A sleeping node still receives orders: the sender's node retains the retry queue and
+  a content-free wake signal brings the recipient back. A sleeping node does **not** serve its
+  catalogue, so an offline seller is not slow — they are invisible, and nobody else is obliged to
+  serve their listings in their absence. The closest deployed relative of this design measured a
+  ~22-day median listing lifetime and whole catalogues disappearing when a merchant node departed.
+  Third-party caching or pinning of public objects therefore moves from a convenience to a
+  practical requirement for any seller not always on, and unpaid replication is exactly what that
+  system failed to attract. Whether pinning needs an incentive, and whether that incentive creates
+  another operator, is open (§21.8).
 
 ## 1.3 Standards profiled
 

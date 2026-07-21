@@ -37,6 +37,21 @@ derivable from a keypair. What bounds it: permissionless entry, competition, per
 both parties, no access to identity keys, and **every ruling published as a signed object**, so an
 operator that rules unfairly accumulates a permanent verifiable record.
 
+## 9.5a The measured cost of optionality (§21.6)
+
+§9.5 keeps escrow per-order and optional, and §9.6 gives the reason: mandatory escrow would exclude
+regions no licensed operator serves. That reasoning is sound and the consequence is still real.
+
+OpenBazaar's escrow was also opt-in, and **bad actors simply declined it** — the protection went
+unused precisely where it mattered most. Both cannot be true for free, and this specification pays
+on the second. What follows from that, rather than pretending it away:
+
+- an unescrowed trade is an explicit, disclosed outcome shown to both parties before they commit,
+  never a silent default;
+- interfaces render the absence of escrow as a fact about the trade, not as a missing field;
+- a seller declining every escrow provider a buyer trusts is itself information the buyer should be
+  given, since it is the observable form of the failure above.
+
 ## 9.6 Honest limits this section must state
 
 - Physical custody cannot be made trustless.

@@ -23,6 +23,25 @@ Reviews, purchase attestation, and ranking — without creating an authority.
 which is the authority the design removes. Ranking is derived data; indexes will differ, and that
 is the intended outcome, not a defect.
 
+## 10.3a What attestation does not fix (§21.6)
+
+§21.9 obliges this section to state the measured outcome rather than the hypothetical one.
+
+OpenBazaar's reputation failure was self-published, unweighted reviews with no banning authority,
+and **one vendor faked 60% of measured sales value**. A purchase attestation is strictly stronger
+than what OpenBazaar had — it binds a review to a real transaction, so ballot-stuffing costs actual
+trades. Two of the failure conditions nonetheless survive unchanged:
+
+1. **Self-dealing produces genuine attestations.** A seller transacting with itself generates real
+   proofs. Attestation raises the cost and leaves a public trail; it does not establish that the
+   counterparty was independent, and nothing in this document does.
+2. **Escrow-issued attestations are scarcest where they would matter most**, because escrow is
+   opt-in and declined by exactly the actors it constrains (§9.5a).
+
+The achievable Sybil-cost floor on a signed-feed substrate is an **open question** (§21.8), not a
+solved one. An index's weighting policy is where that judgement lives, and different indexes
+reaching different answers is the design rather than a defect.
+
 ## 10.4 Honest limits this section must state
 
 - Rankings disagree between indexes; buyers lose the convenience of one authoritative number.

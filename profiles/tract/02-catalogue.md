@@ -16,6 +16,24 @@ Because the substrate content-addresses public blobs over plaintext, two sellers
 same record converge on the same address by construction, and the swarm stores it once. The
 global product view is therefore an emergent consequence of hashing, not a registry.
 
+## 2.2a How strong the convergence claim actually is (§21.2)
+
+Weaker than §2.2 sounds, and §21.9 obliges this section to say so rather than let a reader infer
+otherwise.
+
+Convergence is trivially true for identical bytes and says nothing about the real case: two shops
+describing the same shoe. A July 2026 literature pass found **no deployed system achieving
+cross-publisher product identity without a licensed registry**, and the one candidate for
+permissionless crawl-derived resolution was refuted 0-3 under adversarial verification. The two
+models that exist in the field are the only two: a permissioned monopoly namespace (GS1 GTIN —
+licensed rather than sold, fee-bearing, issued through national member organisations) and a purely
+nominal string with no issuer or uniqueness guarantee (schema.org `productGroupID`). Nothing in
+between is deployed.
+
+So the content address is a sound **mechanism** carrying an **unproven** claim. The canonicalisation
+rules of §2.3 — not the hashing — are the load-bearing part of this section, and §2.5 keeps
+near-duplicate resolution listed as open rather than implied-solved.
+
 ## 2.3 What this section will specify
 
 - `ProductRecord` and `Offer` object shapes.
@@ -28,6 +46,15 @@ global product view is therefore an emergent consequence of hashing, not a regis
 - **Bundles and kits**, including components published by other sellers.
 - The **index rule**: derived, rebuildable, never authoritative; disagreement resolves toward the
   feed; no protocol mechanism exists by which an index can delist a seller from the network.
+- **The gap between permission and practice** (§21.3, §21.9). "Any node may build an index" does not
+  mean many will. A content-addressed substrate offers no global index, so discovery is the *first*
+  function to re-centralize: whichever index becomes economically dominant becomes a de facto
+  content-policy gatekeeper regardless of what this document permits. That is what happened to the
+  closest deployed relative of this design, and the largest live decentralized-commerce network
+  avoided it only by adopting a central approval-gating registry (§21.4). **No rule in this
+  document prevents it.** Multiple competing indexers with verifiable completeness or censorship
+  proofs is the candidate answer, and it has no deployed precedent (§21.8). This is the weakest
+  load-bearing claim in the specification and is marked as such rather than defended.
 
 ## 2.4 Standards profiled
 
