@@ -67,9 +67,16 @@ A specification that omitted this would be easier to believe and worse to build 
 
 ## Status
 
-**Draft, pre-normative.** §0 is written; §1–§20 are scoped stubs that state what they will specify,
-which standards they profile, and what is still open. A section becomes normative when the RFC 2119
-keywords appear in capitals — `make lint` enforces that a stub cannot quietly claim authority.
+**Draft.** Every section is written; none is a placeholder.
+
+**§16 (wire format) is normative and frozen at v0** — it defines bytes, so a change to it is a MAJOR
+version change rather than a correction. That freeze is what lets conformance vectors exist at all:
+a second implementation cannot prove it matches *this document* rather than matching the reference
+implementation until there is something fixed to match.
+
+Everything else carries a drafting banner and is not yet normative. A section becomes normative when
+the RFC 2119 keywords appear in capitals, and `make lint` enforces that a banner-carrying section
+cannot quietly acquire them — a check that has caught real drift twice.
 
 ## Repository
 

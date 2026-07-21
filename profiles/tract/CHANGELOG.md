@@ -8,6 +8,14 @@ that change no bytes.
 
 Initial draft. Nothing here is normative yet except §0.
 
+### Normative
+
+- **§16 (wire format) frozen at v0.** The CDDL for every TRACT object, promoted from proposal to
+  requirement. Freezing is a commitment to stability rather than a claim of correctness: the shapes
+  are implemented and exercised end to end, which proves they compose and does not prove they are
+  right, since an implementation and a grammar derived from each other only agree with each other.
+  §16.8 still lists what is undecided above the byte level.
+
 ### Added
 
 - **§0 Overview** — goals, non-goals, the DMTAP substrate adoption, roles, the single operator

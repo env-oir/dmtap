@@ -1,16 +1,20 @@
 # 16. Wire format
 
-> **Drafting status.** This section is scoped but not yet normative. It states what it will
-> specify, which existing standards it profiles, and the decisions still open. Nothing here is
-> implementable yet; text becomes normative when the RFC 2119 keywords appear.
+> **Status: normative, frozen at v0.** This section defines bytes, and unlike the sections around
+> it, it is no longer a proposal. The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are to
+> be interpreted as in BCP 14 (RFC 2119, RFC 8174).
 >
-> The grammar below is **proposed, not frozen**. It is written out rather than deferred because a
-> data model argued in prose hides its gaps, and because §15's conformance vectors cannot exist
-> until these shapes settle (`conformance/README.md`). Every object here is implemented and
-> exercised end to end in the reference implementation, which is evidence the shapes compose — and
-> is *not* evidence that they are right, since an implementation and a grammar derived from each
-> other only prove they agree with one another (§21.7, and the DMTAP case in
-> `conformance/README.md`).
+> **What freezing commits to.** A change to any shape below changes what an implementation puts on
+> the wire, so it is a MAJOR version change under `GOVERNANCE.md` — not a correction. That is the
+> point of freezing: §15's conformance vectors cannot exist against a moving target, and a second
+> implementation cannot prove it matches this document rather than matching the reference one until
+> there is something fixed to match.
+>
+> **What it does not claim.** Every object here is implemented and exercised end to end in the
+> reference implementation, which is evidence the shapes *compose* and is **not** evidence they are
+> *right* — an implementation and a grammar derived from each other only prove they agree with one
+> another (`conformance/README.md`). Freezing is a commitment to stability, not a claim of
+> correctness, and §16.8 still lists what is undecided **above** the byte level.
 
 ## 16.1 Scope
 
@@ -20,12 +24,13 @@ and which of those keys a decoder may not tolerate.
 ## 16.2 Conventions inherited, not reinvented
 
 Deterministic CBOR (RFC 8949 §4.2). Integer-keyed maps, keys assigned per object type from 1, keys
-≥ 64 reserved for extension. Signed objects reject unknown keys fail-closed; unsigned objects may
-ignore unknown keys ≥ 64. Domain-separation tags on every signing preimage. Content addresses carry
+≥ 64 reserved for extension. A decoder MUST reject an unknown key in a **signed** object, failing closed; it MAY
+ignore unknown keys ≥ 64 in an **unsigned** object. Domain-separation tags on every signing preimage. Content addresses carry
 a multihash-style agility prefix.
 
 **TRACT introduces no new hash construction, no new signature framing, and no new address scheme.**
-All four come from the DMTAP substrate. A construction invented in this section is a defect.
+All four come from the DMTAP substrate. An implementation MUST NOT invent one; a construction appearing here would be a defect in this
+document.
 
 ## 16.3 Shared primitives
 
@@ -44,10 +49,10 @@ money = {
 
 ## 16.4 The structural rule — two type families, not one with a flag
 
-Public and sealed objects are **separate type families**. A public object is structurally incapable
-of carrying a name, address or contact detail (§0.5.1): the prohibition is enforced by the grammar,
-not by reviewer discipline, because published objects are irrevocable and an erasure right cannot be
-satisfied against them after the fact.
+Public and sealed objects are **separate type families**. A public object MUST NOT carry a name, address or contact
+detail (§0.5.1), and the grammar below is written so that it cannot: the prohibition is enforced by
+the productions, not by reviewer discipline, because published objects are irrevocable and an
+erasure right cannot be satisfied against them after the fact.
 
 Two consequences the grammar has to carry, rather than leaving to convention:
 
@@ -59,7 +64,8 @@ Two consequences the grammar has to carry, rather than leaving to convention:
   or a sealed one — and the two are made non-confusable at the *content-address* level by distinct
   domain-separation tags, in the same way the substrate separates its own sealed and public
   manifests. There is no `sealed: true` field an attacker could omit, because a flag can be
-  dropped and a domain-separation tag cannot.
+  dropped and a domain-separation tag cannot. A decoder expecting one family and handed the other
+  MUST reject it rather than coerce.
 
 ## 16.5 Public objects
 
@@ -86,8 +92,9 @@ ClaimedExternalRung    = { 1 => tstr, 2 => tstr }   ; scheme ("gtin", "mpn"), va
 ManufacturerSignedRung = { 2 => identity-key }      ; the brand's own key
 ```
 
-The middle rung is a **claim and nothing more**: anyone can assert any GTIN, so an index treats it
-as an advisory join key and never as authority (§2.3). Squatting is expected rather than prevented.
+The middle rung is a **claim and nothing more**: anyone can assert any GTIN, so an index MUST treat
+it as an advisory join key and MUST NOT treat it as authority (§2.3). Squatting is expected rather
+than prevented.
 
 ### 16.5.2 `Offer` — one seller's claim to supply
 
@@ -140,9 +147,10 @@ PriceTier = { 1 => uint, 2 => money }          ; min_qty, unit_price
 **The load-bearing detail.** `Fulfilment` is not merely logistics: it is the only object that knows
 where a supply happens, and §11.2 derives the tax anchor from it. Ship → destination;
 collect / perform-at-place / return-required → the stated place; perform-remote and digital-grant →
-buyer residence; access-grant → whichever, depending on whether it names a place. An implementation
-that resolves place of supply from the parties' countries instead will be plausibly and
-consistently wrong about every event held abroad.
+buyer residence; access-grant → whichever, depending on whether it names a place. An implementation MUST derive it from this
+object and MUST NOT accept it as a separate argument that could disagree; one resolving place of
+supply from the parties' countries instead will be plausibly and consistently wrong about every
+event held abroad.
 
 ### 16.5.3 `RateCard` and `CapacityRecord` — published, so routing is computed not quoted
 
@@ -264,21 +272,22 @@ PaymentAttestation = {
 ```
 
 **One order per seller is a grammar-level property, not a client convention.** `Order` names a
-single seller and carries only that seller's lines, so a cross-seller order is not expressible.
+single seller and MUST carry only that seller's lines, so a cross-seller order is not expressible.
 The whole-cart view exists on the buyer's device and nowhere else (§6.1).
 
-`PaymentAttestation` carries a *reference*, never funds and never card data. The protocol conveys
+`PaymentAttestation` MUST carry a *reference* only — never funds, and never card data. The protocol conveys
 that a payment happened; it does not move money (§9.2).
 
 ## 16.7 Encoding rules that exist because of a specific failure
 
-- **Money is minor units and a currency code, never a float.** A rounding error in a signed object
+- **Money MUST be minor units and a currency code, never a float.** A rounding error in a signed object
   cannot be corrected after the fact — the signature covers the wrong number.
-- **Arithmetic across currencies is refused, never coerced.** A silently converted total is a wrong
+- **Arithmetic across currencies MUST be refused, never coerced.** A silently converted total is a wrong
   total that looks right, and it gets carried into an order (§5.3).
-- **A decoder that finds a field it does not recognise in a signed object rejects it**, rather than
+- **A decoder that finds an unrecognised field in a signed object MUST reject it**, rather than
   ignoring it. The alternative lets a signer and a verifier disagree about what was signed.
-- **`ts` is milliseconds since the Unix epoch**, subject to the substrate's clock-skew tolerance. A
+- **`ts` MUST be milliseconds since the Unix epoch**, subject to the substrate's clock-skew
+  tolerance. A
   timestamp is for display and ordering; where order must be authoritative it comes from a feed's
   sequence, never from a clock.
 
