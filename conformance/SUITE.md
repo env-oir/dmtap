@@ -233,6 +233,7 @@ crypto/encoding case below is a prerequisite the higher levels inherit.
 | DMTAP-NAME-04 | MUST | §3.9.6, §18.9.17 | key-name of a real Ed25519 public key | vector `keyname_real_pubkey` | match | vectored |
 | DMTAP-NAME-05 | MUST | §3.9.6, §18.9.17 | distinct keys ⇒ distinct names (`keyname_key_ones` ≠ `keyname_key_twos`) | derived from NAME-02 / NAME-03 | accept (names differ) | vectored |
 | DMTAP-NAME-06 | MUST | §3.9.6, §18.9.17, §16.2 | a single mistyped word fails the folded checksum (fail closed) | vector `keyname_typo_rejected` | reject (checksum) | vectored |
+| DMTAP-NAME-07 | MUST | §3.9.6, §3.13.4, §6.6 | **A bare key-name is not a destination.** The key-name is a one-way digest, so a client MUST NOT accept one alone as a send destination for a stranger — the key cannot be recovered from it, and the key is what the HPKE seal, `DeliveryTag`, work-proof scope and DHT key all consume. Confirming an out-of-band key against a key-name is its actual purpose and MUST work | manual attestation: (a) key-name as sole destination for an uncontacted identity; (b) key-name used to confirm a key received via QR/contact card | (a) rejected, with the client stating the identity key is required and offering §3.13.5 paths — silently DHT-resolving and presenting that as resolution is non-conformant (§4.2.1); (b) accepted, confirming or rejecting by recomputing §18.9.17 | manual-attestation |
 
 ### SAFE — out-of-band safety number (§3.4.1)
 

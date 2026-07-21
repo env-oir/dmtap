@@ -666,6 +666,25 @@
       "status": "vectored"
     },
     {
+      "id": "DMTAP-NAME-07",
+      "level": "Core",
+      "category": "NAME",
+      "req": "MUST",
+      "clause": [
+        "\u00a73.9.6",
+        "\u00a73.13.4",
+        "\u00a76.6"
+      ],
+      "checks": "A bare key-name is not a sufficient destination. The key-name is a one-way digest of the identity key, so a client MUST NOT accept one alone as a send destination for a stranger: given only the name the key cannot be recovered, and the key is what the HPKE seal, DeliveryTag, work-proof recipient scope and DHT lookup all consume. A client may use a key-name to CONFIRM a key obtained out of band, which is its purpose.",
+      "operation": "node_surface_probe",
+      "construction": "(a) enter a valid, checksum-correct key-name of an identity the node has never contacted, as the sole destination of a new message; (b) enter the same key-name to CONFIRM an identity key just received out of band (QR/contact card)",
+      "expect": {
+        "outcome": "reject",
+        "note": "(a) MUST NOT be accepted as a destination \u2014 the client must state that the identity key itself is required and offer the out-of-band paths of \u00a73.13.5; silently attempting a DHT lookup and presenting the result as resolution is non-conformant, since \u00a74.2.1 makes the DHT opportunistic-only. (b) MUST be accepted and MUST confirm or reject the key by recomputing \u00a718.9.17"
+      },
+      "status": "manual-attestation"
+    },
+    {
       "id": "DMTAP-SAFE-01",
       "level": "Core",
       "category": "SAFE",

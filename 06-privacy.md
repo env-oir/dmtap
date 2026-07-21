@@ -279,6 +279,28 @@ hostile-buffer scenarios.
     and against KT (§3.12.5(b), §3.12.3), so the exposure exists only for correspondents who are
     still on legacy — and shrinks as they leave (§7.1c).
 
+16. **A key-name identifies an identity; it does not, on its own, address one.** The key-name is a
+    **one-way** digest of the identity key — 80 bits of `BLAKE3-256(ik)` (§18.9.17, §3.9.6). Given
+    the key you can compute and confirm the name; **given only the name you cannot recover the
+    key**, and the key is what every addressing primitive actually consumes: the HPKE seal (§2.4),
+    the `DeliveryTag` (§2.2a), a work proof's `recipient` scope (§9.4), and the DHT lookup key
+    `hash(ik)` itself (§4.2). A stranger holding only a spoken or printed key-name therefore holds
+    a **checksum, not an address**, and must obtain the key out of band — QR, contact card,
+    introduction (§3.13.5).
+    The only mechanism that could close this for an identity with *no* domain, *no* chain and *no*
+    contacts is a DHT lookup keyed on `hash(ik)`. This specification deliberately relegates the
+    DHT to **opportunistic use only** and states that no relationship should depend on it (§4.2.1),
+    because §4.2's CAUTION identifies it as the single most attackable surface in the protocol and
+    notes that IP-diversity caps are close to worthless under IPv6. So for the cold-start,
+    key-name-only user of §3.13.5, **first contact is DHT-dependent and therefore eclipse-deniable**:
+    an adversary who eclipses the neighbourhood of `hash(ik)` can make that identity unfindable to
+    strangers while it remains perfectly nameable, verifiable, and deliverable-to once found.
+    §9.7a's floor guarantees **acceptance**, not **reachability**; §3.13.4's guarantee is therefore
+    stated as reachable *by anyone who has your key*, and that qualifier is the honest one. The
+    practical mitigation is the one §3.13.5 already recommends for its own reasons: out-of-band
+    introduction is the primary first-contact path, and it carries the key rather than only its
+    digest.
+
 DMTAP states these boundaries in-product. Honest, disclosed limits beat a false "perfectly
 anonymous."
 

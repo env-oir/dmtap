@@ -5,17 +5,17 @@
   "why": "Not every capitalised MUST is an implementation requirement a conformance runner could check. Counting all of them makes the coverage metric measure something other than what it claims. Curating the denominator is only honest if the curation is auditable, so every section below carries a one-line reason, and INCLUSION IS THE DEFAULT: a section is IMPL unless there is a stated reason a runner could not check it, and the reason must name what owns the requirement instead.",
   "classes": {
     "IMPL": "A constraint on a conformant implementation, owned by this clause. Needs a conformance case. This is the denominator the headline coverage number uses.",
-    "ENCODING": "A §18 wire-format field/CDDL table whose encoding is already exercised byte-exactly by a committed entry in conformance/vectors/. A §18 section with no vector behind it is IMPL, not ENCODING.",
-    "RESTATEMENT": "The requirement is real but owned by another clause — the §21 registry Action column, the §19 operations appendix (§10.4: the narrative governs), the §20 state-machine tables, or a summary/parity/limits table. A case should cite the owning clause, not the restatement.",
+    "ENCODING": "A \u00a718 wire-format field/CDDL table whose encoding is already exercised byte-exactly by a committed entry in conformance/vectors/. A \u00a718 section with no vector behind it is IMPL, not ENCODING.",
+    "RESTATEMENT": "The requirement is real but owned by another clause \u2014 the \u00a721 registry Action column, the \u00a719 operations appendix (\u00a710.4: the narrative governs), the \u00a720 state-machine tables, or a summary/parity/limits table. A case should cite the owning clause, not the restatement.",
     "PROCEDURE": "Binds an operator's process or a future registrant's document, not a wire behaviour: incident-response runbooks, the pre-deployment audit gate, IANA allocation and registration policies.",
-    "NARRATIVE": "The capitalised MUST is not a requirement at all — a list header ('DMTAP MUST provide:'), a counterfactual quoted in order to be rejected, a BCP 14 glossary entry, or a reference-table row."
+    "NARRATIVE": "The capitalised MUST is not a requirement at all \u2014 a list header ('DMTAP MUST provide:'), a counterfactual quoted in order to be rejected, a BCP 14 glossary entry, or a reference-table row."
   },
   "denominator": "IMPL",
   "audit": "Regenerate the section list with `python3 tools/lint.py --coverage`; every section it reports must appear here exactly once. Disagreeing with a classification is a bug report: reclassify to IMPL and write the case.",
   "limits": [
     "Coverage measured against this file is SECTION-level, not MUST-level: a section counts as covered if any case cites it, not if every MUST in it is exercised. It is a floor and deliberately generous.",
     "It counts cases that exist, not cases that pass. Most of the suite is construction recipes and attestations; see the partition in conformance/SUITE.md. No implementation has been run against it.",
-    "The classification below is a judgement call. Inclusion is the default and every exclusion states its owner, but a reader who disagrees with one should reclassify it IMPL and write the case — that is the intended failure mode, and it moves the number."
+    "The classification below is a judgement call. Inclusion is the default and every exclusion states its owner, but a reader who disagrees with one should reclassify it IMPL and write the case \u2014 that is the intended failure mode, and it moves the number."
   ],
   "sections": [
     {
@@ -29,10 +29,10 @@
     {
       "section": "0.2.3",
       "file": "00-overview.md",
-      "title": "0.2.3 The gateway role — the legacy adapter, and the only operator class",
+      "title": "0.2.3 The gateway role \u2014 the legacy adapter, and the only operator class",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "overview summary of §7.1b's privilege-separation rule; owned by §7.1b and tested by DMTAP-GWROLE-03"
+      "reason": "overview summary of \u00a77.1b's privilege-separation rule; owned by \u00a77.1b and tested by DMTAP-GWROLE-03"
     },
     {
       "section": "0.8",
@@ -40,7 +40,7 @@
       "title": "0.8 Conventions & normative glossary",
       "musts": 1,
       "class": "NARRATIVE",
-      "reason": "BCP 14 requirement-language boilerplate — it defines the word MUST, it does not use it"
+      "reason": "BCP 14 requirement-language boilerplate \u2014 it defines the word MUST, it does not use it"
     },
     {
       "section": "1.1",
@@ -53,7 +53,7 @@
     {
       "section": "1.2.0",
       "file": "01-identity.md",
-      "title": "1.2.0 The anchor suite — cold and hot keys are dimensioned differently (normative)",
+      "title": "1.2.0 The anchor suite \u2014 cold and hot keys are dimensioned differently (normative)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -197,7 +197,7 @@
     {
       "section": "3.5.2",
       "file": "03-naming.md",
-      "title": "3.5.2 v1-hardening — federated, gossiped, equivocation-detecting (log-type `0x02`)",
+      "title": "3.5.2 v1-hardening \u2014 federated, gossiped, equivocation-detecting (log-type `0x02`)",
       "musts": 16,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -229,10 +229,18 @@
     {
       "section": "3.9.5",
       "file": "03-naming.md",
-      "title": "3.9.5 `Profile` — human display data (self-asserted, signed)",
+      "title": "3.9.5 `Profile` \u2014 human display data (self-asserted, signed)",
       "musts": 15,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
+    },
+    {
+      "section": "3.9.6",
+      "file": "03-naming.md",
+      "title": "3.9.6 Key-name \u2014 the derived, zero-authority floor (resolver-type `self`)",
+      "musts": 1,
+      "class": "IMPL",
+      "reason": "A key-name VERIFIES an identity but cannot ADDRESS one \u2014 it is a one-way digest, so a client MUST NOT present a bare key-name as a sufficient destination. Testable against a client's send/compose surface; see DMTAP-NAME-07."
     },
     {
       "section": "3.9.7",
@@ -245,7 +253,7 @@
     {
       "section": "3.10.2",
       "file": "03-naming.md",
-      "title": "3.10.2 Member provisioning — two honest models",
+      "title": "3.10.2 Member provisioning \u2014 two honest models",
       "musts": 4,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -269,7 +277,7 @@
     {
       "section": "3.11.3",
       "file": "03-naming.md",
-      "title": "3.11.3 Aliases — many names, one key (normative)",
+      "title": "3.11.3 Aliases \u2014 many names, one key (normative)",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -285,7 +293,7 @@
     {
       "section": "3.12.3",
       "file": "03-naming.md",
-      "title": "3.12.3 Multi-resolver discovery — resolvers cross-check each other (normative)",
+      "title": "3.12.3 Multi-resolver discovery \u2014 resolvers cross-check each other (normative)",
       "musts": 3,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -293,7 +301,7 @@
     {
       "section": "3.12.5",
       "file": "03-naming.md",
-      "title": "3.12.5 The `name-chain` resolver type — OPTIONAL, with four guardrails (normative)",
+      "title": "3.12.5 The `name-chain` resolver type \u2014 OPTIONAL, with four guardrails (normative)",
       "musts": 4,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -309,7 +317,7 @@
     {
       "section": "3.13.4",
       "file": "03-naming.md",
-      "title": "3.13.4 The honest residual — there is no free, human-shareable, user-owned name",
+      "title": "3.13.4 The honest residual \u2014 there is no free, human-shareable, user-owned name",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -317,7 +325,7 @@
     {
       "section": "3.13.5",
       "file": "03-naming.md",
-      "title": "3.13.5 Cold start — a brand-new identity with nothing (normative)",
+      "title": "3.13.5 Cold start \u2014 a brand-new identity with nothing (normative)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -333,7 +341,7 @@
     {
       "section": "4.2",
       "file": "04-transport.md",
-      "title": "4.2 The `key → location` record (DHT)",
+      "title": "4.2 The `key \u2192 location` record (DHT)",
       "musts": 3,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -341,7 +349,7 @@
     {
       "section": "4.2.1",
       "file": "04-transport.md",
-      "title": "4.2.1 Resolution order — the DHT is an accelerator, never a dependency (normative)",
+      "title": "4.2.1 Resolution order \u2014 the DHT is an accelerator, never a dependency (normative)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -349,7 +357,7 @@
     {
       "section": "4.2.2",
       "file": "04-transport.md",
-      "title": "4.2.2 Bootstrap — how a node finds its first peer (normative)",
+      "title": "4.2.2 Bootstrap \u2014 how a node finds its first peer (normative)",
       "musts": 5,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -413,7 +421,7 @@
     {
       "section": "4.4.7",
       "file": "04-transport.md",
-      "title": "4.4.7 Loop cover as active-attack detection & fail-closed response (normative) — the key lever",
+      "title": "4.4.7 Loop cover as active-attack detection & fail-closed response (normative) \u2014 the key lever",
       "musts": 7,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -445,7 +453,7 @@
     {
       "section": "4.4.10a",
       "file": "04-transport.md",
-      "title": "4.4.10a The Bootstrap profile — a small network must still work (normative)",
+      "title": "4.4.10a The Bootstrap profile \u2014 a small network must still work (normative)",
       "musts": 10,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -453,7 +461,7 @@
     {
       "section": "4.4.11",
       "file": "04-transport.md",
-      "title": "4.4.11 Honest low-adoption model (disclosed, §6.6 style)",
+      "title": "4.4.11 Honest low-adoption model (disclosed, \u00a76.6 style)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -509,7 +517,7 @@
     {
       "section": "5.1.1",
       "file": "05-messaging.md",
-      "title": "5.1.1 Lighter ordering for n = 2 (1:1) — symmetric co-committers (normative)",
+      "title": "5.1.1 Lighter ordering for n = 2 (1:1) \u2014 symmetric co-committers (normative)",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -541,7 +549,7 @@
     {
       "section": "5.5.2",
       "file": "05-messaging.md",
-      "title": "5.5.2 Durability descriptor (normative — the key fix)",
+      "title": "5.5.2 Durability descriptor (normative \u2014 the key fix)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -557,7 +565,7 @@
     {
       "section": "5.6.1",
       "file": "05-messaging.md",
-      "title": "5.6.1 Cluster membership (who is a replica) — normative",
+      "title": "5.6.1 Cluster membership (who is a replica) \u2014 normative",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -581,7 +589,7 @@
     {
       "section": "5.6.5",
       "file": "05-messaging.md",
-      "title": "5.6.5 Tombstone GC (when a delete may be reclaimed) — normative",
+      "title": "5.6.5 Tombstone GC (when a delete may be reclaimed) \u2014 normative",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -661,7 +669,7 @@
     {
       "section": "6.9",
       "file": "06-privacy.md",
-      "title": "6.9 Security properties (falsifiable claims → mechanism → adversary → residual)",
+      "title": "6.9 Security properties (falsifiable claims \u2192 mechanism \u2192 adversary \u2192 residual)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -677,7 +685,7 @@
     {
       "section": "7.1",
       "file": "07-gateway.md",
-      "title": "7.1 Responsibilities — and the much longer list of non-responsibilities",
+      "title": "7.1 Responsibilities \u2014 and the much longer list of non-responsibilities",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -693,7 +701,7 @@
     {
       "section": "7.1b",
       "file": "07-gateway.md",
-      "title": "7.1b Privilege separation — one binary, separate processes (normative)",
+      "title": "7.1b Privilege separation \u2014 one binary, separate processes (normative)",
       "musts": 4,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -733,7 +741,7 @@
     {
       "section": "7.5",
       "file": "07-gateway.md",
-      "title": "7.5 Gateway discovery and reputation — locally measured, never globally published (normative)",
+      "title": "7.5 Gateway discovery and reputation \u2014 locally measured, never globally published (normative)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -765,7 +773,7 @@
     {
       "section": "7.10.1",
       "file": "07-gateway.md",
-      "title": "7.10.1 Native → legacy (why a reply-path rewrite is required)",
+      "title": "7.10.1 Native \u2192 legacy (why a reply-path rewrite is required)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -773,7 +781,7 @@
     {
       "section": "7.10.2",
       "file": "07-gateway.md",
-      "title": "7.10.2 Two alias encodings (offer both — normative tradeoff)",
+      "title": "7.10.2 Two alias encodings (offer both \u2014 normative tradeoff)",
       "musts": 7,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -789,7 +797,7 @@
     {
       "section": "7.10.5",
       "file": "07-gateway.md",
-      "title": "7.10.5 Aliases the gateway can and cannot mint — vanity local-parts (normative)",
+      "title": "7.10.5 Aliases the gateway can and cannot mint \u2014 vanity local-parts (normative)",
       "musts": 4,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -821,7 +829,7 @@
     {
       "section": "7.11.1",
       "file": "07-gateway.md",
-      "title": "7.11.1 Inbound (legacy → DMTAP): MUST NOT become a spam injector",
+      "title": "7.11.1 Inbound (legacy \u2192 DMTAP): MUST NOT become a spam injector",
       "musts": 5,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -829,7 +837,7 @@
     {
       "section": "7.11.2",
       "file": "07-gateway.md",
-      "title": "7.11.2 Outbound (DMTAP → legacy): MUST NOT become an open relay",
+      "title": "7.11.2 Outbound (DMTAP \u2192 legacy): MUST NOT become an open relay",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -864,7 +872,7 @@
       "title": "7.13 In-scope mechanism vs. out-of-scope operator policy (normative boundary)",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "list header indexing the in-scope §7 mechanisms; each is owned and tested at its own clause"
+      "reason": "list header indexing the in-scope \u00a77 mechanisms; each is owned and tested at its own clause"
     },
     {
       "section": "7.14",
@@ -909,7 +917,7 @@
     {
       "section": "8.2",
       "file": "08-clients.md",
-      "title": "8.2 IMAP / POP / SMTP-submission (legacy — served by the gateway, not the node)",
+      "title": "8.2 IMAP / POP / SMTP-submission (legacy \u2014 served by the gateway, not the node)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -965,7 +973,7 @@
     {
       "section": "9.2a",
       "file": "09-anti-abuse.md",
-      "title": "9.2a Binding proofs to the message (theft/replay prevention — normative)",
+      "title": "9.2a Binding proofs to the message (theft/replay prevention \u2014 normative)",
       "musts": 5,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -1101,7 +1109,7 @@
     {
       "section": "10.7.0",
       "file": "10-conformance.md",
-      "title": "10.7.0 Failure classes — \"fail closed\" names three different behaviors (normative)",
+      "title": "10.7.0 Failure classes \u2014 \"fail closed\" names three different behaviors (normative)",
       "musts": 5,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -1144,7 +1152,7 @@
       "title": "10.7.5 The one governing rule",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "governing sentence over the §10.7 rows above (each owned by its own row) plus a spec-maintenance rule binding future editors"
+      "reason": "governing sentence over the \u00a710.7 rows above (each owned by its own row) plus a spec-maintenance rule binding future editors"
     },
     {
       "section": "11.2",
@@ -1152,7 +1160,7 @@
       "title": "11.2 Corrections applied after verification",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "records the correction applied to §5.1's MLS handshake ordering; the rule is owned and tested at §5.1"
+      "reason": "records the correction applied to \u00a75.1's MLS handshake ordering; the rule is owned and tested at \u00a75.1"
     },
     {
       "section": "11.3",
@@ -1160,7 +1168,7 @@
       "title": "11.3 Consolidated honest limits",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "honest-limits prose referring to §9.4.1's memory-hard-PoW floor; owned there and tested by DMTAP-FLOOR-03"
+      "reason": "honest-limits prose referring to \u00a79.4.1's memory-hard-PoW floor; owned there and tested by DMTAP-FLOOR-03"
     },
     {
       "section": "12.2",
@@ -1208,7 +1216,7 @@
       "title": "12.8 Operational & security procedures (considerations)",
       "musts": 1,
       "class": "NARRATIVE",
-      "reason": "subsection preamble stating that §12.8 is normative where it says MUST; it states no requirement itself"
+      "reason": "subsection preamble stating that \u00a712.8 is normative where it says MUST; it states no requirement itself"
     },
     {
       "section": "12.8.2",
@@ -1216,7 +1224,7 @@
       "title": "12.8.2 Incident-response runbooks",
       "musts": 2,
       "class": "PROCEDURE",
-      "reason": "incident-response runbook: evidence preservation and continuous operator monitoring — an operator process with no observable wire behaviour"
+      "reason": "incident-response runbook: evidence preservation and continuous operator monitoring \u2014 an operator process with no observable wire behaviour"
     },
     {
       "section": "12.8.4",
@@ -1341,7 +1349,7 @@
     {
       "section": "15.0",
       "file": "15-references.md",
-      "title": "15.0 Normative — specification conventions & process",
+      "title": "15.0 Normative \u2014 specification conventions & process",
       "musts": 1,
       "class": "NARRATIVE",
       "reason": "reference-table row describing RFC 2119 itself"
@@ -1392,7 +1400,7 @@
       "title": "16.8 Auth, sessions & group ordering",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "parameter table row restating §1.4's asymmetric veto-quorum rule; owned by §1.4"
+      "reason": "parameter table row restating \u00a71.4's asymmetric veto-quorum rule; owned by \u00a71.4"
     },
     {
       "section": "16.9",
@@ -1405,7 +1413,7 @@
     {
       "section": "16.10",
       "file": "16-parameters.md",
-      "title": "16.10 Device-cluster sync (§5.6)",
+      "title": "16.10 Device-cluster sync (\u00a75.6)",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -1416,7 +1424,7 @@
       "title": "17.1 Mail",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "parity table citing §12's no-quota-gate guarantee; owned by §12.3"
+      "reason": "parity table citing \u00a712's no-quota-gate guarantee; owned by \u00a712.3"
     },
     {
       "section": "17.6",
@@ -1424,15 +1432,15 @@
       "title": "17.6 Gaps to resolve",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "gap list recording that §8.5 and §13.5 now own the auto-forward MUST-log rule"
+      "reason": "gap list recording that \u00a78.5 and \u00a713.5 now own the auto-forward MUST-log rule"
     },
     {
       "section": "18.1.1",
       "file": "18-wire-format.md",
-      "title": "18.1.1 Serialization — deterministic CBOR",
+      "title": "18.1.1 Serialization \u2014 deterministic CBOR",
       "musts": 5,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.1.2",
@@ -1440,7 +1448,7 @@
       "title": "18.1.2 Integer-key convention (COSE/CWT-style)",
       "musts": 2,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.1.4",
@@ -1448,7 +1456,7 @@
       "title": "18.1.4 Algorithm-suite tagging",
       "musts": 4,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.1.5",
@@ -1456,7 +1464,7 @@
       "title": "18.1.5 Hash-agility prefix",
       "musts": 2,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.1.6",
@@ -1464,7 +1472,7 @@
       "title": "18.1.6 Domain separation & signing (general rule)",
       "musts": 4,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.2",
@@ -1472,12 +1480,12 @@
       "title": "18.2 Length & type governance by suite (normative)",
       "musts": 4,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.1",
       "file": "18-wire-format.md",
-      "title": "18.3.1 `Envelope` (§2.2)",
+      "title": "18.3.1 `Envelope` (\u00a72.2)",
       "musts": 9,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_envelope`"
@@ -1485,31 +1493,31 @@
     {
       "section": "18.3.2",
       "file": "18-wire-format.md",
-      "title": "18.3.2 `DeliveryTag` (§2.2a)",
+      "title": "18.3.2 `DeliveryTag` (\u00a72.2a)",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.3",
       "file": "18-wire-format.md",
-      "title": "18.3.3 `ChallengeResponse` (§2.2b, §9)",
+      "title": "18.3.3 `ChallengeResponse` (\u00a72.2b, \u00a79)",
       "musts": 25,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.4",
       "file": "18-wire-format.md",
-      "title": "18.3.4 `KeyPackageRef` (§2.2, §5.3)",
+      "title": "18.3.4 `KeyPackageRef` (\u00a72.2, \u00a75.3)",
       "musts": 2,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.5",
       "file": "18-wire-format.md",
-      "title": "18.3.5 `Payload` (§2.4)",
+      "title": "18.3.5 `Payload` (\u00a72.4)",
       "musts": 8,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_payload`"
@@ -1517,23 +1525,23 @@
     {
       "section": "18.3.6",
       "file": "18-wire-format.md",
-      "title": "18.3.6 `Headers` and `Body` (§2.4)",
+      "title": "18.3.6 `Headers` and `Body` (\u00a72.4)",
       "musts": 5,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.7",
       "file": "18-wire-format.md",
-      "title": "18.3.7 `Attachment` and `ManifestRef` (§2.5)",
+      "title": "18.3.7 `Attachment` and `ManifestRef` (\u00a72.5)",
       "musts": 15,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.8",
       "file": "18-wire-format.md",
-      "title": "18.3.8 `Manifest` (§5.5)",
+      "title": "18.3.8 `Manifest` (\u00a75.5)",
       "musts": 6,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_manifest`"
@@ -1541,7 +1549,7 @@
     {
       "section": "18.3.9",
       "file": "18-wire-format.md",
-      "title": "18.3.9 `DeniableFrame`, `DeniableInit`, `DeniableMessage` (§5.2.1)",
+      "title": "18.3.9 `DeniableFrame`, `DeniableInit`, `DeniableMessage` (\u00a75.2.1)",
       "musts": 14,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_deniable_message/_init`"
@@ -1549,7 +1557,7 @@
     {
       "section": "18.3.10",
       "file": "18-wire-format.md",
-      "title": "18.3.10 `DeniablePayload` (§5.2.1)",
+      "title": "18.3.10 `DeniablePayload` (\u00a75.2.1)",
       "musts": 8,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_deniable_payload`"
@@ -1557,23 +1565,23 @@
     {
       "section": "18.3.11",
       "file": "18-wire-format.md",
-      "title": "18.3.11 `GatewayAttestation` (§7.2a, §7.8)",
+      "title": "18.3.11 `GatewayAttestation` (\u00a77.2a, \u00a77.8)",
       "musts": 7,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.3.12",
       "file": "18-wire-format.md",
-      "title": "18.3.12 `GatewayAliasMap` (§7.10)",
+      "title": "18.3.12 `GatewayAliasMap` (\u00a77.10)",
       "musts": 4,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.4.1",
       "file": "18-wire-format.md",
-      "title": "18.4.1 `Identity` (§1.3)",
+      "title": "18.4.1 `Identity` (\u00a71.3)",
       "musts": 9,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_identity`"
@@ -1581,7 +1589,7 @@
     {
       "section": "18.4.2",
       "file": "18-wire-format.md",
-      "title": "18.4.2 `DeviceCert` (§1.2)",
+      "title": "18.4.2 `DeviceCert` (\u00a71.2)",
       "musts": 9,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_device_cert`"
@@ -1589,39 +1597,39 @@
     {
       "section": "18.4.3",
       "file": "18-wire-format.md",
-      "title": "18.4.3 `KeyPackageBundleRef` (§1.3, §5.3)",
+      "title": "18.4.3 `KeyPackageBundleRef` (\u00a71.3, \u00a75.3)",
       "musts": 3,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.4.4",
       "file": "18-wire-format.md",
-      "title": "18.4.4 `RecoveryPolicy`, `RecoveryMethod`, `Threshold` (§1.4)",
+      "title": "18.4.4 `RecoveryPolicy`, `RecoveryMethod`, `Threshold` (\u00a71.4)",
       "musts": 19,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.4.5",
       "file": "18-wire-format.md",
-      "title": "18.4.5 `KeyRotation` (§1.5)",
+      "title": "18.4.5 `KeyRotation` (\u00a71.5)",
       "musts": 7,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.4.6",
       "file": "18-wire-format.md",
-      "title": "18.4.6 `MoveRecord` (§1.6)",
+      "title": "18.4.6 `MoveRecord` (\u00a71.6)",
       "musts": 6,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.4.7",
       "file": "18-wire-format.md",
-      "title": "18.4.7 `DomainDirectory` and `DirEntry` (§3.10.3)",
+      "title": "18.4.7 `DomainDirectory` and `DirEntry` (\u00a73.10.3)",
       "musts": 13,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_domain_directory`"
@@ -1629,7 +1637,7 @@
     {
       "section": "18.4.8",
       "file": "18-wire-format.md",
-      "title": "18.4.8 `DeniablePrekeyBundle` (§5.2.1)",
+      "title": "18.4.8 `DeniablePrekeyBundle` (\u00a75.2.1)",
       "musts": 10,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_deniable_prekey_bundle`"
@@ -1637,7 +1645,7 @@
     {
       "section": "18.4.9",
       "file": "18-wire-format.md",
-      "title": "18.4.9 `SignedTreeHead` (KT, §3.5)",
+      "title": "18.4.9 `SignedTreeHead` (KT, \u00a73.5)",
       "musts": 7,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_signed_tree_head`"
@@ -1645,7 +1653,7 @@
     {
       "section": "18.4.10",
       "file": "18-wire-format.md",
-      "title": "18.4.10 `InclusionProof` (KT, §3.5)",
+      "title": "18.4.10 `InclusionProof` (KT, \u00a73.5)",
       "musts": 4,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_inclusion_proof`"
@@ -1653,7 +1661,7 @@
     {
       "section": "18.4.11",
       "file": "18-wire-format.md",
-      "title": "18.4.11 `ConsistencyProof` (KT, §3.5)",
+      "title": "18.4.11 `ConsistencyProof` (KT, \u00a73.5)",
       "musts": 3,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_consistency_proof`"
@@ -1661,23 +1669,23 @@
     {
       "section": "18.4.12",
       "file": "18-wire-format.md",
-      "title": "18.4.12 `Profile` (§3.9.5)",
+      "title": "18.4.12 `Profile` (\u00a73.9.5)",
       "musts": 8,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.5.1",
       "file": "18-wire-format.md",
-      "title": "18.5.1 `LocationRecord` (§4.2)",
+      "title": "18.5.1 `LocationRecord` (\u00a74.2)",
       "musts": 8,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.5.2",
       "file": "18-wire-format.md",
-      "title": "18.5.2 `MixNodeDescriptor` (§4.4.2)",
+      "title": "18.5.2 `MixNodeDescriptor` (\u00a74.4.2)",
       "musts": 11,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_mix_descriptor`"
@@ -1685,7 +1693,7 @@
     {
       "section": "18.5.3",
       "file": "18-wire-format.md",
-      "title": "18.5.3 `MixDirectory` (§4.4.2)",
+      "title": "18.5.3 `MixDirectory` (\u00a74.4.2)",
       "musts": 8,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_mix_directory`"
@@ -1693,7 +1701,7 @@
     {
       "section": "18.5.4",
       "file": "18-wire-format.md",
-      "title": "18.5.4 `SphinxCell` — packet, β routing-command, SURB & fragment framing (§4.4.1)",
+      "title": "18.5.4 `SphinxCell` \u2014 packet, \u03b2 routing-command, SURB & fragment framing (\u00a74.4.1)",
       "musts": 4,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `sphinx_cell`"
@@ -1701,18 +1709,18 @@
     {
       "section": "18.5.5",
       "file": "18-wire-format.md",
-      "title": "18.5.5 `PushSubscription` (§4.9)",
+      "title": "18.5.5 `PushSubscription` (\u00a74.9)",
       "musts": 7,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.5.6",
       "file": "18-wire-format.md",
-      "title": "18.5.6 `WakePing` (§4.9)",
+      "title": "18.5.6 `WakePing` (\u00a74.9)",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.6.1",
@@ -1720,7 +1728,7 @@
       "title": "18.6.1 `GroupState`",
       "musts": 16,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.6.2",
@@ -1728,36 +1736,36 @@
       "title": "18.6.2 `GroupEvent` (kind `0x06`)",
       "musts": 6,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.6.3",
       "file": "18-wire-format.md",
-      "title": "18.6.3 Device-cluster sync objects (§5.6)",
+      "title": "18.6.3 Device-cluster sync objects (\u00a75.6)",
       "musts": 14,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.7.1",
       "file": "18-wire-format.md",
-      "title": "18.7.1 `Challenge` (§13.3)",
+      "title": "18.7.1 `Challenge` (\u00a713.3)",
       "musts": 5,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.7.2",
       "file": "18-wire-format.md",
-      "title": "18.7.2 `Assertion` (§13.3)",
+      "title": "18.7.2 `Assertion` (\u00a713.3)",
       "musts": 10,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.7.3",
       "file": "18-wire-format.md",
-      "title": "18.7.3 `CapabilityToken` and `CapabilityRevocation` (§13.5, §3.10.4)",
+      "title": "18.7.3 `CapabilityToken` and `CapabilityRevocation` (\u00a713.5, \u00a73.10.4)",
       "musts": 15,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `cbor_capability_token`"
@@ -1768,7 +1776,7 @@
       "title": "18.8.1 `ProvenanceRecord`",
       "musts": 8,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.9",
@@ -1776,7 +1784,7 @@
       "title": "18.9 Canonical signing & hashing preimages (normative)",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.9.1",
@@ -1808,7 +1816,7 @@
       "title": "18.9.6 Group objects",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.9.8",
@@ -1816,12 +1824,12 @@
       "title": "18.9.8 `Assertion.sig` (auth)",
       "musts": 3,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.9.10",
       "file": "18-wire-format.md",
-      "title": "18.9.10 Deniable-mode objects (§5.2.1)",
+      "title": "18.9.10 Deniable-mode objects (\u00a75.2.1)",
       "musts": 1,
       "class": "ENCODING",
       "reason": "wire-format field table; its encoding is exercised byte-exactly by vectors.json `deniable_prekeys_sig`"
@@ -1832,15 +1840,15 @@
       "title": "18.9.11 `GatewayAttestation.sig` and `msg_digest`",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.9.15",
       "file": "18-wire-format.md",
-      "title": "18.9.15 Push wake-signaling objects (`PushSubscription.sig`, `WakePing`) (§4.9)",
+      "title": "18.9.15 Push wake-signaling objects (`PushSubscription.sig`, `WakePing`) (\u00a74.9)",
       "musts": 1,
       "class": "IMPL",
-      "reason": "wire-format rules with no byte-exact vector behind them — a decoder case is the only thing that checks them"
+      "reason": "wire-format rules with no byte-exact vector behind them \u2014 a decoder case is the only thing that checks them"
     },
     {
       "section": "18.10",
@@ -1848,7 +1856,7 @@
       "title": "18.10 Collected CDDL grammar (copy-paste block)",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "verbatim copy-paste of the per-object CDDL already given in §18.3–§18.8; adds no rule of its own"
+      "reason": "verbatim copy-paste of the per-object CDDL already given in \u00a718.3\u2013\u00a718.8; adds no rule of its own"
     },
     {
       "section": "18.11",
@@ -1864,15 +1872,15 @@
       "title": "19.0 Conventions used in this appendix",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern"
     },
     {
       "section": "19.1.1",
       "file": "19-operations.md",
-      "title": "19.1.1 `resolve(name) → identity`",
+      "title": "19.1.1 `resolve(name) \u2192 identity`",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 1 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 1 MUSTs mark a required parameter"
     },
     {
       "section": "19.1.2",
@@ -1880,7 +1888,7 @@
       "title": "19.1.2 `publish-identity(identity)`",
       "musts": 10,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 10 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 10 MUSTs mark a required parameter"
     },
     {
       "section": "19.1.3",
@@ -1888,31 +1896,31 @@
       "title": "19.1.3 `publish-move(move_record)`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.1.4",
       "file": "19-operations.md",
-      "title": "19.1.4 KT-v1 operations (§3.5.2) — `gossip-sth` / `verify-consistency` / `quorum-resolve` / `monitor` / `auditor` / `equivocation-response`",
+      "title": "19.1.4 KT-v1 operations (\u00a73.5.2) \u2014 `gossip-sth` / `verify-consistency` / `quorum-resolve` / `monitor` / `auditor` / `equivocation-response`",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 4 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 4 MUSTs mark a required parameter"
     },
     {
       "section": "19.1.5",
       "file": "19-operations.md",
-      "title": "19.1.5 Organization administration (§3.10) — `provision-member` / `publish-directory` / `query-directory` / `offboard`",
+      "title": "19.1.5 Organization administration (\u00a73.10) \u2014 `provision-member` / `publish-directory` / `query-directory` / `offboard`",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 5 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 5 MUSTs mark a required parameter"
     },
     {
       "section": "19.1.6",
       "file": "19-operations.md",
-      "title": "19.1.6 Device attestation (§1.2a) — `attest-enroll` / `attest-verify`",
+      "title": "19.1.6 Device attestation (\u00a71.2a) \u2014 `attest-enroll` / `attest-verify`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.2.1",
@@ -1920,15 +1928,15 @@
       "title": "19.2.1 `publish-location(location_record)`",
       "musts": 11,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 6 of its 11 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 6 of its 11 MUSTs mark a required parameter"
     },
     {
       "section": "19.2.2",
       "file": "19-operations.md",
-      "title": "19.2.2 `lookup-location(ik) → LocationRecord`",
+      "title": "19.2.2 `lookup-location(ik) \u2192 LocationRecord`",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 2 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 2 MUSTs mark a required parameter"
     },
     {
       "section": "19.2.3",
@@ -1936,15 +1944,15 @@
       "title": "19.2.3 The reachability ladder (attempt sequence)",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 1 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 1 MUSTs mark a required parameter"
     },
     {
       "section": "19.2.4",
       "file": "19-operations.md",
-      "title": "19.2.4 Mixnet operations (§4.4) — `publish-mix-descriptor` / `publish-mix-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`",
+      "title": "19.2.4 Mixnet operations (\u00a74.4) \u2014 `publish-mix-descriptor` / `publish-mix-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`",
       "musts": 6,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 4 of its 6 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 4 of its 6 MUSTs mark a required parameter"
     },
     {
       "section": "19.3.1",
@@ -1952,7 +1960,7 @@
       "title": "19.3.1 `deliver(outer_mote)`",
       "musts": 11,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 11 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 11 MUSTs mark a required parameter"
     },
     {
       "section": "19.3.2",
@@ -1960,7 +1968,7 @@
       "title": "19.3.2 `ack(id)`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.3.3",
@@ -1968,47 +1976,47 @@
       "title": "19.3.3 Sender retry state machine (dedup and durability)",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.4.1",
       "file": "19-operations.md",
-      "title": "19.4.1 `fetch-keypackage(ik) → KeyPackage`",
+      "title": "19.4.1 `fetch-keypackage(ik) \u2192 KeyPackage`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.4.2",
       "file": "19-operations.md",
-      "title": "19.4.2 `add-member(group_or_1to1, keypackage) → {Commit, Welcome}`",
+      "title": "19.4.2 `add-member(group_or_1to1, keypackage) \u2192 {Commit, Welcome}`",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 2 of its 4 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 2 of its 4 MUSTs mark a required parameter"
     },
     {
       "section": "19.4.3",
       "file": "19-operations.md",
-      "title": "19.4.3 `external-commit(group_info) → Commit`",
+      "title": "19.4.3 `external-commit(group_info) \u2192 Commit`",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 4 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 4 MUSTs mark a required parameter"
     },
     {
       "section": "19.4.4",
       "file": "19-operations.md",
-      "title": "19.4.4 Deniable session (§5.2.1) — `publish-deniable-prekeys` / `consume-opk` / `deniable-establish` / `deniable-send` / `deniable-recv`",
+      "title": "19.4.4 Deniable session (\u00a75.2.1) \u2014 `publish-deniable-prekeys` / `consume-opk` / `deniable-establish` / `deniable-send` / `deniable-recv`",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 4 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 4 MUSTs mark a required parameter"
     },
     {
       "section": "19.5.1",
       "file": "19-operations.md",
-      "title": "19.5.1 `create-group(params) → GroupState`",
+      "title": "19.5.1 `create-group(params) \u2192 GroupState`",
       "musts": 10,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 4 of its 10 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 4 of its 10 MUSTs mark a required parameter"
     },
     {
       "section": "19.5.2",
@@ -2016,7 +2024,7 @@
       "title": "19.5.2 `group-add` / `group-remove` / `group-role-change` / `group-policy-change`",
       "musts": 9,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern"
     },
     {
       "section": "19.5.3",
@@ -2024,7 +2032,7 @@
       "title": "19.5.3 `post-to-group(group_ik, mote)`",
       "musts": 6,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 2 of its 6 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 2 of its 6 MUSTs mark a required parameter"
     },
     {
       "section": "19.5.4",
@@ -2032,7 +2040,7 @@
       "title": "19.5.4 `join(group_ik, mode)`",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 4 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 4 MUSTs mark a required parameter"
     },
     {
       "section": "19.5.5",
@@ -2040,7 +2048,7 @@
       "title": "19.5.5 `committer-elect` / `committer-rotate` (failover)",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.5.6",
@@ -2048,39 +2056,39 @@
       "title": "19.5.6 Fork-detection halt",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern"
     },
     {
       "section": "19.6",
       "file": "19-operations.md",
-      "title": "19.6 DMTAP-Auth operations (§13)",
+      "title": "19.6 DMTAP-Auth operations (\u00a713)",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern"
     },
     {
       "section": "19.6.1",
       "file": "19-operations.md",
-      "title": "19.6.1 `auth-challenge(rp_origin) → Challenge`",
+      "title": "19.6.1 `auth-challenge(rp_origin) \u2192 Challenge`",
       "musts": 8,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 8 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 8 MUSTs mark a required parameter"
     },
     {
       "section": "19.6.2",
       "file": "19-operations.md",
-      "title": "19.6.2 `auth-assert(challenge) → SignedAssertion`",
+      "title": "19.6.2 `auth-assert(challenge) \u2192 SignedAssertion`",
       "musts": 8,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 2 of its 8 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 2 of its 8 MUSTs mark a required parameter"
     },
     {
       "section": "19.6.3",
       "file": "19-operations.md",
-      "title": "19.6.3 `session-establish(assertion) → Session`",
+      "title": "19.6.3 `session-establish(assertion) \u2192 Session`",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 5 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 5 MUSTs mark a required parameter"
     },
     {
       "section": "19.6.4",
@@ -2088,55 +2096,55 @@
       "title": "19.6.4 `session-revoke(session_ref)`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.6.5",
       "file": "19-operations.md",
-      "title": "19.6.5 `oidc-bridge-issue(assertion) → IDToken`",
+      "title": "19.6.5 `oidc-bridge-issue(assertion) \u2192 IDToken`",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 2 of its 2 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 2 of its 2 MUSTs mark a required parameter"
     },
     {
       "section": "19.6.6",
       "file": "19-operations.md",
-      "title": "19.6.6 `delegate-capability(caps, aud) → CapabilityToken` / `revoke-capability(token)`",
+      "title": "19.6.6 `delegate-capability(caps, aud) \u2192 CapabilityToken` / `revoke-capability(token)`",
       "musts": 6,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 3 of its 6 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 3 of its 6 MUSTs mark a required parameter"
     },
     {
       "section": "19.7.1",
       "file": "19-operations.md",
-      "title": "19.7.1 `smtp-inbound(smtp_transaction) → mote | 4xx`",
+      "title": "19.7.1 `smtp-inbound(smtp_transaction) \u2192 mote | 4xx`",
       "musts": 5,
       "class": "IMPL",
-      "reason": "owns the silent-loss rule §21.9/§10.7.4 cite back to: no SMTP 250 before a durable ack"
+      "reason": "owns the silent-loss rule \u00a721.9/\u00a710.7.4 cite back to: no SMTP 250 before a durable ack"
     },
     {
       "section": "19.7.2",
       "file": "19-operations.md",
-      "title": "19.7.2 `smtp-outbound(mote) → smtp_result`",
+      "title": "19.7.2 `smtp-outbound(mote) \u2192 smtp_result`",
       "musts": 3,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 3 MUSTs mark a required parameter"
     },
     {
       "section": "19.8.1",
       "file": "19-operations.md",
-      "title": "19.8.1 `offer-file(manifest, key) → mote`",
+      "title": "19.8.1 `offer-file(manifest, key) \u2192 mote`",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 2 of its 5 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 2 of its 5 MUSTs mark a required parameter"
     },
     {
       "section": "19.8.2",
       "file": "19-operations.md",
-      "title": "19.8.2 `fetch-chunk(chunk_hash, sources) → chunk`",
+      "title": "19.8.2 `fetch-chunk(chunk_hash, sources) \u2192 chunk`",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "Appendix B operation spec — §19 preamble and §10.4 make the narrative govern; 1 of its 2 MUSTs mark a required parameter"
+      "reason": "Appendix B operation spec \u2014 \u00a719 preamble and \u00a710.4 make the narrative govern; 1 of its 2 MUSTs mark a required parameter"
     },
     {
       "section": "20.0",
@@ -2152,7 +2160,7 @@
       "title": "20.1 Outbound MOTE delivery (sender side)",
       "musts": 3,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "20.2",
@@ -2160,7 +2168,7 @@
       "title": "20.2 Inbound MOTE validation (recipient side)",
       "musts": 1,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "20.3",
@@ -2168,7 +2176,7 @@
       "title": "20.3 Name resolution & pinning",
       "musts": 5,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "20.5.2",
@@ -2176,7 +2184,7 @@
       "title": "20.5.2 Committer lifecycle",
       "musts": 1,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "20.6",
@@ -2184,7 +2192,7 @@
       "title": "20.6 DMTAP-Auth session",
       "musts": 5,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "20.7",
@@ -2192,7 +2200,7 @@
       "title": "20.7 Node lifecycle / offline buffering",
       "musts": 1,
       "class": "IMPL",
-      "reason": "Appendix C machine carrying [fill] rows — normative choices §1–§16 do not make, owned here"
+      "reason": "Appendix C machine carrying [fill] rows \u2014 normative choices \u00a71\u2013\u00a716 do not make, owned here"
     },
     {
       "section": "21.3",
@@ -2200,12 +2208,12 @@
       "title": "21.3 Identity, Naming & Key Transparency errors (`0x01xx`)",
       "musts": 16,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x01xx; each MUST restates the disposition owned by the §1/§3 clause its row cites"
+      "reason": "\u00a721 registry Action column for 0x01xx; each MUST restates the disposition owned by the \u00a71/\u00a73 clause its row cites"
     },
     {
       "section": "21.4",
       "file": "21-errors-iana.md",
-      "title": "21.4 Delivery & Validation — the MOTE object (`0x02xx`)",
+      "title": "21.4 Delivery & Validation \u2014 the MOTE object (`0x02xx`)",
       "musts": 3,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2216,23 +2224,23 @@
       "title": "21.5 Transport & Reachability errors (`0x03xx`)",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x03xx; each MUST restates the disposition owned by the §4 clause its row cites"
+      "reason": "\u00a721 registry Action column for 0x03xx; each MUST restates the disposition owned by the \u00a74 clause its row cites"
     },
     {
       "section": "21.6",
       "file": "21-errors-iana.md",
-      "title": "21.6 Messaging & Group errors — MLS (`0x04xx`)",
+      "title": "21.6 Messaging & Group errors \u2014 MLS (`0x04xx`)",
       "musts": 5,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x04xx; each MUST restates the disposition owned by the §5 clause its row cites"
+      "reason": "\u00a721 registry Action column for 0x04xx; each MUST restates the disposition owned by the \u00a75 clause its row cites"
     },
     {
       "section": "21.7",
       "file": "21-errors-iana.md",
-      "title": "21.7 Auth errors — DMTAP-Auth (`0x05xx`)",
+      "title": "21.7 Auth errors \u2014 DMTAP-Auth (`0x05xx`)",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x05xx; the MUST restates §13.3.1's consent-farming refusal"
+      "reason": "\u00a721 registry Action column for 0x05xx; the MUST restates \u00a713.3.1's consent-farming refusal"
     },
     {
       "section": "21.8",
@@ -2240,7 +2248,7 @@
       "title": "21.8 Gateway errors (`0x06xx`)",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x06xx; each MUST restates the disposition owned by the §7 clause its row cites"
+      "reason": "\u00a721 registry Action column for 0x06xx; each MUST restates the disposition owned by the \u00a77 clause its row cites"
     },
     {
       "section": "21.9",
@@ -2264,7 +2272,7 @@
       "title": "21.11 Files errors (`0x08xx`)",
       "musts": 4,
       "class": "RESTATEMENT",
-      "reason": "§21 registry Action column for 0x08xx; each MUST restates the disposition owned by the §5.5/§18.3 clause its row cites"
+      "reason": "\u00a721 registry Action column for 0x08xx; each MUST restates the disposition owned by the \u00a75.5/\u00a718.3 clause its row cites"
     },
     {
       "section": "21.12",
@@ -2272,7 +2280,7 @@
       "title": "21.12 Traceability matrix",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "traceability matrix: it is the MUST→code index over rules owned elsewhere, by construction"
+      "reason": "traceability matrix: it is the MUST\u2192code index over rules owned elsewhere, by construction"
     },
     {
       "section": "21.13",
@@ -2304,7 +2312,7 @@
       "title": "21.16 Message Kinds Registry (`kind` u8)",
       "musts": 1,
       "class": "RESTATEMENT",
-      "reason": "the no-ack-on-unvalidatable-kind rule is owned by §10.1/§2.3 and tested there (0x020A)"
+      "reason": "the no-ack-on-unvalidatable-kind rule is owned by \u00a710.1/\u00a72.3 and tested there (0x020A)"
     },
     {
       "section": "21.17",
@@ -2328,7 +2336,7 @@
       "title": "21.19 KT Log Identification Registry",
       "musts": 2,
       "class": "RESTATEMENT",
-      "reason": "KT log-type registry; its implementation rule (implement 0x01, MAY negotiate 0x02) is owned by §3.5.1/§3.5.2"
+      "reason": "KT log-type registry; its implementation rule (implement 0x01, MAY negotiate 0x02) is owned by \u00a73.5.1/\u00a73.5.2"
     },
     {
       "section": "21.20",
@@ -2349,7 +2357,7 @@
     {
       "section": "21.22",
       "file": "21-errors-iana.md",
-      "title": "21.22 Capability Negotiation Registry (§10.2)",
+      "title": "21.22 Capability Negotiation Registry (\u00a710.2)",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2357,7 +2365,7 @@
     {
       "section": "21.23",
       "file": "21-errors-iana.md",
-      "title": "21.23 Mix Parameters Registry (Sphinx / mixnet, §4.4)",
+      "title": "21.23 Mix Parameters Registry (Sphinx / mixnet, \u00a74.4)",
       "musts": 1,
       "class": "PROCEDURE",
       "reason": "mix-suite registration requirements; binds a future mix suite's specification document"
@@ -2365,7 +2373,7 @@
     {
       "section": "21.24",
       "file": "21-errors-iana.md",
-      "title": "21.24 Transport Substrates Registry (§4.1)",
+      "title": "21.24 Transport Substrates Registry (\u00a74.1)",
       "musts": 1,
       "class": "PROCEDURE",
       "reason": "transport-substrate registration requirements; binds a future substrate's specification document"
@@ -2597,7 +2605,7 @@
     {
       "section": "24.4.5",
       "file": "24-video-profile.md",
-      "title": "24.4.5 `Hint` — advisory retrieval hints",
+      "title": "24.4.5 `Hint` \u2014 advisory retrieval hints",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2621,7 +2629,7 @@
     {
       "section": "24.7",
       "file": "24-video-profile.md",
-      "title": "24.7 Lineage — supersede, retract, mirror, remix",
+      "title": "24.7 Lineage \u2014 supersede, retract, mirror, remix",
       "musts": 3,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2637,7 +2645,7 @@
     {
       "section": "24.9",
       "file": "24-video-profile.md",
-      "title": "24.9 Segmented serving (HLS / DASH) — a serving-layer concern",
+      "title": "24.9 Segmented serving (HLS / DASH) \u2014 a serving-layer concern",
       "musts": 2,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2677,7 +2685,7 @@
     {
       "section": "24.17",
       "file": "24-video-profile.md",
-      "title": "24.17 Change log — normative corrections",
+      "title": "24.17 Change log \u2014 normative corrections",
       "musts": 3,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2725,7 +2733,7 @@
     {
       "section": "25.6.2",
       "file": "25-pubsub.md",
-      "title": "25.6.2 The `FeedHint` object (kind `0x41`) — advisory, never authoritative",
+      "title": "25.6.2 The `FeedHint` object (kind `0x41`) \u2014 advisory, never authoritative",
       "musts": 8,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"
@@ -2749,7 +2757,7 @@
     {
       "section": "25.7.2",
       "file": "25-pubsub.md",
-      "title": "25.7.2 Subscriber-side: dual-ended rate bound (mirrors §4.9.4)",
+      "title": "25.7.2 Subscriber-side: dual-ended rate bound (mirrors \u00a74.9.4)",
       "musts": 1,
       "class": "IMPL",
       "reason": "implementation requirement on a conformant node/client/gateway"

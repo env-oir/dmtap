@@ -621,13 +621,29 @@ throughout (§3.9.4, §3.11.5): whatever else fails, you remain nameable and rea
   which is what makes the key-name **globally unique without any consensus or registry** — the one
   Zooko corner (global + authority-free) a derived name can occupy, at the cost of not being
   human-*chosen* (§3.9, §15.5 Zooko's Triangle).
-- **It is `self`-resolving (no lookup).** In the resolver framework (§3.12) the key-name is
+- **A key-name VERIFIES an identity; it does not, by itself, ADDRESS one (normative — read this
+  before treating a key-name as an address).** The key-name is a **one-way** function of the key:
+  80 bits of `BLAKE3-256(ik)` (§18.9.17), rendered to words. Given the key you can compute and
+  confirm the name; **given only the name you cannot recover the key**, and the key is what
+  addressing actually requires — the HPKE seal (§2.4), the `DeliveryTag` (§2.2a), the `recipient`
+  scope of a work proof (§9.4), and the DHT lookup key `hash(ik)` (§4.2) are all functions of
+  `ik`, not of its word rendering.
+  So a stranger who has *only* a spoken or printed key-name holds a **checksum, not an address**.
+  To open a first contact they need the identity key itself, obtained out of band — a QR code, a
+  contact card, an introduction (§3.13.5) — at which point the key-name is exactly what lets them
+  confirm they got the right one, which is its job. This is a real limit of the zero-authority
+  floor and is disclosed as one (§6.6 item 16); an implementation MUST NOT present a bare
+  key-name as a sufficient destination.
+- **It is `self`-resolving (no lookup).** "No lookup" means **verification is a local derivation**
+  — there is no authority to ask whether this name belongs to this key, because the binding *is*
+  the key. It does **not** mean a name can be turned into a key without one. In the resolver
+  framework (§3.12) the key-name is
   resolver-type **`self`**: "resolution" is a local derivation from the key, not a discovery step,
   so there is nothing to KT-audit (the binding *is* the key). It has **no `@`** and no namespace,
   because it belongs to no authority's namespace (§3.13).
 - **Not a safety number.** The key-name (an addressing/identifier floor) and the safety number
   (§3.4.1, an out-of-band *verification* fingerprint over the whole multi-suite `Identity`) are
-  **distinct**: the key-name may be typed at to reach someone; the safety number never routes and
+  **distinct**: the key-name identifies and confirms an identity; the safety number never routes and
   only confirms a pin. Both are word-rendered for human comparison, but they serve different roles.
 - **Honest residual (disclosed).** The key-name is derived from `IK`, so it **changes if `IK`
   rotates** (§1.5) — the rare migration event, not the common case (device/operational keys rotate
@@ -1104,9 +1120,23 @@ naming, and it is not papered over:
   (§7.10.6 tier 3).
 
 **What DMTAP does about it, and what it does not.** It guarantees the things that *can* be
-guaranteed without an authority: you are always **nameable** (key-name), always **reachable**
-(§4.2), always **verifiable** (§3.4.1, §3.5), and always **deliverable-to** (§9.7a) — with no
-domain, no chain, no provider, and no money. It does **not** guarantee that you have a short,
+guaranteed without an authority: you are always **nameable** (key-name), always **verifiable**
+(§3.4.1, §3.5), always **reachable *by anyone who has your key*** (§4.2), and always
+**deliverable-to** (§9.7a) — with no domain, no chain, no provider, and no money.
+
+**The qualifier on "reachable" is load-bearing and was previously missing.** Reachability is a
+function of the **key**, not of the key-name: the key-name is a one-way digest and cannot be
+turned back into a key (§3.9.6). A correspondent who already has your key reaches you by the
+§4.2.1 ladder — piggybacked location, cache, rendezvous set — and never needs an authority, which
+is the guarantee. But a **stranger holding only your key-name has a checksum, not an address**,
+and must obtain the key out of band (§3.13.5). The only mechanism that could close that gap for a
+key-name-only identity is a DHT lookup keyed on `hash(ik)` — which this specification deliberately
+relegates to **opportunistic use only** and says no relationship should depend on (§4.2.1), for
+the reasons §4.2's own CAUTION gives. Claiming unqualified reachability while the mechanism
+providing it is the one the document elsewhere tells you not to rely on would be exactly the kind
+of overclaim §6.6 exists to prevent. See §6.6 item 16.
+
+It does **not** guarantee that you have a short,
 memorable, human-shareable string that nobody can take from you, because **Zooko's triangle says
 that string cannot exist without an authority or a consensus**, and DMTAP declines to invent
 either (§3.9, §3.9.2, §15.5). The gap is real, it is structural, and the honest thing is to name it
