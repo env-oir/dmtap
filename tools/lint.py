@@ -424,6 +424,29 @@ def coverage_report() -> int:
         print(f"    {k:<12} {len(secs):>3} sections {m:>5} MUSTs   {100*cov/m if m else 0:>3.0f}% cited")
     print(f"    {'RAW TOTAL':<12} {len(per_section):>3} sections {tot_m:>5} MUSTs   "
           f"{100*tot_c/tot_m if tot_m else 0:>3.0f}% cited")
+
+    # The number above is the one most likely to be quoted out of context, so it
+    # carries its own limits. All three are structural, not temporary.
+    import json as _json
+    try:
+        suite = _json.loads(read(ROOT / "conformance" / "suite.json"))
+        cases = suite.get("cases", [])
+        runnable = sum(1 for c in cases
+                       if c.get("status") in ("vectored", "self-contained"))
+        total_cases = len(cases)
+    except Exception:
+        runnable = total_cases = 0
+    print(f"""
+  WHAT THIS NUMBER IS NOT
+    1. It is SECTION-level, not MUST-level. A section counts as covered if ANY
+       case cites it — not if every MUST in it is exercised. {pct:.0f}% means every
+       IMPL section has at least one case pointed at it.
+    2. It counts cases that EXIST, not cases that PASS. {runnable} of {total_cases} are
+       byte-runnable today; the rest are construction recipes and attestations.
+       No implementation has been run against this suite.
+    3. The denominator is curated (conformance/scope.json). Disagreeing with a
+       classification is a bug report, not a rounding error: reclassify the
+       section to IMPL and the number moves.""")
     return 0
 
 

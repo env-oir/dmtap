@@ -273,8 +273,8 @@ them (the numbered sections govern the normative bytes).
 | [`substrate/SYNC.md`](substrate/SYNC.md) | ③ Sync | **The one new spec** — signed multi-author CRDT ops, version-vector + range-Merkle reconciliation, signed snapshots, sparse namespace sync |
 | [`substrate/ROLES.md`](substrate/ROLES.md) | ④ Roles + ⑤ Wake | Infrastructure roles as an open key-addressed protocol + content-free wake (RFC 8030/8291/8292) |
 
-**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **318
-numbered cases** (SUITE.md ≡ suite.json). **52 are byte-runnable today** — 46 vectored cases
+**Conformance coverage (honest status).** The [`conformance/`](conformance/) catalog has **327
+numbered cases** (SUITE.md ≡ suite.json). **61 are byte-runnable today** — 55 vectored cases
 backed by known-answer vectors (**68 core vectors** in `vectors/vectors.json` + **15 DMTAP-PUB
 vectors** in `vectors/pub_vectors.json`) plus 6 self-contained canonical-CBOR reject cases; **249
 carry an exact construction recipe** and expected §21 error, pending vectors for subsystems not
@@ -284,9 +284,23 @@ families `MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`, the gatew
 checklists); and 17 are manual-attestation cases — the MUSTs with no wire bytes to
 recompute at all (an in-product disclosure, a client's claim about a session or an address, a
 process boundary, or the population a deployment serves), verified by implementer or
-deployment review rather than by a runner (46 + 6 + 249 + 17 = 318). Every reject
-case names one of the **144 codes** in the §21 registry. So the runnable ratio is **52/318 today**,
+deployment review rather than by a runner (55 + 6 + 249 + 17 = 327). 157 of the 183 reject
+cases name one of the **144 codes** in the §21 registry; the other 26 reject at a level the
+registry does not code for — a known-answer verification that simply returns false, a
+profile-checklist item (`CAD`/`VIDEO`), or an offline validation of a descriptor, a `BootstrapSet`
+or a registration request, none of which is a wire failure a peer is told about. So the runnable ratio is **61/327 today**,
 growing as each subsystem gains a fixed-input KAT.
+
+**Normative coverage, and what it is not.** `make coverage` reports **100% of IMPL MUSTs sit in a
+section some case cites** — measured against the curated denominator in
+[`conformance/scope.json`](conformance/scope.json), which classifies all 333 MUST-bearing sections
+and states a reason for each. Three limits are structural, not temporary, and are printed by the
+tool itself so the figure never travels without them: it is **section-level, not MUST-level** (a
+section counts as covered if *any* case cites it); it counts cases that **exist**, not cases that
+**pass** — no implementation has been run against this suite; and the denominator is a
+**judgement**, so the intended response to disagreeing with a classification is to reclassify it
+`IMPL` and write the case. The uncurated figure over every capitalised MUST is **83%**, and
+`make coverage` prints both.
 
 ## Building the PDF
 

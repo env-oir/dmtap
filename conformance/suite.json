@@ -23,8 +23,8 @@
   },
   "vectors_file": "vectors/vectors.json",
   "vectors_count": 68,
-  "referenced_vectors_count": 33,
-  "vectors_count_note": "vectors_count is the number of entries in vectors/vectors.json; referenced_vectors_count (33) is how many of them the byte-backed cases currently drive (several drive more than one case). The remaining 35 are pre-generated for construction-todo families not yet wired to a case.",
+  "referenced_vectors_count": 42,
+  "vectors_count_note": "vectors_count is the number of entries in vectors/vectors.json; referenced_vectors_count (42) is how many of them the byte-backed cases currently drive (several drive more than one case). The remaining 26 are pre-generated for construction-todo families not yet wired to a case.",
   "notes": [
     "reject cases map to spec §21 (144-code registry); error_code + error_name + disposition (Action column) are normative.",
     "self-contained CBOR reject cases assert a deterministic-CBOR (RFC 8949 §4.2 / §18.1.1) decoder rejects the given bytes.",
@@ -6215,6 +6215,184 @@
         "note": "the missing cnf is 0x020D; the tampered cnf and the omitted empty scope both fail the §18.9.8 preimage signature (0x0208); an unresolvable signer is 0x0104"
       },
       "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-WIREKAT-01",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.3.8",
+        "§18.9.5",
+        "§5.5"
+      ],
+      "checks": "Manifest.id self-verifies. id is the domain-separated BLAKE3 Merkle root over the ordered chunks hashes: leaf = BLAKE3(0x00 ‖ h), node = BLAKE3(0x01 ‖ l ‖ r), RFC 6962 split, prefixed 0x1e. A recomputed root MUST equal id, so a manifest is falsifiable against itself before any chunk is fetched — and reordering the chunk list changes the root, which is what makes the order part of the content address rather than a convention",
+      "operation": "manifest_root",
+      "vector": "manifest_root",
+      "expect": {
+        "outcome": "match",
+        "field": "id_hex"
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-02",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.3.8",
+        "§18.1.1"
+      ],
+      "checks": "Canonical encoding of a Manifest. Integer-keyed deterministic CBOR over the REQUIRED id, size, chunk_sz, chunks and suite, with key 5 absent — a Manifest is a swarm-distributed blob, so the content key travels only in the sealed Attachment.key (§18.3.7) and a manifest carrying key 5 is rejected (ERR_MANIFEST_KEY_PRESENT, 0x0808, tested by DMTAP-FILE-04)",
+      "operation": "cbor_encode",
+      "vector": "cbor_manifest",
+      "expect": {
+        "outcome": "match",
+        "field": "cbor_hex"
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-03",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.2",
+        "§18.1.1",
+        "§4.4.2"
+      ],
+      "checks": "Canonical encoding of a MixNodeDescriptor. Integer-keyed deterministic CBOR of the IK-signed descriptor a mix publishes — the object from which every client derives its own fleet view (§4.4.2), which is why it is signed by the node and not by any directory authority",
+      "operation": "cbor_encode",
+      "vector": "cbor_mix_descriptor",
+      "expect": {
+        "outcome": "match",
+        "field": "cbor_hex"
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-04",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.9.9",
+        "§18.5.2"
+      ],
+      "checks": "MixNodeDescriptor.sig preimage. DS-tag \"DMTAP-v0/mix-descriptor\\0\" ‖ det_cbor(descriptor ∖ {7}) — the signature covers the descriptor with its own signature field removed, so the preimage is reconstructible by any verifier from the object it received",
+      "operation": "ed25519_sign",
+      "vector": "mix_descriptor_sig",
+      "expect": {
+        "outcome": "match",
+        "field": [
+          "pubkey_hex",
+          "sig_hex"
+        ]
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-05",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.2",
+        "§18.9.9"
+      ],
+      "checks": "The descriptor signature verifies under node_ik. The companion to -04: the signature verifies under the descriptor's own key (§18.5.2 key 2), which is the whole trust story for a mix — a descriptor is self-asserted and its operator claim is what §4.4.8 requires an independent _dmtap-mix attestation for",
+      "operation": "ed25519_verify",
+      "vector": "mix_descriptor_sig_verify",
+      "expect": {
+        "outcome": "accept"
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-06",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.4",
+        "§4.4.1"
+      ],
+      "checks": "SphinxCell framing is constant-length. 2336 B = α(32) ‖ β(240) ‖ γ(16) ‖ δ(2048). Constant length is not a layout detail: a variable-length cell would let an observer distinguish cells by size, which is precisely the correlation the mixnet exists to deny (§4.4.1's bucket ladder is the same argument one level up)",
+      "operation": "sphinx_encode",
+      "vector": "sphinx_cell",
+      "expect": {
+        "outcome": "match",
+        "field": [
+          "bytes_hex",
+          "len"
+        ]
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-07",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.4",
+        "§4.4.4"
+      ],
+      "checks": "RoutingCommand framing. 48 B = cmd(1) ‖ flags(1) ‖ delay_ms(4, big-endian) ‖ next_hop(32) ‖ reserved(10 = 0). The per-hop delay is inside the encrypted β and is what makes the mix a mix rather than a proxy; the fixed reserved tail keeps the command length constant across command types",
+      "operation": "sphinx_encode",
+      "vector": "sphinx_routing_command",
+      "expect": {
+        "outcome": "match",
+        "field": [
+          "bytes_hex",
+          "len"
+        ]
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-08",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.4",
+        "§4.4.5"
+      ],
+      "checks": "SURB framing. 352 B = first_hop(32) ‖ header(288 = α ‖ β ‖ γ) ‖ key_seed(32). The SURB is what lets a node send a loop through a full path back to itself without revealing a return address — the mechanism DMTAP-COVER-03's active-attack detection is built on",
+      "operation": "sphinx_encode",
+      "vector": "sphinx_surb",
+      "expect": {
+        "outcome": "match",
+        "field": [
+          "bytes_hex",
+          "len"
+        ]
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-WIREKAT-09",
+      "level": "Core",
+      "category": "WIREKAT",
+      "req": "MUST",
+      "clause": [
+        "§18.5.4",
+        "§4.4.1"
+      ],
+      "checks": "SphinxFragmentHeader framing. 16 B = msg_id(8) ‖ frag_index(2, BE) ‖ frag_count(2, BE) ‖ total_len(4, BE). Multi-cell MOTEs fragment across cells, and each cell still takes an independent path (§4.4.3) — the fragment header is what reassembles them at the far end without any hop learning the message size",
+      "operation": "sphinx_encode",
+      "vector": "sphinx_fragment_header",
+      "expect": {
+        "outcome": "match",
+        "field": [
+          "bytes_hex",
+          "len"
+        ]
+      },
+      "status": "vectored"
     }
   ],
   "pub_vectors_file": "vectors/pub_vectors.json",
