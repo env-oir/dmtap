@@ -258,3 +258,106 @@ therefore not a limitation to be engineered away later; it is the correct shape.
 - Specify dead-replica right reclamation as an explicit, fallible decision with a stated failure
   mode, not a background detail (item 3).
 - Acknowledge that transfer names a recipient at N ≥ 3, and say who chooses (item 4).
+
+## 21.11 Third pass — who is the facilitator (July 2026)
+
+A narrow pass on the five legal questions §11 answers by assertion. **One of the five produced
+verified findings. The other four returned nothing across three consecutive passes** and are
+unresearched, not resolved: GDPR Art 17 against immutable objects, DSA/INFORM/GPSR trader
+traceability, escrow as a regulated payment service, and measured outcomes of non-custodial escrow.
+Their silence is not a favourable answer.
+
+Everything below is statutory construction and regulator guidance. **No court anywhere has applied
+any of it to a permissionless no-operator protocol.** The favourable readings are textually strong
+and legally untested, and that gap is the finding as much as the readings are.
+
+### 21.11.1 The favourable finding, and exactly how far it reaches
+
+Every representative US state marketplace-facilitator test is **conjunctive and gated on a contract
+with the seller**. Cal. Rev. & Tax. Code §6041(b) reads "a person who **contracts with** marketplace
+sellers to facilitate … through a marketplace **operated by the person** … **and** who does both of
+the following", and its infrastructure prong — "owning or operating the infrastructure … that
+brings buyers and sellers together" — sits *inside* that contract gate. Wash. RCW 82.08.010(15)(a)
+requires all three of contract, transmission of offer/acceptance, and a listed activity; the state's
+own guidance says "all three main criteria must be met simultaneously".
+
+**So a gateway no seller has contracted with falls outside the definition on its face, whatever
+infrastructure it runs.** That is the strongest structural argument the no-operator design has, and
+it is untested.
+
+### 21.11.2 Where the argument does *not* reach — three corrections §11 must absorb
+
+**The escape is at the facilitator prongs, not at "marketplace".** The term is deliberately
+medium-agnostic and expressly enumerates *a catalog* and *a dedicated sales software application*.
+TRACT's signed catalogue feed and its buyer-side cart client are **within** the definitional term
+even where no person qualifies as a facilitator. §11 may not argue "there is no marketplace"; the
+available argument is only "there is no facilitator".
+
+**Escrow is the decisive practical trigger, and in two states it is load-bearing on its own.**
+Tex. Tax Code §151.0242(a)(2) catches a person who owns or operates a marketplace and "**directly or
+indirectly processes sales or payments**", with no payment-processor carve-out — a gateway receiving
+buyer funds and releasing them is at minimum indirectly processing. N.Y. Tax Law §1101(e)(1)(B) is
+met where the person "**or contracts with a third party to collect**" the receipts, so a gateway
+whose checkout routes through its own PSP is caught even though its balance sheet never holds the
+money. In Washington and California payment is a qualifier rather than a standalone trigger.
+
+**"Render-only never touches funds" is not a US answer.** It is safe in New York and Texas and
+likely caught in Washington and California through the listing and order-taking prongs. A spec
+resting on render-only as a non-facilitator posture is resting on two states out of fifty.
+
+**One assertion in §11.3 is confirmed:** a self-hosted seller taking direct payment for their own
+goods is never a marketplace facilitator, because every marketplace definition requires sales by
+persons *other than* the owner or operator of the medium.
+
+### 21.11.3 The adverse finding: EU VAT anticipates this design's central claim
+
+This is the one that should change how §11 is written. The binding text is Art 5b of Council
+Implementing Regulation (EU) 282/2011: an interface is **not** facilitating only if, *cumulatively*,
+it (a) does not set, directly or indirectly, **any** of the terms and conditions; (b) is not,
+directly or indirectly, involved in authorising the charge; and (c) is not, directly or indirectly,
+involved in the ordering or delivery. The Commission's Explanatory Notes state that carrying out
+**even one** of those may suffice to make an interface a facilitator.
+
+And then, verbatim, the sentence that names TRACT's argument and rejects it:
+
+> "The use of 'indirectly' and 'any' … is meant to prevent artificial splitting of rights and
+> obligations between the electronic interface and the underlying suppliers. For example, the
+> indication that the seller … is responsible for the goods sold via a marketplace/platform **or
+> that the contract is concluded between the underlying supplier and the customer is not
+> sufficient** to relieve the taxable person operating the electronic interface from the VAT
+> obligations as a deemed supplier. The concept thus goes beyond the contractual relationship and
+> looks at the **economic reality** and in particular the **influence** exercised by … electronic
+> interfaces."
+
+"The contract is between two keypairs" is precisely the assertion this text was written to defeat.
+The rule tests economic reality and influence, not what the parties declare — and a protocol
+asserting a contractual arrangement is, on this reading, exactly the artificial splitting the words
+"indirectly" and "any" exist to catch.
+
+The scope limit that keeps this survivable: Art 14a bites on imported consignments of intrinsic
+value ≤ €150 and on supplies within the EU by non-EU-established sellers. It is not a general rule
+for all EU commerce. But where it applies, no amount of protocol design argues its way out.
+
+### 21.11.4 What §11 must now do
+
+- **Stop arguing there is no marketplace.** There is; the argument available is that there is no
+  facilitator, and only where no seller contracted with the gateway.
+- **Say that escrow is the trigger**, and that in Texas and New York it is enough on its own. §9.5's
+  "escrow is an operator class" understates it: escrow is also the thing most likely to make that
+  operator a *tax* facilitator.
+- **Stop presenting render-only as safe.** It is a two-state holding.
+- **State that the EU VAT rule anticipates the design's central claim** rather than leaving a reader
+  to discover it, and give the scope limit honestly rather than as reassurance.
+- **Keep the four unresearched questions marked as unresearched** (§21.11), especially the GDPR
+  erasure conflict, which remains the most likely hard blocker and has now survived three passes
+  without an answer.
+
+### 21.11.5 Caveats that bound all of the above
+
+No case law anywhere. Four US states of roughly fifty, and they diverge materially. **DAC7 is
+unresolved in both directions** — every DAC7 claim in this pass was voted down. The EU VAT finding
+rests partly on Explanatory Notes that disclaim binding force, over an Art 5b text the CJEU has
+never interpreted. Washington amended its definition in 2026; ViDA will expand EU deemed-supplier
+scope; states have shown willingness to deem specific verticals in by name. **A currently-true
+textual escape is not a structural guarantee**, and this section should be re-checked rather than
+cited indefinitely.

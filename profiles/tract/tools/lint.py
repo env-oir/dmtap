@@ -33,7 +33,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 SECTION_RE = re.compile(r"^(\d\d)-.*\.md$")
-SECTION_REF_RE = re.compile(r"§(\d+)(?:\.\d+)*")
+# A TRACT section number is at most two digits (00-21 today, room to 99). A "§" followed by three
+# or more digits is a statutory citation — §6041, §1101(e), §151.0242 — not a reference into this
+# document, and §21's legal grounding is full of them. The negative lookahead rejects those without
+# also rejecting ordinary subsection refs like §11.2, whose next character is a dot rather than a
+# digit. Before this, citing California's Revenue & Taxation Code made the linter demand a
+# 6041-*.md.
+SECTION_REF_RE = re.compile(r"§(\d{1,2})(?!\d)")
 RFC_RE = re.compile(r"RFC\s*(\d{3,5})")
 STUB_MARK = "Drafting status"
 REQ_KEYWORDS = ("MUST NOT", "MUST", "SHALL", "SHOULD", "REQUIRED", "MAY")
