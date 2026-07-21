@@ -22,6 +22,18 @@ Merchant render bundles are untrusted code. **Every store must get its own origi
 serving multiple stores from one origin lets one bundle read another store's cart and session; it
 is non-conformant, not merely ill-advised.
 
+**And this section has to say how origins are compared**, which it previously did not. Implementing
+the rule surfaced the gap: a naive string comparison reports `alice.example` and `Alice.example` as
+distinct origins, while DNS and every browser treat them as the same one — same storage partition,
+same cart, same session. A gateway that allocated both would believe it had isolated two stores and
+would in fact have handed one merchant's bundle read access to the other's data, while passing its
+own conformance check.
+
+So the comparison is normalised before it is made: ASCII-lowercased, with any trailing root label
+dot removed. Internationalised names need an IDNA pass before that point, and a gateway accepting
+them without one has the same hole in a less obvious form. A rule that says *what* must be true and
+not *how it is tested* is a rule an implementation can satisfy on paper and violate in practice.
+
 ## 12.4 Process isolation (will be normative)
 
 A gateway terminates untrusted connections and renders untrusted bundles. It must run as a separate
