@@ -10,6 +10,12 @@
 > implementation cannot prove it matches this document rather than matching the reference one until
 > there is something fixed to match.
 >
+> **One correction was made after freezing, before anything depended on it.** `Order` carried no
+> jurisdictional anchors, while §11.3 stated that every order names them — a contradiction the
+> first conformance vectors surfaced within hours of the freeze, which is precisely what a vector
+> corpus is for. The fields were added rather than the gap recorded, because freezing something
+> known to contradict another section preserves the appearance of stability and nothing else.
+>
 > **What it does not claim.** Every object here is implemented and exercised end to end in the
 > reference implementation, which is evidence the shapes *compose* and is **not** evidence they are
 > *right* — an implementation and a grammar derived from each other only prove they agree with one
@@ -251,9 +257,34 @@ Order = {
   4 => money,                   ; total
   5 => OrderState,
   6 => ts,                      ; placed
+  7 => Anchors,                 ; the four jurisdictional anchors (§11.2)
+  8 => Responsible,             ; who is answerable, and for what (§11.3)
   ; buyer name, delivery address and contact details are carried here, in the sealed family,
   ; and have no production in the public family at all (§16.4)
 }
+
+; §11.2's four anchors, carried on the order because they are the facts a regulator asks for and
+; because three of them cannot be recomputed later: buyer residence is disclosed at order time and
+; nowhere else, and place of supply depends on the fulfilment variant as it stood when the order
+; was placed, not as the offer reads today.
+Anchors = {
+  1 => country,                 ; seller_establishment
+  2 => country,                 ; buyer_residence
+  3 => country,                 ; place_of_supply — derived from Fulfilment (§4), never supplied beside it
+  ? 4 => country,               ; delivery_destination — absent when nothing moves
+}
+
+; §11.3. `facilitator` present iff a gateway settled the payment: that presence is the
+; marketplace-facilitator hook, and its absence is equally load-bearing, because a self-hosted
+; seller taking direct payment is never a facilitator (§21.11.2).
+Responsible = {
+  1 => identity-key,            ; seller_of_record
+  ? 2 => identity-key,          ; facilitator — the gateway, if it settled
+  ? 3 => identity-key,          ; importer_of_record
+  ? 4 => Representative,        ; in-region responsible person, where a regime requires one
+}
+
+Representative = { 1 => country, 2 => identity-key }   ; region covered, who
 
 OrderLine  = { 1 => content-address, 2 => identity-key, 3 => uint }   ; offer, seller, quantity
 OrderState = 0 / 1 / 2 / 3 / 4 / 5 / 6 / 7 / 8
@@ -300,6 +331,10 @@ that a payment happened; it does not move money (§9.2).
 - **Whether `sell_to` being empty means "unrestricted" or "malformed."** Unrestricted is
   convenient and is almost never what a seller means, given §11's in-region representative
   requirements. Leaning malformed.
+- **Whether `Anchors.place_of_supply` should be recomputable or is authoritative as recorded.** It
+  is stored because the fulfilment variant it derives from may change in a later offer revision,
+  and a tax position should reflect the terms at order time. That makes it a fact a party asserts
+  rather than one a verifier can check, which is a real weakening and the reason it is listed here.
 - **Extension-key policy for the axis unions.** Each axis is a small closed set today. What a
   decoder does with an axis variant it has never seen — refuse, or preserve and refuse only on
   *acting* — is §17.4's tolerant-to-store / strict-to-act rule, and it needs stating here in
