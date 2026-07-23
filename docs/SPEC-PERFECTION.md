@@ -93,10 +93,10 @@ NAT-ingress, composed in profiles/rtc.md); compute = disclosed provisional slot 
 ADOPTION/RGA = not a contradiction (ADOPTION calls *Yjs* load-bearing, RGA gaps are gaps). Refuted finding
 (RecoveryPolicy recover_threshold "weakening") = actually a STRENGTHENING (adds a factor → harder), Table D
 correctly silent. The 6 confirmed (each a different file → 2 disjoint fix-agents):
-- [~] **F1 (HIGH)** substrate/SYNC.md §6.2 — stability cut = min-of-max-applied but §2.3/§5.1 require the
-  contiguous_below completeness watermark; silent lost-write in §4.6 PN-counter compaction under gapped
-  delivery (C-15 fixed pull-vector/covers but skipped the cut). **F1 re-dispatched `a96fab49` after a
-  user stop (SYNC.md was clean, no partial edit).**
+- [x] **F1 (HIGH)** substrate/SYNC.md §6.2 — stability cut redefined to min-of-`contiguous_below` (was
+  min-of-`max_applied`); `StabilityMark.hlc` MUST carry contiguous_below; C-30 logged; reused `0x0A09`
+  (byte-indistinguishable, so no receipt-time code); no conformance-vector change; min-of-min preserves
+  convergence. `9b62798`. **Critique round 2 CLOSED 6/6.**
 - [~] **F2 batch** (agent F2 in flight): (MED) coordinator/CONTRACT.md 5 cross-dir links missing `../`;
   (MED) 18-wire-format.md:1803 "kind … key 1" → key 2 (kind is key 2, suite is key 1); (MED) 17-parity.md:113
   stale "full mixnet privacy"/"onion" attachment-tier labels → fast default + never-mixnet bulk; (LOW)
