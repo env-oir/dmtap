@@ -461,7 +461,8 @@ MLS; DMTAP chooses MLS everywhere, so it is not used.)
 
 ## 5.4 Message kinds in context
 
-- `mail` / `chat` — the same MOTE; differ by default tier (§4.6) and client rendering.
+- `mail` / `chat` — the same MOTE; differ only by client rendering (§8), not by default tier
+  (both default `fast`, §4.6).
 - `reaction` / `edit` / `redact` — reference a prior MOTE by `id` via `refs`. `edit` (`0x03`) and
   `redact` (`0x04`) are **same-author-only**; `reaction` is exempt. The gate is authoritative at
   §2.7 step 9 (cross-author → fail-closed, `ERR_EDIT_REDACT_AUTHOR_MISMATCH`, §21).

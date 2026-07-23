@@ -127,9 +127,9 @@ never rides inside an `Envelope`; it is fetched by content address (§22.3).
 Unknown kinds — unassigned, or assigned but unimplemented — are **ignored** (not surfaced, not
 acked, MAY be discarded or held), never rejected as malformed (§21.16, §2.7 unknown-kind gate).
 
-Kinds `mail` and `chat` differ only in default client rendering and default privacy tier
-(§6): `mail` defaults to the `private` tier, `chat` MAY use the `fast` tier when both
-parties are online. Both are the same object over the same transport.
+`mail` and `chat` differ only in default client rendering (§8), not in default privacy tier:
+both default to the `fast` tier (§4.6); a client MAY let a user opt into the `private`
+research-tier mixnet. Both are the same object over the same transport.
 
 ## 2.4 Payload (CBOR, encrypted)
 

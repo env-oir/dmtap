@@ -1256,7 +1256,7 @@ LocationRecord = {
 **§18.5.2–§18.5.4 wire objects below serve the opt-in, research-tier mixnet only (normative
 status).** The mixnet itself is non-normative / experimental
 ([docs/research/mixnet.md](docs/research/mixnet.md)); the transport-tier default is `fast`
-(direct, §4.5), not `private`. These CDDL/byte-layout definitions are kept **normative as wire
+(direct, §4.6), not `private`. These CDDL/byte-layout definitions are kept **normative as wire
 encodings** — an implementation that *does* offer the opt-in `private` tier MUST encode them
 exactly as specified, so two mixnet-offering implementations interoperate — but **a conformant
 node needs none of them**: offering the mix role or the `private` tier is entirely OPTIONAL, and
@@ -1761,7 +1761,7 @@ ProvenanceRecord = {
 
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
-| `tier` | 1 | `u8` | MUST | The tier the message arrived on **as the recipient node observed it** (§4.6): `1` = `private` (peeled off the opt-in, research-tier mixnet, [docs/research/mixnet.md §4.4](docs/research/mixnet.md)), `2` = `fast` (direct/low-hop, the default tier, §4.5). A recipient node knows this from *how it received the packet*; it is not a sender assertion. |
+| `tier` | 1 | `u8` | MUST | The tier the message arrived on **as the recipient node observed it** (§4.6): `1` = `private` (peeled off the opt-in, research-tier mixnet, [docs/research/mixnet.md §4.4](docs/research/mixnet.md)), `2` = `fast` (direct/low-hop, the default tier, §4.6). A recipient node knows this from *how it received the packet*; it is not a sender assertion. |
 | `profile` | 2 | `u8` | MUST | The mix profile the arrival is consistent with ([docs/research/mixnet.md §4.4.10](docs/research/mixnet.md)): `0` = not applicable (`tier = 2`), `1` = Standard (≥ 3 hops), `2` = High-security (≥ 5 hops). For `private` this states the **minimum-viable-path guarantee that held** ([docs/research/mixnet.md §4.4.9](docs/research/mixnet.md)), not a measured path — applicable only when the opt-in `private` tier is in use. |
 | `origin` | 3 | `u8` | MUST | `0` = **pure-mesh** — no gateway attestation present, so the message was **never plaintext at a gateway** (the soundness of this claim rests on §7.2a making a gateway attestation mandatory for legacy-origin mail; §7.8). `1` = **gateway-touched / legacy-origin** — ≥ 1 verified attestation. |
 | `gateways` | 4 | `[* GatewayAttestation]` | MUST (MAY be empty) | The **verified** attestation chain copied from `Payload.provenance` (§18.3.11) **after** each entry's signature has been checked (§18.9.11); entries that failed verification are **excluded** (a message with an unverifiable required attestation is rejected upstream, §19.3.1, and never reaches this record). Empty **iff** `origin = 0`. Temporal order (ascending `seq`). |
@@ -1817,35 +1817,44 @@ a verifier would notice.
 
 ```cddl
 CoordinatorDescriptor = {
-  1 => tstr,             ; kind        coordinator kind string (CONTRACT §5 canonical table)
-  2 => ik-pub,           ; identity    the coordinator's attested substrate identity (§1, CONTRACT §2.1)
-  3 => Visibility,        ; visibility  exactly one declared class + assurance level (CONTRACT §2.4, §3)
-  4 => bytes,            ; policy      opaque det_cbor operator policy — self-asserted, kind-specific
-  ? 5 => Tariff,          ; tariff      OPTIONAL; present iff this coordinator charges (CONTRACT §6)
-  6 => sig-val,           ; sig         signature over fields 1-5 (DS-tag DMTAP-COORD-v0/descriptor, §18.9)
+  1 => suite,             ; suite       signature suite of `sig` (§18.9 composite-preimage rule)
+  2 => tstr,              ; kind        coordinator kind string (CONTRACT §5 canonical table)
+  3 => ik-pub,            ; identity    the coordinator's attested substrate identity (§1, CONTRACT §2.1)
+  4 => Visibility,        ; visibility  exactly one declared class + assurance level (CONTRACT §2.4, §3)
+  5 => bytes,             ; policy      opaque det_cbor operator policy — self-asserted, kind-specific
+  ? 6 => Tariff,           ; tariff      OPTIONAL; present iff this coordinator charges (CONTRACT §6)
+  7 => sig-val,            ; sig         signature over fields 1-6 (DS-tag DMTAP-COORD-v0/descriptor, §18.9)
 }
 Visibility = {
   1 => tstr,             ; class       "blind" / "blind-routing" / "terminating" (CONTRACT §3.1)
-  2 => tstr,             ; level       "structural" / "attested" / "declared" (CONTRACT §3.3)
+  2 => tstr,             ; level       "structural" / "attested" / "declared" (CONTRACT §3.3);
+                          ; a `terminating` class MUST declare `"declared"` — there is no
+                          ; `"structural"` assurance for a plaintext-terminating role, and
+                          ; `"declared"` is the honest-trust level for it (CONTRACT §3.3)
 }
 Tariff = {
-  1 => ik-pub,           ; identity    the signing coordinator's OWN identity (self-certifying, below)
-  2 => bytes,            ; schedule    opaque det_cbor price schedule; the numbers are operator policy (CONTRACT §6)
-  3 => sig-val,           ; sig         signature over fields 1-2 (DS-tag DMTAP-COORD-v0/tariff, §18.9)
+  1 => suite,            ; suite       signature suite of `sig` (§18.9 composite-preimage rule)
+  2 => ik-pub,           ; identity    the signing coordinator's OWN identity (self-certifying, below)
+  3 => bytes,            ; schedule    opaque det_cbor price shape/schedule; the numbers are operator policy (CONTRACT §6)
+  ? 4 => ts,             ; valid_until OPTIONAL expiry of this tariff; absent ⇒ no expiry (§26.10/§21)
+  5 => sig-val,           ; sig         signature over fields 1-4 (DS-tag DMTAP-COORD-v0/tariff, §18.9)
 }
 ```
 
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
-| `kind` | 1 | `tstr` | MUST | One of the CONTRACT §5 canonical kind strings (`"gateway"`, `"relay"`, `"media-relay"`, `"reachability-adapter"`, `"indexer"`, `"labeler"`, `"matcher"`, `"compute"`, `"arbiter"`, `"oracle"`, `"custodial-escrow"`). An unknown `kind` MUST be treated as an undeclared coordinator (§2.4) — a client MUST NOT rely on a descriptor whose kind it does not recognize. |
-| `identity` | 2 | `ik-pub` | MUST | The coordinator's attested substrate identity (CONTRACT §2.1). The descriptor is self-certifying — `sig` (key 6) is verified against this same field, never an external identity. |
-| `visibility` | 3 | `Visibility` | MUST | Exactly one declared class at one assurance level (CONTRACT §2.4, §3.1, §3.3); `class` ∈ `{"blind","blind-routing","terminating"}`, `level` ∈ `{"structural","attested","declared"}`. An unrecognized value in either sub-field MUST be rejected, not defaulted (fail-closed, mirrors §18.1.2's unknown-key rule for the enclosing choice). |
-| `policy` | 4 | `bytes` | MUST | Opaque deterministic-CBOR operator policy (region, capabilities, contact, and every kind-specific field §7.5/§26.3.1 already enumerate for `gateway`). This document does not interpret it; it exists so §2.1's "no reputation/price/stake field" rule has exactly one escape hatch (self-declared, never a ranking input) rather than a slow accretion of new top-level descriptor keys. |
-| `tariff` | 5 | `Tariff` | OPTIONAL | Present **iff** this coordinator charges (CONTRACT §6); absent ⇒ free. |
-| `sig` | 6 | `sig-val` | MUST | Signature by `identity` over `det_cbor(CoordinatorDescriptor ∖ {6})` under DS-tag `DMTAP-COORD-v0/descriptor` (§18.9). |
-| `Tariff.identity` | 1 | `ik-pub` | MUST | The **signing** coordinator's own identity. `Tariff` is self-certifying (carries its own signer) rather than relying on the enclosing descriptor's, so a client that already holds a `Tariff` (e.g. handed one directly by an operator, or cached from an earlier descriptor) can verify it standalone; it MAY, but need not, equal the enclosing `CoordinatorDescriptor.identity`. |
-| `Tariff.schedule` | 2 | `bytes` | MUST | Opaque deterministic-CBOR price shape/schedule. The **numbers** are operator policy and out of scope for this specification (CONTRACT §6); only the mechanism — a signed, verifiable, comparable object — is normative. |
-| `Tariff.sig` | 3 | `sig-val` | MUST | Signature by `Tariff.identity` over `det_cbor(Tariff ∖ {3})` under DS-tag `DMTAP-COORD-v0/tariff` (§18.9). Fails ⇒ `ERR_ADAPTER_TARIFF_INVALID` (`0x0B01`, §21.11a) where the tariff is presented in an adapter context, or the kind-appropriate equivalent elsewhere. |
+| `suite` | 1 | `suite` | MUST | Signature suite of `sig`. Under a composite suite (`0x02`–`0x05`) this field is what pins the signed representative (§18.9's family form `M' = DS-tag ‖ 0x00 ‖ u8(suite) ‖ det_cbor(body)`); without it two implementations of a composite suite cannot agree on the preimage. |
+| `kind` | 2 | `tstr` | MUST | One of the CONTRACT §5 canonical kind strings (`"gateway"`, `"relay"`, `"media-relay"`, `"reachability-adapter"`, `"indexer"`, `"labeler"`, `"matcher"`, `"compute"`, `"arbiter"`, `"oracle"`, `"custodial-escrow"`). An unknown `kind` MUST be treated as an undeclared coordinator (§2.4) — a client MUST NOT rely on a descriptor whose kind it does not recognize. |
+| `identity` | 3 | `ik-pub` | MUST | The coordinator's attested substrate identity (CONTRACT §2.1). The descriptor is self-certifying — `sig` (key 7) is verified against this same field, never an external identity. |
+| `visibility` | 4 | `Visibility` | MUST | Exactly one declared class at one assurance level (CONTRACT §2.4, §3.1, §3.3); `class` ∈ `{"blind","blind-routing","terminating"}`, `level` ∈ `{"structural","attested","declared"}`. An unrecognized value in either sub-field MUST be rejected, not defaulted (fail-closed, mirrors §18.1.2's unknown-key rule for the enclosing choice). A `terminating` class MUST declare `level = "declared"` (there is no `"structural"` assurance level for a plaintext-terminating role; `"declared"` is the honest-trust level, CONTRACT §3.3). |
+| `policy` | 5 | `bytes` | MUST | Opaque deterministic-CBOR operator policy (region, capabilities, contact, and every kind-specific field §7.5/§26.3.1 already enumerate for `gateway`). This document does not interpret it; it exists so §2.1's "no reputation/price/stake field" rule has exactly one escape hatch (self-declared, never a ranking input) rather than a slow accretion of new top-level descriptor keys. |
+| `tariff` | 6 | `Tariff` | OPTIONAL | Present **iff** this coordinator charges (CONTRACT §6); absent ⇒ free. |
+| `sig` | 7 | `sig-val` | MUST | Signature by `identity` over `det_cbor(CoordinatorDescriptor ∖ {7})` under DS-tag `DMTAP-COORD-v0/descriptor` (§18.9). |
+| `Tariff.suite` | 1 | `suite` | MUST | Signature suite of `Tariff.sig` (same composite-preimage rule as above). |
+| `Tariff.identity` | 2 | `ik-pub` | MUST | The **signing** coordinator's own identity. `Tariff` is self-certifying (carries its own signer) rather than relying on the enclosing descriptor's, so a client that already holds a `Tariff` (e.g. handed one directly by an operator, or cached from an earlier descriptor) can verify it standalone; it MAY, but need not, equal the enclosing `CoordinatorDescriptor.identity`. A client MUST attribute the tariff to `Tariff.identity`, not the enclosing descriptor's, and MUST surface that distinction when comparing prices across coordinators (§26.10). |
+| `Tariff.schedule` | 3 | `bytes` | MUST | Opaque deterministic-CBOR price shape/schedule. The **numbers** are operator policy and out of scope for this specification (CONTRACT §6); only the mechanism — a signed, verifiable, comparable object — is normative. |
+| `Tariff.valid_until` | 4 | `ts` | OPTIONAL | End of this tariff's validity window, covered by `sig`. **Absent ⇒ no expiry.** A `Tariff` presented past `valid_until` MUST be treated as expired and fails closed (§26.10/§21) — the same signed field a verifier checks the price shape against also bounds how long the price stands. |
+| `Tariff.sig` | 5 | `sig-val` | MUST | Signature by `Tariff.identity` over `det_cbor(Tariff ∖ {5})` under DS-tag `DMTAP-COORD-v0/tariff` (§18.9). Fails ⇒ `ERR_ADAPTER_TARIFF_INVALID` (`0x0B01`, §21.11a) where the tariff is presented in an adapter context, or the kind-appropriate equivalent elsewhere. |
 
 **Publication transport is intentionally unspecified**, exactly as §7.5/§26.3.1 already leave it
 for the gateway/adapter descriptor today: an operator's own domain, a directory, or a
@@ -1862,21 +1871,28 @@ standalone, at whatever later point the payer re-examines it, without a live des
 
 ```cddl
 UsageReceipt = {
-  1 => ik-pub,           ; identity    the issuing coordinator's own identity (self-certifying)
-  2 => bytes,            ; operation   opaque det_cbor metered operation this receipt attests to
-  3 => sig-val,           ; sig         signature over fields 1-2 (DS-tag DMTAP-COORD-v0/usage-receipt, §18.9)
+  1 => suite,            ; suite       signature suite of `sig` (§18.9 composite-preimage rule)
+  2 => ik-pub,           ; identity    the issuing coordinator's own identity (self-certifying)
+  3 => bytes,            ; operation   opaque det_cbor metered operation this receipt attests to
+  4 => sig-val,           ; sig         signature over fields 1-3 (DS-tag DMTAP-COORD-v0/usage-receipt, §18.9)
 }
 ```
 
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
-| `identity` | 1 | `ik-pub` | MUST | The issuing coordinator's own identity; verified against `sig`, never an enclosing descriptor's. |
-| `operation` | 2 | `bytes` | MUST | Opaque deterministic-CBOR description of the metered operation the receipt attests to (kind-specific — e.g. a legacy-adapter send, §26.10). |
-| `sig` | 3 | `sig-val` | MUST | Signature by `identity` over `det_cbor(UsageReceipt ∖ {3})` under DS-tag `DMTAP-COORD-v0/usage-receipt` (§18.9). Fails to verify ⇒ `ERR_ADAPTER_RECEIPT_INVALID` (`0x0B02`, §21.11a) in an adapter context, or the kind-appropriate equivalent elsewhere. |
+| `suite` | 1 | `suite` | MUST | Signature suite of `sig` (same composite-preimage rule as `CoordinatorDescriptor.suite`, §18.8a.1). |
+| `identity` | 2 | `ik-pub` | MUST | The issuing coordinator's own identity; verified against `sig`, never an enclosing descriptor's. |
+| `operation` | 3 | `bytes` | MUST | Opaque deterministic-CBOR description of the metered operation the receipt attests to (kind-specific — e.g. a legacy-adapter send, §26.10). |
+| `sig` | 4 | `sig-val` | MUST | Signature by `identity` over `det_cbor(UsageReceipt ∖ {4})` under DS-tag `DMTAP-COORD-v0/usage-receipt` (§18.9). Fails to verify ⇒ `ERR_ADAPTER_RECEIPT_INVALID` (`0x0B02`, §21.11a) in an adapter context, or the kind-appropriate equivalent elsewhere. |
 
 **Transport is the existing `system` MOTE** (`kind = 0x0A`, §21.16), delivered directly to the
 paying identity, never published — the same carriage §26.10/§26.11 already specified informally.
-No new message kind is allocated.
+No new message kind is allocated. **`kind = 0x0A` is shared with capability announcements (§10.2)
+and bounce notices (§7.10.3a), so the `Body` shape alone is ambiguous.** A `UsageReceipt`'s
+`Headers.mime` MUST be `application/vnd.dmtap.usage-receipt+cbor`, and a receiver MUST inspect
+`Headers.mime` **before** parsing a `0x0A` `Body` to select which of the three shapes to decode it
+as; an unrecognized `mime` on a `0x0A` MOTE MUST be treated as an undecodable system message, not
+guessed at.
 
 **Honest residual, restated from CONTRACT §6 (normative disclosure).** A verified `UsageReceipt`
 proves the coordinator signed a claim about one real operation; it is **one-directional** — it
@@ -2007,9 +2023,9 @@ to it.
 | `DeniableInit`/`DeniableMessage`/`DeniablePayload` | — (none) | — | **no signature** — authenticated by the Double-Ratchet AEAD MAC (§18.9.10) |
 | `ClusterSyncFrame` / `ClusterOp` / `RangeFingerprint` / `JournalEntry` / `StabilityMark` | — (none) | — | **no DMTAP sig** — carried inside the encrypted, membership-authenticated **MLS cluster group** (§5.6.1, §18.6.3); the origin `device_id`'s non-revoked `DeviceCert` authenticates the sender (`0x0410`) and a `RangeFingerprint` is self-verifying by recomputation (§5.6.3(a)). Referenced objects (MOTEs/manifests) remain self-signed/content-addressed. |
 | `GatewayAliasMap` | — (none) | — | **no DMTAP sig** — gateway-local state, not mesh-transmitted (§18.3.12, §7.10) |
-| `CoordinatorDescriptor` | `sig` (k6) | `DMTAP-COORD-v0/descriptor` | `det_cbor(CoordinatorDescriptor ∖ {6})` (§18.8a.1) |
-| `Tariff` | `sig` (k3) | `DMTAP-COORD-v0/tariff` | `det_cbor(Tariff ∖ {3})` (§18.8a.1); self-certifying — signed by `Tariff.identity`, not the enclosing descriptor's |
-| `UsageReceipt` | `sig` (k3) | `DMTAP-COORD-v0/usage-receipt` | `det_cbor(UsageReceipt ∖ {3})` (§18.8a.2); self-certifying — signed by `UsageReceipt.identity` |
+| `CoordinatorDescriptor` | `sig` (k7) | `DMTAP-COORD-v0/descriptor` | `det_cbor(CoordinatorDescriptor ∖ {7})` (§18.8a.1); carries `suite` (k1) — composite preimage per the family form above |
+| `Tariff` | `sig` (k5) | `DMTAP-COORD-v0/tariff` | `det_cbor(Tariff ∖ {5})` (§18.8a.1); carries `suite` (k1); self-certifying — signed by `Tariff.identity`, not the enclosing descriptor's |
+| `UsageReceipt` | `sig` (k4) | `DMTAP-COORD-v0/usage-receipt` | `det_cbor(UsageReceipt ∖ {4})` (§18.8a.2); carries `suite` (k1); self-certifying — signed by `UsageReceipt.identity` |
 | `GatewayAuthz` | — (none) | — | **no DMTAP sig** — gateway-local state, not mesh-transmitted; authenticity derives from the verified `Assertion` or `CapabilityToken`(s) that populated it (§18.8a.3) |
 
 For `Identity` (`sig` is a **list**, one entry per suite): the **same** preimage
@@ -2781,11 +2797,14 @@ CapabilityRevocation = { 1 => suite, 2 => ik-pub, 3 => hash, 4 => ts, 5 => sig-v
 ; One object family for every coordinator kind (CONTRACT §5), keyed by `kind`; a gateway's/
 ; adapter's kind-specific fields (§7.5, §26.3.1) live inside the opaque `policy` blob.
 CoordinatorDescriptor = {
-  1 => tstr, 2 => ik-pub, 3 => Visibility, 4 => bytes, ? 5 => Tariff, 6 => sig-val,
+  1 => suite, 2 => tstr, 3 => ik-pub, 4 => Visibility, 5 => bytes, ? 6 => Tariff, 7 => sig-val,
 }
-Visibility = { 1 => tstr, 2 => tstr }                        ; class, level
-Tariff     = { 1 => ik-pub, 2 => bytes, 3 => sig-val }        ; self-certifying: own identity, not the descriptor's
-UsageReceipt = { 1 => ik-pub, 2 => bytes, 3 => sig-val }      ; self-certifying, delivered directly to the payer
+Visibility = { 1 => tstr, 2 => tstr }        ; class, level; terminating class ⇒ level MUST be "declared"
+Tariff     = { 1 => suite, 2 => ik-pub, 3 => bytes, ? 4 => ts, 5 => sig-val }
+  ; self-certifying: own identity, not the descriptor's; 4=valid_until, absent ⇒ no expiry
+UsageReceipt = { 1 => suite, 2 => ik-pub, 3 => bytes, 4 => sig-val }
+  ; self-certifying, delivered directly to the payer; Headers.mime MUST be
+  ; application/vnd.dmtap.usage-receipt+cbor on the carrying 0x0A system MOTE (§18.8a.2)
 
 ; GatewayAuthz is gateway-LOCAL state (like GatewayAliasMap): NOT mesh-transmitted, NO signature
 ; of its own — authenticity derives from the Assertion/CapabilityToken(s) that populated it.
