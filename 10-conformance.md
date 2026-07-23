@@ -25,6 +25,11 @@
 - `system` MOTEs (kind `0x0a`) carry capability announcements between nodes (supported suites,
   privacy tiers, MLS ciphersuites, the optional `deniable-1:1` mode (§5.2.1), extensions, KT
   log-types, transport substrates, `pub-1` — public-object serving opt-in, §22).
+- **Wire discriminator.** `kind = 0x0A` is shared with `UsageReceipt` (§18.8a.2) and bounce/DSN
+  notices (§7.10.3a), so the `Body` shape alone does not say which of the three a given `0x0A`
+  MOTE carries. A capability announcement's `Headers.mime` MUST be
+  `application/vnd.dmtap.capability-announcement+cbor`, and a receiver MUST inspect `Headers.mime`
+  before parsing a `0x0A` `Body`, exactly as §18.8a.2 requires for `UsageReceipt`.
 - **Anti-rollback: capability announcements are monotonic (normative).** A capability
   announcement is authenticated (it rides inside a `system` MOTE authenticated to the recipient,
   §2.7) but, without a version, a replayed *older* announcement could **suppress a capability the

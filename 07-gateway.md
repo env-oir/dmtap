@@ -669,6 +669,13 @@ delivery failure is visible, not swallowed. When the node's outbound retry budge
 exhausts, the node MUST surface a permanent-failure notice to the sender — a legacy send never
 fails silently.
 
+**Wire discriminator.** This bounce notice rides the existing `system` kind (`kind = 0x0A`,
+§21.16), which is also shared by capability announcements (§10.2) and `UsageReceipt` (§18.8a.2) —
+the `Body` shape alone does not say which of the three a given `0x0A` MOTE carries. A bounce
+notice's `Headers.mime` MUST be `application/vnd.dmtap.bounce-notice+cbor`, and a receiver MUST
+inspect `Headers.mime` before parsing a `0x0A` `Body`, exactly as §18.8a.2 requires for
+`UsageReceipt`.
+
 ### 7.10.4 Swappable / ephemeral, and the honest residual
 
 The gateway alias is **separate from identity**: it is **rotatable** (change or burn it with no effect

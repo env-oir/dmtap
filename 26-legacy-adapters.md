@@ -387,7 +387,17 @@ relationships can therefore route a given legacy contact to whichever gateway's 
 and capability set actually covers that contact's rail, at a price the client can compare
 **before** sending — the same comparison-at-a-glance goal the four-field declaration serves
 (§26.3), applied specifically to price. A `Tariff` that fails to verify, or is presented past its
-validity window, fails closed with `ERR_ADAPTER_TARIFF_INVALID` (`0x0B01`, §21.11a).
+validity window (its `valid_until`, where present, is in the past), fails closed with
+`ERR_ADAPTER_TARIFF_INVALID` (`0x0B01`, §21.11a).
+
+**Attribution: the tariff's signer, not the enclosing descriptor's.** `Tariff` is self-certifying —
+it carries its own `identity` (§18.8a.1 key 2) and is signed by that identity, independent of
+whichever `AdapterDescriptor`/`CoordinatorDescriptor` it may have been fetched alongside. A client
+MUST attribute a `Tariff` to `Tariff.identity`, **never** to the enclosing descriptor's `identity`,
+and MUST surface that distinction when comparing prices across gateways: two tariffs reached via
+descriptors from the same operator are not necessarily signed by the same key, and a client that
+silently attributes both to the descriptor's identity can misreport which party is actually
+standing behind a price.
 
 **Signed usage receipts make billing auditable, not asserted.** A gateway-mode operator that meters
 usage MUST issue the paying identity a signed `UsageReceipt` (§18.8a.2) for each billable
@@ -444,12 +454,14 @@ normative on the wire (§18/§21 are), and everything normative above holds rega
   email-verdict shape) and a §21.24a-style discriminator if more than one non-cryptographic rail
   needs its own sub-shape. Out of scope for this pass: it extends `GatewayAttestation` itself, not
   the descriptor/tariff/receipt/authz family this section formalizes.
-- **Still open — usage-receipt body-type discriminator.** `UsageReceipt` (above) rides the existing
-  `system` kind (`kind = 0x0A`, §21.16), delivered directly to the payer; if a future `system`-kind
-  use needs to share the kind with `UsageReceipt`, the two need a body-type discriminator to tell
-  them apart. No such second `system`-kind use exists in this specification today, so no
-  discriminator is allocated; not a dangling reference (`0x0B02`'s verification does not depend on
-  one), flagged here as a forward-compatibility note only.
+- **Resolved — usage-receipt body-type discriminator.** `UsageReceipt` (above) rides the existing
+  `system` kind (`kind = 0x0A`, §21.16), delivered directly to the payer, and shares that kind with
+  capability announcements (§10.2) and bounce/DSN notices (§7.10.3a) — the `Body` shape alone is
+  therefore ambiguous. §18.8a.2 resolves this with a `Headers.mime` discriminator, checked before a
+  `0x0A` `Body` is parsed: `UsageReceipt` carries `application/vnd.dmtap.usage-receipt+cbor`, a
+  capability announcement carries `application/vnd.dmtap.capability-announcement+cbor` (§10.2), and
+  a bounce notice carries `application/vnd.dmtap.bounce-notice+cbor` (§7.10.3a) — three distinct,
+  non-colliding values; the normative discrimination rule is stated once, at §18.8a.2.
 - **Registered.** §21.24g reserves subsystem byte `0x0B` for this appendix, and §21 defines
   `ERR_ADAPTER_TARIFF_INVALID` (`0x0B01`), `ERR_ADAPTER_RECEIPT_INVALID` (`0x0B02`) and
   `ERR_ADAPTER_CREDENTIAL_UNAUTHORIZED` (`0x0B03`); §21 is authoritative for their codes and
