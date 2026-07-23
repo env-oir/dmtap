@@ -24,6 +24,9 @@ coordinator. Four jobs it cannot do reciprocally:
 
 Each is a place centralization can regrow. The contract confines the damage: a coordinator is
 **hired, not depended-on**. No coordinator is load-bearing, so none can become a gatekeeper.
+The sole exception is the **custodial escrow operator**, which holds the float for a trade
+window and is therefore structurally load-bearing and does not fade — disclosed here rather
+than hidden (see primitives/ESCROW.md).
 
 ---
 
@@ -48,9 +51,12 @@ violation, not a business model.
 ### 2.3 Self-hostable
 For every coordinator kind there MUST exist a **self-host backstop**: a user who can meet the
 kind's requirement can always run it for themselves and depend on no third party. Exactly one
-honest exception is disclosed rather than papered over — legacy SMTP egress requires a
-resource (reputable IP, unblocked port 25) an ISP may deny — and the contract confines that
-scarcity to that one kind instead of letting it spread.
+honest exception is disclosed rather than papered over — a **scarce network reachability**
+class: a reputable IP + unblocked port 25 for legacy SMTP egress (the `gateway`), and a public
+reachable ingress for the `reachability-adapter`. Both are a network resource a third party
+(ISP/host) allocates, not something a user can always self-provision. The contract confines the
+scarcity to this narrow reachability class instead of letting it spread to custody, naming, or
+moderation.
 
 ### 2.4 Content-visibility declared
 Every coordinator MUST declare, in its descriptor, exactly one **visibility class** at one
@@ -118,6 +124,12 @@ rate-limit tokens, optional postage/proof-of-work for cold contact, and — for 
 **market of opt-in labelers** each of which is itself a coordinator under this contract (it
 labels; you subscribe to the ones you trust; you can leave).
 
+**Ranking carve-out (parallel to labelers):** a coordinator MAY rank or re-rank content within
+its **own derived, non-authoritative view** — this is exactly what the `indexer` and `matcher`
+kinds do. The prohibition is on dropping, gating, quarantining, or re-ranking content on a
+**delivery path** or a **canonical/authoritative path**. "Rank my own view" is permitted;
+"gate what reaches you" is not.
+
 ---
 
 ## 5. Coordinator kinds (all instances of the contract)
@@ -128,9 +140,10 @@ labels; you subscribe to the ones you trust; you can leave).
 | **relay** | Mesh reachability for NAT'd peers | `blind` / structural |
 | **media-relay** | Forwards SFrame-encrypted call/stream media (scales calls) | `blind` / structural |
 | **reachability-adapter** | ngrok-style public subdomains for arbitrary box services | `blind-routing` (SNI-passthrough) preferred |
-| **indexer** | Search / discovery / global product-and-price view | `blind` / attested (TEE) preferred |
+| **indexer** | Search / discovery / global product-and-price view | corpus `public` / query-channel `terminating` unless `attested` |
 | **labeler** | Moderation labels, opt-in, subscribable | n/a (labels public objects) |
-| **matcher** | Real-time supply↔demand matching (rides, delivery) | `blind` / attested preferred |
+| **matcher** | Real-time supply↔demand matching (rides, delivery) | **terminating** (default) / **attested** (TEE) |
+| **compute** *(provisional)* | Hosted/outsourced computation (e.g. private-AI inference on rented GPU) | `terminating` (default) / `attested` (TEE, for blind compute) |
 | **arbiter** | Dispute resolution (staked jury) | `terminating` for evidence, disclosed |
 | **oracle** | Physical-world / real-fact attestation (delivered? ride done?) | `terminating`, disclosed |
 

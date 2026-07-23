@@ -42,11 +42,18 @@ capability enters it only if *most* profiles need it.
 
 ## 2. Primitives, and why services collapse into them
 
-Every real-world service is the same small set of primitives rearranged:
+Every real-world service is the same small set of primitives rearranged. The primitive set is
+exactly six:
 
 ```
-OFFER · MATCH / RESERVE · REPUTATION · ESCROW · ORACLE · DISPUTE · PAY
+OFFER · MATCH · RESERVE · REPUTATION · ESCROW · ATTEST
 ```
+
+The **composite roles** that appear in service recipes — ORACLE, DISPUTE, PAY — are *not*
+standalone primitives: **ORACLE** is the oracle coordinator kind (a physical-fact attestation,
+i.e. ORACLE ⊂ ATTEST), **DISPUTE** is the arbiter coordinator kind, and **PAY** is the
+stablecoin binding. The recipe shorthand `OFFER · MATCH/RESERVE · REPUTATION · ESCROW · ORACLE
+· DISPUTE · PAY` remains a useful *recipe* mnemonic, but it names roles, not the primitive set.
 
 - **Uber, delivery, freelance, auctions** = OFFER + MATCH + REPUTATION + ESCROW + ORACLE +
   DISPUTE + PAY, differing only in MATCH's **assignment rule** (nearest / best-fit /
@@ -69,7 +76,7 @@ index is [`bindings/README.md`](bindings/README.md). The short version:
 | Need | Adopt | Not |
 |---|---|---|
 | Identity recovery | Account abstraction (ERC-4337 / EIP-7702), passkeys, MPC | a bespoke recovery scheme |
-| Attestation | EAS / W3C Verifiable Credentials | a new credential format |
+| Attestation | **ATTEST** is ours (a primitive); its claim body binds EAS / W3C Verifiable Credentials | a new credential format |
 | Reputation | OpenRank (EigenTrust, TEE-verified) | a global score we compute |
 | Personhood | World ID / Human Passport | our own biometrics |
 | Payments | x402 + stablecoins | **a protocol token (there is none, and none will be added)** |
@@ -79,7 +86,9 @@ index is [`bindings/README.md`](bindings/README.md). The short version:
 | Mesh / messaging crypto | libp2p + MLS (RFC 9420) | a new transport or ratchet |
 
 The only genuinely new normative writing KOTVA owns is: the **substrate**, the **coordinator
-contract** (§4), and the thin **profiles**. Everything else is a pointer.
+contract** (§4), the **primitives** (the primitive specs — SYNC and MATCH's assignment-rule
+vocabulary are the new normative ground), and the thin **profiles**. Everything else is a
+pointer.
 
 ---
 
