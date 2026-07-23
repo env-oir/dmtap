@@ -420,9 +420,27 @@ construction is:
 HKDF is RFC 5869 (HMAC-SHA-256, Extract-then-Expand) — the same HKDF-SHA256 already used for HPKE
 (RFC 9180) and push-wake (RFC 8291) key derivation elsewhere in this spec — and is independent of
 the suite-0x05 hash migration (§1.1), which governs the §18.1.5 multihash *digest* domain, not
-this KDF. `shared_secret` is the per-contact secret established at first contact (§2.2a);
-`epoch_day` is the §0.8 day-counter epoch. `BlindedTag.bytes` (key 1) is therefore **exactly 16
-bytes**; a tag of any other length is non-conformant.
+this KDF.
+
+**`shared_secret` (pinned).** `shared_secret` is
+`MLS-Exporter(Label = "DMTAP-v0/blinded-tag", Context = "", Length = 32)` (RFC 9420 §8.5), evaluated
+against the **1:1 MLS group** the two parties established at first contact (§5) — the same exporter
+discipline §27.5.1 uses to derive media keys, not a bespoke per-contact derivation. Deriving it by any
+other path is **non-conformant**: two such implementations do not interoperate, and neither can prove
+which is wrong (§27's RTC-7 rule, applied here). Because an MLS exporter is **epoch-scoped**, a sender
+MUST derive under its current group epoch and a recipient MUST accept a tag derived under **any group
+epoch it still retains** for that contact (§16 retention), recomputing its candidate set on each epoch
+change.
+
+**`epoch_day` (pinned).** `epoch_day = floor(t_ms / 86 400 000)`, where `t_ms` is milliseconds since
+the Unix epoch (1970-01-01T00:00:00Z) — **whole UTC days, floored, never local time** — encoded as the
+8-byte big-endian `uint64` above. §0.8 only *disambiguates* this counter from the MLS-group and mix-key
+epochs; this is its definition. To survive clock skew and the midnight boundary a recipient MUST accept
+a tag derived under `epoch_day − 1`, `epoch_day`, or `epoch_day + 1`; a sender MUST use its current
+`epoch_day`.
+
+`BlindedTag.bytes` (key 1) is therefore **exactly 16 bytes**; a tag of any other length is
+non-conformant.
 
 ### 18.3.3 `ChallengeResponse` (§2.2b, §9)
 

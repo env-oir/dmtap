@@ -180,12 +180,21 @@ payload cryptographically out of the operator's reach. **`edge-fn`, `database`, 
   grant reading a mailbox.
 - **DEPOT-12 — secrets are sealed to the box, never held in operator plaintext.** Configuration
   secrets an `infra-service` stores on a user's behalf (environment values, credentials, connection
-  strings) MUST be **encrypted to the box's device key** before they reach the operator; the operator
-  stores and serves **ciphertext only** and MUST NOT require plaintext to operate the service. An
-  operator holding plaintext secrets is custodial in exactly the sense DEPOT-3 forbids for identity
-  keys. Where a service genuinely needs the value in the clear at runtime (an env var inside a
-  `terminating` `edge-fn` or `box`), that exposure is bounded by, and disclosed under, that service's
-  already-declared visibility (DEPOT-2) — never presented as protected.
+  strings) MUST be **encrypted to the box's device key by the client before they leave it**; an
+  operator MUST NOT **require** plaintext to operate the service, and one that accepts or stores
+  plaintext secrets MUST declare that surface `terminating` (DEPOT-2) rather than implying the
+  secrets are protected. Where a service genuinely needs the value in the clear at runtime (an env
+  var inside a `terminating` `edge-fn` or `box`), that exposure is bounded by, and disclosed under,
+  that service's already-declared visibility — never presented as protected.
+  **Honest residual — this is a `declared` property, not a structural one.** Unlike DEPOT-3, where
+  the root `IK` is withheld *by construction* (only a revocable subkey ever leaves the device), DEPOT
+  defines **no secret-envelope object and no verification step**: services speak their adopted native
+  protocols (DEPOT-1), so nothing on the wire distinguishes a sealed blob from a pasted plaintext, and
+  an operator that documents "paste your secret here" cannot be refused by the protocol. The
+  enforceable half is the **client's** obligation to seal first; the operator's half is **detectable,
+  not preventable** — via an ATTEST `visibility-audit` measurement (§5) and the exit (DEPOT-4), the
+  same accountability the `declared` assurance level carries everywhere else. Do not read DEPOT-12 as
+  a cryptographic guarantee against a dishonest operator.
 - **DEPOT-13 — permissionless supply; durability comes from plurality, not from an SLA.** Any node MAY
   offer any `infra-service`, including a single self-hosted box contributing spare capacity: the
   open-role principle of [Roles & Wake](../substrate/ROLES.md) and the self-host clause
