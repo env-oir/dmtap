@@ -183,6 +183,19 @@ passes toward it. **Convergence clock reset to zero.** Two other independent age
 family, interop/conformance/xref) still running this round; after they land + this fix, restart the count:
 need TWO consecutive fully-clean INDEPENDENT-AGENT passes (different lens-sets) to declare PERFECTED.
 
+## SPEC EXTENDED (founder directive) — DEPOT managed-infrastructure profile added `9781101`
+The founder directed a decentralised-cloud expansion: gateways offer box/bucket/edge-fn/database/cdn with
+operator-defined economics + distributed ratings. Added `profiles/cloud.md` (DEPOT profile, one thin
+`infra-service` kind + extensible service registry), wired the kind (CONTRACT §5 twelve, SPEC 12, both
+§18.8a enums). Design decisions baked in: honesty cliff (only bucket/public-cdn structurally blind;
+db/edge-fn/box terminating/declared — non-conformant to market otherwise); non-custody (owner-held root IK,
+revocable box subkey, key-escrow FORBIDDEN, recovery via guardian quorum); economics = seam only (operator
+sets numbers, KOTVA only requires signed+metered+settled); distributed reputation (signed reproducible
+`ServiceMeasurement` PUB feeds, no authority, self-measurements labelled, vulos = one rater not THE rater).
+**This is new normative surface → convergence count RESET again.** End-to-end re-critique running (3 agents:
+DEPOT honesty/thinness/soundness · whole-spec coherence · adversarial crypto incl. re-verify §1.4 fix).
+Then fix + re-run to the two-consecutive-clean bar.
+
 **DECISION (founder-overridable, gap-fill) — BlindedTag KDF pinned:** `BT = HKDF-SHA256(IKM=shared_secret,
 salt="DMTAP-v0/blinded-tag", info=uint64_be(epoch_day), L=16)` (RFC 5869; the same HKDF-SHA256 as HPKE/RFC
 9180 + push-wake/RFC 8291; suite-migration-independent). `BlindedTag.bytes` = exactly 16 B. Chosen as the
