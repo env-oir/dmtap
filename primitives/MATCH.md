@@ -54,54 +54,65 @@ signed with a domain-separated preimage (§18.1.6). The sketch below shows only 
 ```cddl
 ; ---- MatchDemand : what is wanted + how to choose (author = requester) ----
 MatchDemand = {
-  demand:  bstr,          ; content-address of the OFFER being sought against (the demand-side listing)
+  offer:   bstr,          ; content-address of the OFFER being sought against (the demand-side listing)
   rule:    MatchRule,     ; the assignment rule to apply (§2.1) — declared, not hidden
-  fields:  MatchFields,   ; the ONLY structured inputs a matcher may read (§3.2)
+  fields:  MatchFields,   ; the ONLY structured inputs a matcher may read (§3.2); canonicalized per §3.4
   ? pool:  bstr .size 32, ; matcher/indexer principal or issuer's own key for a local order book
   ? window: Window,       ; time bounds for bidding/assignment (wrap §3.10)
-  expires: uint,          ; unix seconds; after this no Candidate or Assignment is valid (REQUIRED, no default)
+  ? closes: uint,         ; unix seconds bidding-close; after this no new Candidate is valid (defaults to `expires`)
+  expires: uint,          ; unix seconds demand-death; after this no new Assignment is valid (REQUIRED, no default)
 }
 
 ; ---- MatchRule : the pluggable seam (data, never protocol-baked) ----
 MatchRule = {
   name:    tstr,          ; "nearest" / "highest-bid" / "best-fit" / profile-registered
-  ? weights: { * tstr => number },  ; declared coefficients over `fields` keys (best-fit)
+  ? weights: { * tstr => number },  ; declared coefficients over `fields` keys (best-fit); canonicalized per §3.4
   tiebreak: tstr,         ; deterministic final tie-break, e.g. "hlc" then "id-bytes" (§3.4)
 }
 
 ; ---- Candidate : a supply commitment answering a demand (author = supplier) ----
 Candidate = {
-  demand:  bstr,          ; MatchDemand.id being answered
+  demand:  bstr,          ; MatchDemand.id being answered — see the `demand` note below
   offer:   bstr,          ; content-address of the supplier's OFFER
-  fields:  MatchFields,   ; supplier's structured match inputs (location, quote, capabilities…)
+  fields:  MatchFields,   ; supplier's structured match inputs (location, quote, capabilities…); canonicalized per §3.4
   ? eta:   uint,          ; unix seconds estimate
 }                          ; carried as an OR-Set (SYNC §4.3): concurrent bids never lost, withdraw = observed-remove
 
 ; ---- MatchProposal : a matcher's ADVISORY recommendation (author = matcher) ----
 MatchProposal = {
-  demand:  bstr,
-  candidate: bstr,        ; the Candidate.id the matcher ranks first
-  ? ranked: [* bstr],     ; full ranked candidate list, for one-directional audit (§8, CONTRACT §6)
-  proof:   bstr,          ; signed statement the rule was applied to this candidate set → this order
-}                          ; NON-BINDING: a proposal is a recommendation, never the assignment (§3.1)
+  demand:  bstr,           ; MatchDemand.id — see the `demand` note below
+  candidate: bstr,         ; the Candidate.id the matcher ranks first
+  ? ranked: [* bstr],      ; full ranked candidate list, for one-directional audit (§8, CONTRACT §6)
+  candidate_set: bstr,     ; BLAKE3-256 over the sorted Candidate.id list the rule was evaluated over — what `proof` binds to
+  proof:   bstr,           ; detached COSE/Ed25519 signature over (demand, ranked, rule, candidate_set) — see §8 R-M-5
+}                           ; NON-BINDING: a proposal is a recommendation, never the assignment (§3.1)
 
 ; ---- Assignment : the binding pairing (author = demand issuer; single-writer) ----
 Assignment = {
-  demand:  bstr,
-  supplier: bstr .size 32, ; assigned principal
-  ? candidate: bstr,       ; the Candidate accepted
-  ? revoked: bool,         ; true unassigns (no-show / cancellation)
-}                          ; LWW register (SYNC §4.4): the sole authorized writer is the demand issuer (§3.1)
+  demand:  bstr,            ; MatchDemand.id — see the `demand` note below
+  supplier: bstr .size 32,  ; assigned principal
+  ? candidate: bstr,        ; the Candidate accepted
+  ? revoked: bool,          ; true unassigns (no-show / cancellation) — valid until MatchDemand.expires, §3.5
+}                            ; LWW register (SYNC §4.4): the sole authorized writer is the demand issuer (§3.1)
 
-MatchFields = { * tstr => any }   ; e.g. {"lat":…, "lon":…, "bid":…, "caps":["vehicle:bicycle"]}
+MatchFields = { * tstr => any }   ; e.g. {"lat":…, "lon":…, "bid":…, "caps":["vehicle:bicycle"]}; canonicalized per §3.4
 ```
+
+> `demand` is always a `MatchDemand.id`, in every object that carries it (`Candidate`,
+> `MatchProposal`, `Assignment`). The content-address of the OFFER a demand is seeking is a
+> separate field, `MatchDemand.offer` — symmetric with `Candidate.offer` — never named `demand`.
+> This is a naming fix over an earlier draft that overloaded `demand` for both; profiles MUST NOT
+> reintroduce the collision.
 
 ### 2.1 The three registered rules
 `nearest` minimises a distance metric over `fields.lat`/`fields.lon`; `highest-bid` maximises
 `fields.bid` (sealed-bid variants close before revealing); `best-fit` maximises the weighted sum
 `Σ weights[k]·fields[k]` over declared keys. All three are **total deterministic functions of the
-candidate set and the rule** — given the same inputs, every honest evaluator returns the same
-winner. That determinism is the entire reason a local order book equals a matcher (§6).
+candidate set and the rule** — given the same canonicalized inputs (§3.4), every honest evaluator
+returns the bit-identical winner. That determinism is the entire reason a local order book equals
+a matcher (§6). `highest-bid` is naturally integer/ordinal and needs no canonicalization; `nearest`
+and `best-fit` read real-valued fields and MUST be canonicalized per §3.4 or the claim does not
+hold — floating-point arithmetic is not bit-identical across implementations.
 
 ---
 
@@ -121,10 +132,12 @@ assumed away by a merge.
 ### 3.2 Match-fields only — the matcher reads structure, never content
 A matcher MUST operate **exclusively** over the declared `MatchFields` of demand and candidates.
 Everything else — the parties' messages, item detail, identity beyond the match — stays sealed and
-is **not** disclosed to the matcher. A matcher MUST declare its visibility class: `terminating`
-over the match-fields it necessarily reads, **or** `attested` (TEE) when it runs the rule without
-seeing them ([`CONTRACT § 3`](../coordinator/CONTRACT.md), §8 R-M-2). A matcher MUST NOT require
-more fields than the rule consumes.
+is **not** disclosed to the matcher. A matcher's visibility **class** is always `terminating` — it
+necessarily reads the match-fields to rank them ([`CONTRACT § 3.1`](../coordinator/CONTRACT.md)).
+A matcher MUST declare its **assurance level**: `declared` (default, honest-trust) or `attested`
+when it runs the rule inside a TEE that proves the terminated match-fields are confined to the
+enclave and not logged ([`CONTRACT § 3.3`](../coordinator/CONTRACT.md), §8 R-M-2). A matcher MUST
+NOT require more fields than the rule consumes.
 
 ### 3.3 Authorize, never classify
 A matcher optimises; it MUST NOT **classify**. It MUST NOT drop, hide, quarantine, or
@@ -136,16 +149,33 @@ the candidate is "wanted" ([`CONTRACT § 4`](../coordinator/CONTRACT.md)). "Want
 call, made on the issuer's device by *accepting* the assignment. A matcher that classifies is
 non-conformant, because classification centralises by construction (§8).
 
-### 3.4 Determinism and ties
-The rule MUST be a deterministic function of `(candidate-set, rule)`. Ties MUST be broken by the
-declared `tiebreak`, ending in a total order (RECOMMENDED: HLC then `id` bytes, as SYNC §2.2), so
-two independent evaluators — a matcher and a local order book — reach the **same** winner and a
-double-assignment is a *detectable equivocation* (§7), not an ambiguity.
+### 3.4 Determinism and ties — canonical arithmetic is mandatory
+The rule MUST be a deterministic function of `(candidate-set, rule)`. IEEE-754 floating-point
+arithmetic is **not** bit-identical across languages/runtimes, so any `MatchFields` value consumed
+by `nearest` or `best-fit` MUST be canonicalized to fixed-point integers before the rule runs:
+coordinates as integer microdegrees (`round(1e6 × decimal-degrees)`), bid/score/weight terms as
+integer minor units, `nearest`'s distance compared as squared-integer (no `sqrt`, no float), and
+`best-fit`'s weighted sum accumulated as integer (fixed-point) multiply-then-sum over `weights`
+keys taken in ascending key-byte order — no reordering. A `MatchDemand` or `Candidate` whose
+`fields` cannot be canonicalized to the rule's required integer encoding MUST be refused
+(`ERR_FIELD_SHAPE`, R-M-4). `highest-bid` is integer/ordinal by construction and needs no
+canonicalization. Ties MUST be broken by the declared `tiebreak`, ending in a total order
+(RECOMMENDED: HLC then `id` bytes, as SYNC §2.2). Under this canonicalization two independent
+evaluators — a matcher and a local order book — reach the **bit-identical** winner and a
+double-assignment is a *detectable equivocation* (§7), not an ambiguity. A profile or matcher that
+skips canonicalization MUST NOT claim cross-evaluator determinism: its result is
+locally-recomputable by re-running the same rule over the same candidate set, but not guaranteed
+bit-identical to another implementation's.
 
-### 3.5 Expiry is mandatory
-`MatchDemand.expires` is REQUIRED and has no default. An order book of demands that never expire is
-indistinguishable from stale demands and poisons the pool (wrap §3.3). After `expires`, no new
-`Candidate` or `Assignment` for that demand is valid.
+### 3.5 Bidding-close and expiry are distinct gates
+`MatchDemand.expires` is REQUIRED and has no default; it bounds the demand's life — after
+`expires`, no `Assignment` for that demand (including a `revoked = true` unassign) is valid.
+`closes` (OPTIONAL, defaults to `expires`) bounds bidding — after `closes`, no new `Candidate` for
+that demand is valid. An order book whose bidding window never closes is indistinguishable from
+stale demands and poisons the pool (wrap §3.3). Separating the two gates keeps a late no-show,
+cancellation, or reassignment reachable: between `closes` and `expires` the issuer MAY still
+author, revoke, or reassign an `Assignment` among the `Candidate`s already on record, without
+reopening the pool to new bids.
 
 ### 3.6 No funds, no token
 MATCH carries settlement value **never**. A bid amount in `fields.bid` is a *term*, not a payment;
@@ -163,7 +193,7 @@ MATCH is a joint, not a silo. Its neighbours ([`DIRECTION § 2`](../DIRECTION.md
 
 | Primitive | Relationship to MATCH |
 |---|---|
-| **OFFER** | Demand and supply are both **OFFER** objects (content-addressed signed listings). MATCH *consumes* them and adds no listing model of its own; `MatchDemand.demand` and `Candidate.offer` are OFFER content-addresses. |
+| **OFFER** | Demand and supply are both **OFFER** objects (content-addressed signed listings). MATCH *consumes* them and adds no listing model of its own; `MatchDemand.offer` and `Candidate.offer` are OFFER content-addresses. |
 | **RESERVE** | When the matched supply is a **bookable** single-owner resource, the hold is a RESERVE (bounded-counter, single-writer), not a MATCH — a booking needs no matcher at all. MATCH assigns; RESERVE holds capacity. |
 | **REPUTATION** | A rule MAY read a reputation value as a `fields` input (OpenRank-computed or locally measured). MATCH consumes a score; it never publishes one, and no MATCH object carries a network-wide number ([`DIRECTION § 5`](../DIRECTION.md)). |
 | **ESCROW / PAY** | Settlement follows assignment and is out of MATCH entirely. The `Assignment` is the trigger, never the transfer. |
@@ -179,9 +209,10 @@ bind** — no proven external order-book/auction standard exists — so MATCH's 
 original normative writing (one of the three things KOTVA owns: substrate, coordinator contract,
 thin primitives/profiles). What MATCH *does* bind at its edges:
 
-- **Verifiable coordination → TEEs** (`bindings` TEE row). A matcher that runs the rule **blind**
-  binds to an SGX/SEV/TrustZone TEE for the `attested` visibility level (§3.2). Disclosed, not
-  trustless: it trades operator-trust for chip-vendor-trust.
+- **Verifiable coordination → TEEs** (`bindings` TEE row). A matcher raises its **assurance level**
+  from `declared` to `attested` by binding to an SGX/SEV/TrustZone TEE that proves the terminated
+  match-fields never leave the enclave (§3.2). Disclosed, not trustless: it trades operator-trust
+  for chip-vendor-trust.
 - **Reputation → OpenRank** (`bindings` reputation row) as a rule input, never recomputed here.
 - **Identity / auth → the substrate** ([`substrate/IDENTITY.md`](../substrate/IDENTITY.md)): issuer
   and supplier are substrate `IK`s; the single-writer check is a cert-chain check, not a new scheme.
@@ -201,14 +232,14 @@ The engine is identical at every scale; only the **candidate reach and trust anc
 | | Mesh / small (no coordinator) | Global (swappable matcher) |
 |---|---|---|
 | Candidate pool | whoever is in the local following-graph / mesh range | a global matcher-as-a-service pool |
-| Who applies the rule | any node — a **dumb local order book** running the same deterministic rule | the matcher, TEE-blind (`attested`) preferred |
+| Who applies the rule | any node — a **dumb local order book** running the same deterministic rule | the matcher, `terminating` at `attested` assurance preferred |
 | Personhood / Sybil floor | web-of-trust (you know these suppliers) | a personhood attester the issuer chooses |
 | Who signs the assignment | the issuer, always — *unchanged across scales* |
 
-Because the rule (§2.1) is a deterministic function of its inputs, the **local order book and the
-global matcher compute the same winner over the same candidate set**. The matcher adds *candidates*
-the issuer could not otherwise reach; it never adds *authority*. Removing it shrinks the pool, never
-breaks the function — the coordinator-optional property, held.
+Because the rule (§2.1) is a deterministic function of its canonicalized inputs (§3.4), the
+**local order book and the global matcher compute the same winner over the same candidate set**.
+The matcher adds *candidates* the issuer could not otherwise reach; it never adds *authority*.
+Removing it shrinks the pool, never breaks the function — the coordinator-optional property, held.
 
 ---
 
@@ -245,19 +276,24 @@ Inheriting [`THREAT-MODEL.md`](../THREAT-MODEL.md); a profile MAY add, MUST NOT 
   assignment (§3.1). Every object is self-authenticating and domain-separated, so a proposal can
   never verify as an assignment.
 - **R-M-2 — Visibility is declared; match-fields only (SEC-3, SEC-4).** A matcher reads only
-  `MatchFields`, holds no key to the parties' sealed payloads, and MUST declare exactly one
-  visibility class — `terminating` (sees fields) or `attested` (TEE-blind) — surfaced to users. No
-  silent downgrade into `terminating` where `attested` was advertised.
+  `MatchFields` and holds no key to the parties' sealed payloads outside them. Its visibility
+  **class** is always `terminating` (it reads the fields to rank them); it MUST declare exactly
+  one **assurance level** — `declared` (default) or `attested` (TEE, proves the terminated
+  plaintext never leaves the enclave) — surfaced to users. No silent downgrade into `declared`
+  where `attested` was advertised.
 - **R-M-3 — Authorize, never classify (SEC-6).** Eligibility is identity+rate+well-formedness; a
   matcher MUST NOT content-drop or content-rank an eligible candidate, and MUST NOT be
   load-bearing — removing it degrades reach, never function.
 - **R-M-4 — Fail-closed and replay-inert (SEC-1, SEC-8).** A candidate that fails signature,
   expiry, rate, or field-shape validation is **refused**, never guessed. Assignments are immutable
   content-addressed LWW ops, so re-delivery is an idempotent join — replay changes nothing.
-- **R-M-5 — One-directional audit (SEC-6, `CONTRACT § 6`).** A matcher SHOULD emit its `ranked`
-  list and a signed `proof` that the declared rule produced its recommendation. This lets a client
-  **confirm** a claimed ranking was real; it cannot **disconfirm** a candidate the matcher silently
-  omitted. Disclosed, not hidden.
+- **R-M-5 — One-directional audit (SEC-6, `CONTRACT § 6`).** A matcher SHOULD emit `ranked` and a
+  `proof`: a detached COSE/Ed25519 signature, by the matcher, over the tuple (`demand`, ordered
+  `ranked` candidate-id list, `rule` bytes, `candidate_set` digest — §2). `candidate_set` names the
+  exact evaluated Candidate-id set, so a verifier can re-run the declared deterministic rule (§3.4)
+  over the named candidates and confirm the order. This lets a client **confirm** a claimed
+  ranking was real over the candidates named in `candidate_set`; it cannot **disconfirm** a
+  candidate the matcher silently left out of that set. Disclosed, not hidden.
 - **R-M-6 — No token, no funds (`DIRECTION § 5`).** `fields.bid` is a term; MATCH moves no value
   and mints nothing; a metering matcher prices in an existing asset with signed receipts.
 
@@ -272,10 +308,11 @@ Per house rule, the boundaries MATCH does **not** cross:
   toward one operator is real even though the contract keeps it swappable and self-hostable. The
   engine stays sovereign; the *market* still tends to concentrate. Disclosed
   ([`docs/research/PRIMITIVES.md`](../docs/research/PRIMITIVES.md), MATCH ceiling).
-- **A matcher is not blind unless it is a TEE.** By definition it reads the match-fields to rank
-  them, so the default is `terminating` over those fields. `attested` blindness exists, but trades
-  operator-trust for **chip-vendor-trust** with a side-channel history — never sold as trustless
-  ([`bindings` TEE row](../bindings/README.md), `CONTRACT § 3.4`).
+- **A matcher's visibility class is always `terminating`.** By definition it reads the match-fields
+  to rank them; there is no blind matcher class. `attested` raises the **assurance level** that the
+  terminated plaintext stays confined to a TEE, but trades operator-trust for **chip-vendor-trust**
+  with a side-channel history — never sold as trustless ([`bindings` TEE row](../bindings/README.md),
+  `CONTRACT § 3.4`).
 - **Rule-fairness is policy, audited one-directionally.** The protocol enforces that the *binding*
   assignment is single-writer and that a matcher *declares* its rule; it cannot prove a matcher
   actually ran the declared rule (only `attested` execution can). A biased ranking is detectable if

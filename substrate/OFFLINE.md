@@ -98,11 +98,19 @@ accepts custody, not when the recipient is online (§11).
   sealed and signed, a carrier is `blind`/`blind-routing` (§CONTRACT 3.1) and is **trusted for nothing**
   — it can neither read nor forge. An implementation MUST NOT require the recipient to be simultaneously
   online (the anti-pattern §ROLES's mailbox exists to remove).
-- **R-MOTE-2 — Cold-contact proofs are offline-verifiable.** The `challenge` proof gating a cold MOTE
-  (§2.2b, §9 — PoW, postage stamp, ARC token, vouch) MUST be verifiable by the recipient **without a
-  coordinator** (its whole design already places it in the envelope, checkable before decryption). This
-  is what lets anti-abuse survive an internet shutdown: authorization is local, so the coordinator
-  contract's *authorize-never-classify* rule (§CONTRACT 4) holds even with every coordinator unreachable.
+- **R-MOTE-2 — Self-contained cold-contact proofs are offline-verifiable; issuer-redemption proofs are
+  not.** Of the `challenge` proofs gating a cold MOTE (§2.2b, §9 — PoW, postage stamp, ARC token, vouch),
+  only the **self-contained** ones — PoW and vouch — MUST be verifiable by the recipient **without a
+  coordinator** (checkable from the envelope alone, before decryption). This is what lets anti-abuse
+  survive an internet shutdown for those two: authorization is local, so the coordinator contract's
+  *authorize-never-classify* rule (§CONTRACT 4) holds for PoW/vouch even with every coordinator
+  unreachable. **Postage stamp** is the opposite case: its issuer signature verifies offline, but its
+  single-use/unspent check needs the issuer's redemption endpoint or signed spent-list (§9.5.1,
+  normative) — offline, a recipient MUST treat a stamp as `deferred`/`blocked` for admission, MUST NOT
+  accept it on signature validity alone, and MUST fall back to the PoW/vouch tier, matching §9.5.1's "no
+  offline bearer acceptance of real money." **ARC token**'s per-recipient rate budget is locally
+  enforceable offline, but its issuer-level trust and revocation are not, so an offline recipient honors
+  only the local budget check, never a claim of un-revoked issuer standing.
 - **`deferred`/`blocked`** for reach that needs infrastructure: an outbound MOTE to a peer whose
   `LocationRecord` has expired (§3.1, TTL staleness) is `deferred` on the mailbox/relay; a **legacy-gateway
   egress** (SMTP, the one scarce-resource exception, §CONTRACT 2.3) is `blocked` offline.
@@ -183,7 +191,7 @@ different price:
 
 | Strategy | Grade | Double-spend is… | Price paid | KOTVA mapping |
 |---|---|---|---|---|
-| **A. Hardware ecash** | `full` | **prevented** — value lives in tamper-resistant hardware that cannot be spent twice | trust moves to a chip vendor; SE/TEE compromise breaks the *whole* scheme | a **binding** to an external offline-CBDC/SE ecash system; visibility `structural` (SE) or `attested` (TEE) |
+| **A. Hardware ecash** | `full` for the transfer itself; load/redeem/reconcile are `blocked` offline | **prevented** at the moment of transfer — value lives in tamper-resistant hardware that cannot be spent twice offline | trust moves to a chip vendor **and** an issuer: value must be loaded and redeemed with the issuer online, and real schemes cap offline spend/holding and require periodic online reconciliation to reset double-spend counters | a **binding** to an external offline-CBDC/SE ecash system, with an issuer in the load/redeem path; visibility `structural` (SE) or `attested` (TEE) |
 | **B. IOU-reconcile** | `deferred` | **not prevented; bounded** — a signed obligation that may over-commit | becomes uncollateralized **credit**, capped by counterparty trust/reputation | a `deferred` obligation object that nets and settles on reconnect |
 | **C. Settle-on-reconnect** | `deferred` → `blocked` settlement | **avoided** — no value moves offline at all | the trade's *object* completes but its *money* waits for the rail | the substrate default: a `PaymentAttestation` (tract §9.4.1) is simply `deferred` |
 
@@ -216,10 +224,15 @@ different price:
 - **Uncollateralized credit stays unsolved.** Strategy **B** *is* credit, and credit is one of the
   root-blocked services ([`docs/research § 1`](../docs/research/README.md)); offline capability does not
   change that, it just names where the loss lands.
-- **Hardware trust is a real dependency, not its absence.** Strategy **A** trades operator-trust for
-  chip-vendor-trust and inherits the side-channel history disclosed for every TEE binding
-  ([`bindings`](../bindings/README.md), `attested` row). It is not trustless offline cash; it is
-  *hardware-trusted* offline cash.
+- **Hardware trust is a real dependency, and so is the issuer.** Strategy **A** trades operator-trust
+  for chip-vendor-trust and inherits the side-channel history disclosed for every TEE binding
+  ([`bindings`](../bindings/README.md), `attested` row) — and it depends on an **issuer** to load value
+  into the hardware and to honor redemption/deposit, the same coordinator-class dependency Strategy
+  **C**'s settlement leg carries (§5.1). The real SE/offline-CBDC constructions §9 cites additionally
+  impose **offline spend/holding caps** and require **periodic online reconciliation** to reset
+  double-spend counters, so offline behaviour is more constrained than online, not identical to it. It
+  is not trustless, coordinator-free offline cash; it is hardware-trusted, issuer-dependent offline
+  cash, `full` only for the transfer moment itself (§5.1).
 - **Physical custody is still not trustless** (tract §9.6): none of the three strategies changes that the
   goods leg's "did it arrive?" reduces to confirm-plus-dispute (the physical-event oracle ceiling,
   [`DIRECTION § 8`](../DIRECTION.md)), which is *more* exposed offline because the oracle is unreachable.
@@ -255,7 +268,7 @@ that action `blocked` and say why, rather than pretend it degrades.
 | OFF-2 | never silently degrades grade and never fabricates a `deferred` completion | R-GRADE-1/2 |
 | OFF-3 | persists every rollback-defended counter before emitting the object that bears it | R-ID-1 |
 | OFF-4 | queues outbound MOTEs store-and-forward; carriers stay blind and are trusted for nothing | R-MOTE-1 |
-| OFF-5 | verifies cold-contact proofs offline (no coordinator in the authorization path) | R-MOTE-2 |
+| OFF-5 | verifies self-contained cold-contact proofs (PoW, vouch) offline with no coordinator in the path; treats issuer-redemption proofs (postage, ARC issuer trust/revocation) as `deferred`/`blocked` offline and never accepts them on faith | R-MOTE-2 |
 | OFF-6 | enforces cross-replica invariants by single-writer authority or detectable conflict, never by merge | R-SYNC-1 |
 | OFF-7 | does not depend on wake for correctness | R-ROLE-1 |
 | OFF-8 | reconciles idempotently and surfaces equivocation/over-commitment for resolution | R-REC-1/2 |

@@ -31,7 +31,7 @@ never change ([DIRECTION §9](../DIRECTION.md), "future-proof by seams").
 | **Distributed SFU (scale calls)** | LiveKit (Pion) / Jitsi Videobridge + Octo / mediasoup | Multi-provider, cascaded media relay so the host isn't the size limit. | Mature open-source. Bound, not built. | **adopt** |
 | **Mesh reachability** | libp2p — Circuit Relay v2, DCUtR, Kademlia, Noise, QUIC | Key-addressed reachability behind CGNAT; content-blind relay. | Mature; DMTAP §4 profiles it directly. | **adopt** |
 | **Messaging crypto** | MLS (RFC 9420) | Group ratchet for 1:1, chat, files, and (via SFrame) media keys. | Standards-track, mature. | **adopt** |
-| **Verifiable coordination** | TEEs (Intel SGX / AMD SEV / ARM) | Lets a coordinator hold a global view *without* seeing plaintext or being able to cheat — the `attested` visibility level. | **New trust dependency** — trades operator-trust for chip-vendor-trust; side-channel history. Disclosed, not trustless. | **adopt (disclosed)** |
+| **Verifiable coordination** | TEEs (Intel SGX / AMD SEV / ARM) | Lets a coordinator hold a global view *without* seeing plaintext or being able to cheat — the `attested` assurance level. | **New trust dependency** — trades operator-trust for chip-vendor-trust; side-channel history. Disclosed, not trustless. | **adopt (disclosed)** |
 
 ---
 

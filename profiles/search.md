@@ -133,16 +133,24 @@ outside the substrate object model. Its confidentiality is a declared content-vi
   rank and filter *its own* view; it MUST NOT drop, quarantine, or annotate on a content basis as if
   removing an object from the network ([CONTRACT §4](../coordinator/CONTRACT.md)). Result moderation
   is an **opt-in labeler** the reader chooses (§7), not a filter the indexer imposes on everyone.
-- **SRCH-7 — completeness is a claim; verify it where the architecture lets you.** An indexer SHOULD
-  run `attested` (TEE, DeSearch-style) so result integrity and query privacy are verifiable. A
-  `declared`-level indexer's completeness and neutrality are **unverifiable**, and a client MUST
-  surface that: it MUST NOT present a `declared` index's result set as demonstrably complete or
-  unfiltered ([CONTRACT §3.4](../coordinator/CONTRACT.md)).
+- **SRCH-7 — network-completeness is unverifiable at every level; corpus-completeness is a
+  narrower, checkable claim.** An indexer SHOULD run `attested` (TEE, DeSearch-style) so result
+  integrity, query privacy, and completeness **over its own reachable corpus** are verifiable. No
+  assurance level — `attested` included — can prove that corpus is the whole network: no global
+  corpus exists to check against, so network-completeness is unfalsifiable regardless of level
+  (§8). A client MUST NOT present any index's result set as demonstrably complete against the
+  network or "everything"; it MAY present an `attested` index's result set as complete against its
+  own reachable corpus. A `declared`-level indexer's corpus-completeness and neutrality are
+  unverifiable even in that narrower sense, and a client MUST surface that: it MUST NOT present a
+  `declared` index's result set as demonstrably complete or unfiltered
+  ([CONTRACT §3.4](../coordinator/CONTRACT.md)).
 - **SRCH-8 — no new bytes.** SEARCH MUST NOT define a new MOTE kind or reassign an existing wire key.
   It reads §22/§25 objects; any index checkpoint or result attestation it emits MUST be a coordinator
   descriptor or a signed public object, rebuildable and non-authoritative (SRCH-2).
-- **SRCH-9 — query visibility declared.** An indexer MUST declare, in its descriptor, whether the
-  operator can read queries, and at what assurance level (§8). A client MUST surface it. Advertising
+- **SRCH-9 — query visibility declared.** An indexer MUST declare, in its descriptor, its
+  query-channel visibility **class** — `terminating` if the operator can read queries in the
+  clear, `blind` if they are shielded — and its **assurance level** (§8;
+  [CONTRACT §3.3](../coordinator/CONTRACT.md)). A client MUST surface both. Advertising
   query-blindness while operating query-readable is non-conformant misrepresentation
   ([CONTRACT §2.4/§3](../coordinator/CONTRACT.md)).
 - **SRCH-10 — cross-profile, no per-vertical registry.** Search MUST span every profile by keying on
@@ -189,7 +197,7 @@ anti-rollback, walks the `prev` chain, and re-derives its local index — idempo
 order-independent. The index is derived state (SRCH-2), so a stale index is never a correctness
 failure, only a staleness one; it rebuilds from the feeds with no coordinator refereeing. Feed
 **equivocation** (two heads at one `seq`) surfaces as transferable `ERR_PUB_FEED_CHAIN_BROKEN`
-evidence, never swallowed by a clean merge (R-SYNC-1). Because search only *reads* and *derives*, it
+evidence, never swallowed by a clean merge (R-REC-2). Because search only *reads* and *derives*, it
 has no cross-replica invariant to violate offline — the hard offline cases (holds, money) belong to
 RESERVE and [OFFLINE §5](../substrate/OFFLINE.md), not here.
 
@@ -225,7 +233,7 @@ payload confidentiality for the indexer to breach. The declared visibility there
 | Aspect | What the indexer can see / do | Declared as |
 |---|---|---|
 | **Indexed corpus** | Public objects, by design — reading them is not a trust breach. | `public` (no secret exists) |
-| **Query channel** | *What you search for.* A `declared` indexer reads queries in the clear; an `attested` (TEE, DeSearch) indexer shields them from the operator. | `blind`/`attested` (TEE) or `declared` — MUST be surfaced (SRCH-9) |
+| **Query channel** | *What you search for.* At class `terminating`, the operator reads queries in the clear (`declared` assurance — a promise, not proven). At class `blind`, an `attested` (TEE, DeSearch) indexer shields queries from the operator (hardware-trust, provable). | class `terminating` (`declared`) or class `blind` (`attested`) — MUST be surfaced (SRCH-9) |
 | **Result integrity** | *Whether the result set was silently filtered / re-ranked.* Verifiable only at `attested`; a promise at `declared`. | assurance level per [CONTRACT §3.3](../coordinator/CONTRACT.md) |
 
 A client MUST NOT present a `declared`-level query-blindness or completeness claim as if it were

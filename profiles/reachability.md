@@ -29,9 +29,12 @@ construction ([DIRECTION §0/§4](../DIRECTION.md)).
 
 REACH is three thin things over existing substrate:
 
-1. a **relay reverse-tunnel** — a box→adapter persistent connection the adapter multiplexes inbound
-   client streams onto (a profile of the Circuit-relay role, [ROLES §4](../substrate/ROLES.md), for
-   arbitrary TLS streams rather than node↔node mesh traffic);
+1. a **reverse-tunnel stream-mux** — a box→adapter persistent, libp2p-secured (Noise + yamux)
+   connection the adapter SNI-demuxes and multiplexes arbitrary inbound client streams onto: the
+   ngrok/frp-shaped reachability ingress of [§7.15.2](../07-gateway.md), generalized and inverted
+   (the box terminates, not the adapter) — explicitly **not** the mesh's native Circuit Relay v2,
+   which relays between two libp2p *peers* and cannot carry a non-libp2p client
+   ([ROLES §4](../substrate/ROLES.md) conflation warning);
 2. **vanity-alias rules** for the public subdomain namespace ([§7.10.5](../07-gateway.md) generalized
    from mail local-parts to DNS labels); and
 3. the **`reachability-adapter`** coordinator that ties them together and is fenced by
@@ -48,19 +51,24 @@ REACH is composition, not new machinery. It reuses:
 
 | Composed with | Role in REACH | Home |
 |---|---|---|
-| **`reachability-adapter`** coordinator | provides the public name + the ingress; `blind-routing`/structural (SNI-passthrough). The one load-bearing new binding, fully fenced by the contract. | [CONTRACT §5](../coordinator/CONTRACT.md) |
-| **Circuit relay** role | the reverse tunnel is a profile of content-blind ciphertext carry — key-addressed, blind, permissionless. REACH generalizes it from mesh node↔node to *arbitrary client→box* streams. | [ROLES §4](../substrate/ROLES.md) |
+| **`reachability-adapter`** coordinator | provides the public name + the ingress; `blind-routing` (SNI-passthrough), assurance `structural` for an own-domain name or `declared` for a bare vanity (REACH-1a). The one load-bearing new binding, fully fenced by the contract. | [CONTRACT §5](../coordinator/CONTRACT.md) |
+| **Reachability ingress** pattern | the box↔adapter reverse tunnel + adapter-side SNI-demux is [§7.15.2](../07-gateway.md)'s legacy-client reachability ingress generalized from "carry one legacy mail client to a mailbox" to "carry any TLS client to any box service," and inverted — the box terminates TLS, not the adapter. **Not** the mesh's native Circuit relay role (ROLES §4 explicitly forbids conflating a legacy/non-mesh ingress with the native peer↔peer relay); the box↔adapter leg is secured as an ordinary libp2p transport (Noise + yamux), never a Circuit Relay v2 hop/stop circuit. | [§7.15.2](../07-gateway.md), [ROLES §4](../substrate/ROLES.md) |
 | **Announce / Resolve** role | the box publishes a `LocationRecord` whose reachability hints include its adapter-tunnel address; monotonic-`seq` anti-rollback inherited. | [ROLES §2](../substrate/ROLES.md) |
 | **Signaling** role | the reachability *ladder* — direct (rung 1) → hole-punch (rung 2) → adapter tunnel (rung 3). REACH is the rung-3 fallback for clients that cannot mesh. | [ROLES §3](../substrate/ROLES.md) |
 | **RESERVE** primitive | subdomain allocation is a **single-writer bounded namespace**: the adapter is the only writer of its own DNS zone, so a name collision is a single-writer decision, never a race. | [primitives/RESERVE.md](../primitives/RESERVE.md) |
 | **ATTEST** (optional) | an adapter MAY require an accountability attestation (a paid registration, a personhood claim) before granting a vanity name — an authorization input, never a content gate. | [primitives/ATTEST.md](../primitives/ATTEST.md) |
 
 Bindings adopted rather than reinvented ([bindings/README.md](../bindings/README.md),
-[DIRECTION §3](../DIRECTION.md)): **libp2p Circuit Relay v2** as the stream carrier; **TLS SNI**
-(RFC 6066) for content-blind stream routing; **ACME** (RFC 8555, DNS-01) so the *box* obtains the
-certificate for its public name and the adapter never holds the key; **DMTAP-Auth**
-([§13](../13-identity-auth.md)) for mutual key-authentication of the box↔adapter tunnel; DNS wildcard
-delegation for the adapter's zone. REACH specifies **no** new cryptography and **no** protocol token.
+[DIRECTION §3](../DIRECTION.md)): a **libp2p-secured stream** (Noise transport security +
+yamux/mplex stream-mux) for the box↔adapter reverse tunnel, on which the adapter runs its own
+SNI-demux to plain TLS/TCP clients — **not** libp2p Circuit Relay v2, which relays between two
+libp2p *peers* (HOP/STOP) and cannot carry a non-libp2p client (ROLES §4); **TLS SNI** (RFC 6066)
+for content-blind stream routing; **ACME TLS-ALPN-01** (RFC 8737) so the *box* obtains its
+certificate over the same SNI-passthrough path, with no zone write and no adapter key (REACH-2a);
+**ACME DNS-01** (RFC 8555) only where a wildcard is needed, through the box↔adapter challenge seam
+REACH-2a defines; **DMTAP-Auth** ([§13](../13-identity-auth.md)) for mutual key-authentication of
+the box↔adapter tunnel; DNS wildcard delegation for the adapter's zone. REACH specifies **no** new
+cryptography and **no** protocol token.
 
 ---
 
@@ -101,10 +109,39 @@ and cannot be squatted.
   ([§7.15.2](../07-gateway.md) inverted — the box terminates, not the gateway). A `terminating`
   adapter (a TLS-terminating reverse proxy that *does* see plaintext) MUST declare `terminating` and
   MUST NOT advertise blind — **no silent downgrade** ([CONTRACT §3.2](../coordinator/CONTRACT.md)).
+- **REACH-1a — cert ownership determines assurance level (normative).** The `structural` assurance
+  level ([CONTRACT §3.3](../coordinator/CONTRACT.md)) for `blind-routing` holds only when the box's
+  public name resolves under a zone the adapter does not control — an **own-domain** name
+  ([§7.10.6](../07-gateway.md) tier 1), where a CAA record (RFC 8659) can bar the adapter from
+  ever completing domain-control validation. For a **bare adapter-zone vanity** (REACH-3) the
+  adapter is the zone's sole writer (REACH-7) and can complete DNS-01, HTTP-01, or TLS-ALPN-01
+  validation for that name itself at any time, terminate TLS, and re-encrypt to the box — nothing
+  in this profile structurally prevents it. An adapter serving a bare vanity name MUST declare
+  `blind-routing` at `declared`, not `structural`, and this MUST be surfaced to the user alongside
+  the REACH-4 non-portability label (§7, §8). A KOTVA-aware client SHOULD pin the box's TLS
+  certificate to its `IK` via a DANE/TLSA-style hash carried in the signed `LocationRecord`
+  ([ROLES §2](../substrate/ROLES.md)), so a substituted adapter-issued certificate is detectable
+  even for a vanity name, and a box SHOULD monitor Certificate Transparency logs for its served
+  names to detect covert issuance. These detect a `declared`-level breach; they do not make it
+  `structural`.
 - **REACH-2 — the tunnel is key-authenticated; the adapter authorizes, never classifies.** The
   box↔adapter tunnel MUST be mutually authenticated to the box `IK` (DMTAP-Auth, [§13](../13-identity-auth.md)).
   The adapter gates on **identity + rate only** ([CONTRACT §4](../coordinator/CONTRACT.md)); it MUST
   NOT inspect, score, re-rank, drop, or annotate tunneled content. Reachability is not moderation.
+- **REACH-2a — certificate issuance: TLS-ALPN-01 over the passthrough path (normative).** The box
+  MUST obtain its TLS certificate using **ACME TLS-ALPN-01** (RFC 8737) as the default: the CA
+  dials the public name on 443 with `SNI` = the name and ALPN `acme-tls/1`; the adapter forwards
+  this handshake over the same SNI-passthrough path as ordinary traffic (REACH-1) and the box
+  answers it directly. This requires **no DNS write** in the adapter's zone, so it never makes the
+  adapter a co-writer of REACH-7's single-writer namespace, and keeps the adapter blind through
+  issuance as well as traffic. A box that needs a **wildcard** certificate for labels under its
+  vanity (e.g. `*.alice.reach.example`, for per-service names like `svc.alice.reach.example`) MUST
+  use **ACME DNS-01** instead — CA/Browser Forum policy forbids TLS-ALPN-01 for wildcards — and the
+  adapter MUST expose a narrowly-scoped `_acme-challenge` provisioning API (or a `CNAME
+  _acme-challenge` delegation to a zone the box controls) so the box can place its own challenge
+  value without otherwise writing the zone; REACH-7's "sole writer" remains true of the zone's
+  physical writes, with the adapter now acting as the box's authorized agent for one named record,
+  not a silent co-issuer.
 - **REACH-3 — subdomain naming is [§7.10.5](../07-gateway.md) generalized to DNS labels.** A **vanity
   subdomain** is a user-chosen label in the adapter's own zone (`alice.reach.example`). It is the
   only REACH name with ownership semantics and is fenced identically: it MUST be **dot-free** (a
@@ -122,11 +159,19 @@ and cannot be squatted.
   explicit allow-list of local service(s)/port(s) it exposes; anything not listed is refused. The
   **adapter never chooses the backend** — it forwards onto a tunnel the box established for a declared
   service. A tunnel MUST NOT be a general TCP forwarder onto the box's LAN.
-- **REACH-6 — anti-SSRF (normative, both ends).** The **adapter** MUST forward only onto an
-  established reverse tunnel keyed to a registered box; it MUST NOT dial an arbitrary address on a
-  client's behalf, and an inbound request for an unregistered/expired name MUST **fail closed**
-  (`ERR_GATEWAY_ALIAS_UNMAPPED`-class, [§21](../21-errors-iana.md)), never a guess or a fallback that
-  could intercept another name (the [§7.10.5a](../07-gateway.md) no-fallback rule). The **box** MUST
+- **REACH-6 — anti-SSRF and fail-closed unmapping (normative, both ends).** The **adapter** MUST
+  forward only onto an established reverse tunnel keyed to a registered box; it MUST NOT dial an
+  arbitrary address on a client's behalf; and it MUST NOT guess or fall back to a name that could
+  intercept another (the [§7.10.5a](../07-gateway.md) no-fallback rule). A REACH adapter holds no
+  certificate for any name it routes blind (REACH-1), so it can complete no TLS handshake and can
+  emit no application-layer (HTTP/SMTP) error or even a TLS alert for a name it will not serve. Its
+  **only** fail-closed action — for a ClientHello naming an unregistered/expired name, carrying no
+  usable SNI (empty, or an unmapped ECH cover name, §7), or requesting a non-allow-listed
+  service/port (REACH-5) — is to **reset or close the TCP connection**: FAIL_CLOSED_BLOCK
+  ([§21](../21-errors-iana.md)) realized at the transport layer. This is never
+  `ERR_GATEWAY_ALIAS_UNMAPPED` (`0x0605`), whose `550 5.1.1` wire action is specific to the inbound
+  legacy-mail alias path ([§7.10.2](../07-gateway.md)) and does not apply to a TLS-transport
+  failure with no application protocol in play. The **box** MUST
   refuse to route a tunneled request to loopback, link-local (`169.254.0.0/16`, incl. the
   `169.254.169.254` cloud-metadata endpoint), or private ([RFC 1918](../15-references.md)) addresses
   unless the operator explicitly allow-lists them (default-deny).
@@ -149,8 +194,11 @@ and cannot be squatted.
   and confined to this one kind.
 - **REACH-10 — declared visibility + assurance, surfaced to users.** An adapter MUST declare exactly
   one visibility class at one assurance level ([CONTRACT §3](../coordinator/CONTRACT.md)) and clients
-  MUST surface it. The RECOMMENDED profile is **`blind-routing` at `structural`** (SNI-passthrough,
-  holds no cert key). `terminating` is opt-in + disclosed only (REACH-1).
+  MUST surface it. The RECOMMENDED profile is **`blind-routing`** (SNI-passthrough, holds no cert
+  key); its assurance level MUST be declared **`structural`** for an own-domain name and MUST be
+  declared **`declared`** for a bare adapter-zone vanity (REACH-1a) — the adapter is the vanity
+  zone's sole writer and can mint its own certificate for that name, so nothing structurally
+  excludes it there. `terminating` is opt-in + disclosed only (REACH-1).
 - **REACH-11 — metered receipts, no token.** If an adapter meters bandwidth/connections it MUST issue
   **signed usage receipts** to the payer ([CONTRACT §6](../coordinator/CONTRACT.md)). Prices, quotas,
   and rate limits are operator policy; settlement is an existing stablecoin or fiat; REACH mints **no
@@ -207,34 +255,66 @@ exists.
 
 Inheriting [THREAT-MODEL.md](../THREAT-MODEL.md) (SEC-1…SEC-9); the REACH-specific posture:
 
-- **Declared visibility: `blind-routing` at `structural`** (SEC-4, [CONTRACT §3](../coordinator/CONTRACT.md)).
-  The adapter sees the SNI hostname, connection addresses, byte sizes, and timing; it does **not** see
-  payload, because the box holds the TLS key (REACH-1). Blindness here is *structural* — provable from
-  the key placement — not a `declared` promise.
-- **SEC-1 fail-closed.** An unregistered/expired name, a failed tunnel auth, or a request to a
-  non-allow-listed service/port fails closed (REACH-5, REACH-6), never a guess or best-effort.
+- **Declared visibility: `blind-routing`, assurance scoped by cert ownership** (SEC-4,
+  [CONTRACT §3](../coordinator/CONTRACT.md)). The adapter sees the SNI hostname, connection
+  addresses, byte sizes, and timing; it does **not** see payload, because the box holds the TLS key
+  (REACH-1). For an **own-domain** name the box controls the zone (a CAA record can bar the adapter
+  from issuing), so blindness is *structural* — provable from key placement. For a **bare
+  adapter-zone vanity** the adapter is the zone's sole writer (REACH-7) and can mint its own
+  certificate for the name, so blindness there is `declared`, not `structural` (REACH-1a) — a real,
+  disclosed trust residual (§8), mitigated by `LocationRecord` TLS-key pinning for KOTVA-aware
+  clients and CT monitoring, never structurally excluded for a plain client's connection.
+- **Cleartext SNI is a correctness dependency, not only a privacy limit.** Blind routing demuxes on
+  the TLS ClientHello's SNI (REACH-1); an ECH-encrypted inner SNI gives a `blind-routing` adapter no
+  name to route on, so a blind adapter simply **cannot serve** an ECH client — only a `terminating`
+  adapter holding the ECH key could, a disclosed downgrade (REACH-1). An adapter serving a
+  `blind-routing` name MUST NOT publish an `ECHConfig` for it. A ClientHello with no usable SNI
+  (empty, or an unmapped ECH cover name) fails closed per REACH-6: TCP RST/close, no fallback.
+- **SEC-1 fail-closed.** An unregistered/expired name, no usable SNI (above), a failed tunnel auth,
+  or a request to a non-allow-listed service/port fails closed (REACH-5, REACH-6), never a guess or
+  best-effort.
 - **SEC-2 intrinsic authenticity.** The box authenticates to its `IK` (DMTAP-Auth); the client
-  authenticates the *service* by its TLS certificate, which the box — not the adapter — presents. A
-  `blind-routing` adapter cannot man-in-the-middle a service whose key it does not hold.
+  authenticates the *service* by its TLS certificate, which the box — not the adapter — presents.
+  For an **own-domain** name this is intrinsic: the adapter cannot mint a competing cert for a zone
+  it does not write. For a **bare adapter-zone vanity**, the adapter *is* the zone's writer and can
+  mint its own certificate and MITM a plain client that does not pin the box's key (REACH-1a) — a
+  declared, disclosed residual (§8), not structurally excluded; closed only for a KOTVA-aware client
+  that verifies the `LocationRecord` TLS pin.
 - **SEC-6 authorize-never-classify + swappable.** REACH-2/REACH-8/REACH-11: the adapter gates on
   identity + rate, is swappable with zero migration, and its audit is one-directional (a signed receipt
   confirms a claimed byte-count, cannot disconfirm a fabricated one — disclosed, CONTRACT §6).
 - **SEC-7 abuse priced-and-localized.** Anti-abuse is authorization — authenticated tunnels,
   rate-limit tokens, optional postage for cold registration — never content classification. A poisoned
   adapter is one adapter, swappable; there is no network-wide reachability authority to poison.
-- **SEC-8 replay-inert / downgrade-impossible.** `LocationRecord` monotonic `seq`; DMTAP-Auth
-  challenge-response on the tunnel; TLS with no downgrade into `terminating` (REACH-1, REACH-10).
+- **SEC-8 replay-inert / downgrade-impossible for own-domain names.** `LocationRecord` monotonic
+  `seq`; DMTAP-Auth challenge-response on the tunnel; TLS with no downgrade into `terminating`
+  (REACH-1, REACH-10) is cryptographically enforced when the box owns its zone. For a bare vanity,
+  the adapter is the sole zone writer, and a covert downgrade (mint a cert and terminate, while
+  still declaring `blind-routing`) is a conformance violation the protocol can detect — via
+  `LocationRecord` TLS-key pinning and CT monitoring (REACH-1a) — but cannot structurally prevent; a
+  disclosed gap (§8), not a guarantee.
 
 ---
 
 ## 8. Honest residual
 
 - **`blind-routing` is not `blind` — the destination is exposed by construction.** SNI is cleartext
-  on the wire (ECH is not assumed here), so the adapter and any on-path observer see *which* service is
-  reached, *when*, and *how much*. REACH content-blinds the payload; it does **not** hide the routing
-  metadata or the connection graph to a box's services. This is declared, not hidden, and traces to the
+  on the wire for REACH's blind-routing mode — a correctness dependency, not only a privacy limit
+  (§7) — so the adapter and any on-path observer see *which* service is reached, *when*, and *how
+  much*. REACH content-blinds the payload; it does **not** hide the routing metadata or the
+  connection graph to a box's services. This is declared, not hidden, and traces to the
   **metadata** ceiling — strong graph privacy against a global passive adversary is research-tier and
   non-normative ([THREAT-MODEL SEC-9](../THREAT-MODEL.md), [research/README §5](../docs/research/README.md)).
+- **A bare adapter-zone vanity is `declared`, not `structural`, blind — a real MITM residual.** The
+  adapter is the sole writer of its own zone (REACH-7), so it can complete domain-control validation
+  (DNS-01, HTTP-01, or TLS-ALPN-01) and mint a browser-trusted certificate for the vanity name at
+  any time — terminating TLS itself instead of passing it through, and re-encrypting to the box. A
+  plain client (browser, `git`, an S3 SDK) doing ordinary WebPKI validation does not pin the box's
+  key and cannot detect this substitution; it sees no warning. This does **not** apply to an
+  own-domain name, where CAA in a zone the adapter cannot write excludes adapter issuance
+  (REACH-1a). `LocationRecord` TLS-key pinning (KOTVA-aware clients only) and CT-log monitoring
+  *detect* a rogue or legally-compelled adapter; neither *prevents* it. The specification discloses
+  this as a real trust boundary rather than presenting bare-vanity blindness as structural.
 - **A public IP is genuinely scarce; a NAT'd box cannot fully self-serve.** REACH-9's backstop is real
   only for a box that already has a public path; the box that most needs an adapter is the one that
   cannot be its own. The scarcity is confined to this one coordinator kind (like port-25) but does not

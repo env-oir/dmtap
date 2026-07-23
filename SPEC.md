@@ -182,7 +182,7 @@ capabilities and adding the sealed metadata-private path and legacy bridge on to
 ### TRACT — the commerce profile ([`profiles/tract/`](profiles/tract/README.md))
 
 Goods, services, rentals, subscriptions between sovereign identities — no marketplace operator, no
-registrar, no token. `OFFER · ESCROW · REPUTATION · DISPUTE · PAY`.
+registrar, no token. `OFFER · MATCH · RESERVE · REPUTATION · ESCROW · DISPUTE · PAY`.
 Sections: [00 overview](profiles/tract/00-overview.md) · [01 actors](profiles/tract/01-actors.md) ·
 [02 catalogue](profiles/tract/02-catalogue.md) · [03 availability](profiles/tract/03-availability.md) ·
 [04 fulfilment](profiles/tract/04-fulfilment.md) · [05 consideration](profiles/tract/05-consideration.md) ·
@@ -199,7 +199,8 @@ Sections: [00 overview](profiles/tract/00-overview.md) · [01 actors](profiles/t
 ### WRAP — the work profile ([`profiles/wrap/`](profiles/wrap/README.md))
 
 Issuing, offering, assigning, tracking and proving **work** — couriers, plumbers, field service,
-mutual aid — no central operator, no cut. `OFFER · MATCH · REPUTATION · ESCROW · ORACLE · DISPUTE`.
+mutual aid — no central operator, no cut. `OFFER · MATCH · REPUTATION · ORACLE · DISPUTE` (settlement
+and escrow are out of scope for WRAP — no escrow, no currency, no blockchain — and compose via TRACT).
 Sections: [00 overview](profiles/wrap/00-overview.md) · [01 identity](profiles/wrap/01-identity.md) ·
 [02 objects](profiles/wrap/02-objects.md) · [03 wire-format](profiles/wrap/03-wire-format.md) ·
 [04 signing](profiles/wrap/04-signing.md) · [05 lifecycle](profiles/wrap/05-lifecycle.md) ·
@@ -234,7 +235,7 @@ audit (22 shapes, visibility per coordinator, minimal fix per gap):
 | **Calls / live video** | ID · MLS→SFrame · TRANS | — | media-relay + SFU | [RTC](profiles/rtc.md) / [§27](27-realtime-media.md) | ✔ |
 | **Social feeds** | PUB · SYNC | REPUTATION | indexer · labeler | [SOCIAL](profiles/social.md) | ▲ editorial |
 | **Media (video/music)** | PUB · storage · TRANS | PAY | indexer · media-relay · storage | [MEDIA](profiles/media.md) / [§24](24-video-profile.md) | ✔ |
-| **Ride / delivery / freelance** | ID · TRANS · SYNC | OFFER · MATCH · REP · ESC · ORC · DIS · PAY | matcher · oracle · arbiter | [WRAP](profiles/wrap/README.md) | ▲ oracle |
+| **Ride / delivery / freelance** | ID · TRANS · SYNC | OFFER · MATCH · REP · ORC · DIS · (ESC · PAY via TRACT) | matcher · oracle · arbiter | [WRAP](profiles/wrap/README.md) + [TRACT](profiles/tract/README.md) | ▲ oracle |
 | **Bookings** | PUB · SYNC · MOTE | OFFER · **RESERVE** · REP · ESC · PAY | none (single-writer) | [TRACT §3](profiles/tract/03-availability.md) | ✔ |
 | **Auctions** | PUB · SYNC | OFFER · MATCH(highest-bid) · REP · ESC · DIS | matcher · arbiter | [TRACT](profiles/tract/README.md) | ✔ (sealed-bid ✚) |
 | **Commerce / classifieds** | PUB · MOTE · SYNC | OFFER · ESC · REP · DIS · PAY | gateway · indexer · arbiter | [TRACT](profiles/tract/README.md) | ▲ editorial |

@@ -58,7 +58,7 @@ Mechanism = &(
   multisig:       0,   ; k-of-n signatures over the settlement transaction
   htlc:           1,   ; hashlock + timelock on the rail
   smart-contract: 2,   ; on-rail programmatic escrow
-  custodial:      3,   ; a licensed operator holds the float and can rule (the only one that breaks a deadlock, §9)
+  custodial:      3,   ; a licensed operator holds the float and can rule (the only one that breaks a true deadlock, §9)
 )
 
 ReleaseCondition = {          ; what must be true for `held` → `released`
@@ -77,7 +77,8 @@ EscrowTransition = {          ; PROVISIONAL — the object TRACT §16 does not y
   4 => EscrowState,           ; to
   5 => ? content-address,     ; evidence: an ORACLE/confirm attestation, a ruling, a dispatch proof
   6 => ts,
-  7 => bstr,                  ; signature over the DS-tagged preimage of keys 1..6 (SEC-2)
+  7 => ? RailClass,           ; elected rail class — REQUIRED when `to` is released/refunded/split (N-2)
+  8 => bstr,                  ; signature over the DS-tagged preimage of keys 1..7 (SEC-2)
 }
 
 EscrowRuling = {              ; PROVISIONAL — the DISPUTE-fallback disposition; likewise a §16 gap
@@ -101,7 +102,7 @@ kind / key numbers are a profile-and-registry concern, deliberately not fixed he
 
 ## 3. Normative rules
 
-- **N-1 — Attests, never holds.** No ESCROW object MUST carry funds, a card PAN, an account
+- **N-1 — Attests, never holds.** An ESCROW object MUST NOT carry funds, a card PAN, an account
   number, or any credential. It carries a `content-address` of the order and an **opaque** external
   settlement reference only (TRACT §9.2, §9.4.1). An implementation that puts value *in* a KOTVA
   object is non-conformant.
@@ -123,13 +124,18 @@ kind / key numbers are a profile-and-registry concern, deliberately not fixed he
   and undisputed, nor leave one `held` after the order closed or cancelled (TRACT §18.5).
 - **N-5 — Expiry has a named destination.** `ReleaseCondition.deadline` MUST expire *into* a named
   state (release / refund / a ruling), never "expire" alone (TRACT §18.1, §18.6). On a custodial
-  rail a dispute deadline expires into the operator's ruling; on a non-custodial rail there is **no
-  ruling to expire into**, and the disclosed default (§5, §9) governs.
+  rail a dispute deadline expires into the operator's ruling; on an arbiter-cosigned non-custodial
+  rail (§4) it expires into the arbiter's ruling, enforced by co-signature; only where no signer,
+  including the ruling's beneficiary, will act does the disclosed default (§10) govern.
 - **N-6 — The operator never holds identity keys.** An escrow operator holds a float; it MUST NOT
   hold, recover, or sign as a party's `IK` or `DeviceCert` (TRACT §9.5; SEC-5). It authorizes and
   settles; it is not the identity substrate.
 - **N-7 — No token.** Any stake an arbiter or operator posts, and all settlement, MUST be an
   **existing asset** ([`DIRECTION § 5`](../DIRECTION.md), CONTRACT §6). ESCROW mints nothing.
+- **N-8 — A split ruling conserves the amount held.** For a `split` `EscrowRuling`, the per-party
+  `money` amounts MUST be in the order's single currency (§2) and MUST sum exactly to the amount
+  recorded as held for that escrow. An implementation MUST reject a split whose amounts do not
+  conserve the held total (fail-closed, SEC-1).
 
 ---
 
@@ -173,13 +179,14 @@ ESCROW **binds**, it does not build ([`bindings/README.md`](../bindings/README.m
 - **The hold** — an **HTLC**, an **on-rail smart contract**, or **k-of-n multisig** over a
   **stablecoin** settlement (bindings: *Payments / settlement* → x402 + stablecoins on the rail).
   These are the non-custodial mechanisms; their assurance is `structural` (the chain enforces the
-  lock) but their **dispute behaviour deadlocks** (§9).
+  lock). An arbiter-cosigned multisig (§4) resolves a genuine dispute without a custodian; only a
+  **true deadlock** — no signer, including the ruling's beneficiary, will act — has no move (§9).
 - **The dispute** — **Kleros-class** staked arbitration (bindings: *Dispute / arbitration*), the
   DISPUTE coordinator of §4.
 - **The physical confirmation** — the `oracle` coordinator (CONTRACT §5), itself resting on the
   physical-event ceiling.
 - **The custodial alternative** — a licensed escrow **operator** (TRACT §0.4.2, §9.5): the only
-  `Mechanism` that can *break* a genuine deadlock, at the cost of being structurally permanent (§9).
+  `Mechanism` that can *break* a true deadlock, at the cost of being structurally permanent (§9).
 
 When the frontier improves (better on-chain dispute primitives, TEE-attested oracles), the filling
 swaps and this primitive does not change ([`DIRECTION § 9`](../DIRECTION.md)). ESCROW owns the
@@ -234,7 +241,8 @@ ESCROW inherits all nine invariants of [`THREAT-MODEL.md § 3`](../THREAT-MODEL.
 ones here:
 
 - **SEC-1 (fail-closed).** The scope intersection (N-3), an unresolvable evidence `refs` (treat as
-  mismatch, not release), and an unparseable `RailClass` all fail **closed** — deny, never admit.
+  mismatch, not release), an unparseable `RailClass`, and a non-conserving split ruling (N-8) all
+  fail **closed** — deny, never admit.
 - **SEC-2 (intrinsic authenticity).** Every `EscrowTransition`/`EscrowRuling` MUST be
   self-authenticating, DS-tag-domain-separated, and chain to an `IK` via a non-revoked `DeviceCert`.
   An unsigned transition is not evidence of anything (TRACT §18.6).
@@ -258,12 +266,15 @@ Every disclosure here traces to two of the four root ceilings ([`DIRECTION § 8`
 the **physical-event oracle** and the **legal/authoritative-issuer** — and to a measured commerce
 outcome. None is a bug this primitive can close; each is disclosed rather than solved.
 
-- **Non-custodial escrow deadlocks on a genuine dispute.** Multisig / HTLC / smart-contract remove
-  the custodian but have **no move** when neither party will act — the exact case escrow was wanted
-  for. On a `NonCustodialFinal` rail the only honest options are a timeout that defaults to one
-  party (a policy choice, not a neutral mechanism) or an indefinite lock. There is no third option;
-  it MUST be disclosed before the trade (TRACT §9.6, §18.5). Only a **custodial** operator can rule
-  its way out — which is why one exists.
+- **A true deadlock has no non-custodial move.** An arbiter-cosigned k-of-n multisig (§4) — the
+  OpenBazaar 2-of-3 model cited below — resolves a genuine two-party dispute without a custodian:
+  the arbiter is a rail signer, and its `EscrowRuling` is enforced by its co-signature. The residual is
+  narrower — a **true deadlock**, where no signer, including the ruling's beneficiary, will act.
+  There, plain multisig / HTLC / smart-contract have **no move**. On a `NonCustodialFinal` rail the
+  only honest options are a timeout that defaults to one party (a policy choice, not a neutral
+  mechanism) or an indefinite lock. There is no third option; it MUST be disclosed before the trade
+  (TRACT §9.6, §18.5). Only a **custodial** operator can rule its way out of a true deadlock —
+  which is why one exists.
 - **Opt-in escrow is declined by exactly the actors it targets.** A *measured* outcome
   (OpenBazaar, TRACT §9.5a, §21.6): mandatory escrow would exclude regions no operator serves, so
   escrow stays optional — and bad actors simply decline it. The primitive pays this cost by

@@ -3,7 +3,8 @@
 > **Status:** primitive spec (KOTVA family). Normative once ratified. OFFER is the first of the
 > six primitives named in [DIRECTION §2](../DIRECTION.md) (`OFFER · MATCH · RESERVE · REPUTATION ·
 > ESCROW · ATTEST`). It is the **supply side** — the public listing that MATCH
-> pairs against, that RESERVE holds against, that ESCROW settles. It defines **no new bytes**: a
+> pairs against, that RESERVE holds against, that ESCROW settles — the identical shape also serves
+> the demand side as a demand offer / bid (§2). It defines **no new bytes**: a
 > listing is a DMTAP-PUB object ([§22](../22-public-objects.md)) carrying a profile-defined shape;
 > this document states the primitive-level rules every commerce/gig/classifieds profile inherits.
 
@@ -18,7 +19,8 @@ An **offer** is a signed, public, content-addressed claim by one identity to sup
 stated terms. It is the atom every discovery-and-trade service is built from: Uber, delivery,
 freelance, auctions, bookings, and classifieds all publish offers and differ only in what *consumes*
 them (MATCH's assignment rule, or RESERVE's single-owner hold) — [DIRECTION §2](../DIRECTION.md).
-OFFER supplies the object; the other primitives supply the verbs.
+OFFER supplies the object — in either direction, supply or demand (§2) — the other primitives
+supply the verbs.
 
 OFFER carries the cross-cutting family invariants: it **carries attestations, never funds**; it
 **bears no network-wide score and no protocol token**; and it **works offline against local trust**,
@@ -38,7 +40,7 @@ OFFER defines a **shape**, not a wire kind. On the wire an offer is a DMTAP-PUB
 `PubAnnounce` (kind `0x40`, [§22.3](../22-public-objects.md)) whose `meta`/`roots` carry the
 profile-defined `Offer` grammar (e.g. tract [`16-wire-format.md §16.5.2`](../profiles/tract/16-wire-format.md));
 a product description is a public blob (`PubManifest`, [§22.2](../22-public-objects.md)) or an
-announced record ([tract §16.5.1](../profiles/tract/02-catalogue.md)). The primitive owns the
+announced record ([tract §16.5.1](../profiles/tract/16-wire-format.md)). The primitive owns the
 **separation** and the **four axes**; the bytes are DMTAP-PUB's and the profile's.
 
 **The split (normative, [tract §2.2](../profiles/tract/02-catalogue.md)).** A **product record**
@@ -69,7 +71,14 @@ Offer = {
 ```
 
 The **four axes** are `item · availability · fulfilment · consideration`. An offer MUST carry all
-four. Their detailed semantics are **owned by profiles and referenced, never duplicated**:
+four, **in either of two directions**: a **supply offer** (the default direction described above:
+what is offered, when/how much is available, how it ships, what it costs) or a **demand offer /
+bid** — a want-ad, itself an OFFER with the same four fields and the sense inverted: `item` is what
+is wanted, `availability` is when/how much is wanted, `fulfilment` is how the requester will take
+delivery, and `consideration` is what the requester will pay. A demand offer is still an OFFER; it
+is not MATCH's `MatchDemand`, which is a distinct coordination object that *references* a demand
+offer by content address, exactly as its `Candidate.offer` references a supply offer ([§4](#4-composition-with-the-other-primitives)).
+Their detailed semantics are **owned by profiles and referenced, never duplicated**:
 availability/stock bands in [tract §3](../profiles/tract/03-availability.md), fulfilment modes in
 tract §4, pricing/tax in tract §5. OFFER fixes only that the four exist, that `item` is a content
 reference and never an inlined description, and that `availability` is a *signal that commits no
@@ -151,13 +160,14 @@ rather than invents:
 - **Product data model** — schema.org `Product`/`Offer`/`ProductGroup` vocabulary and GS1 (GTIN/MPN)
   identifiers as **claims only**, so existing merchant feeds map in by translation
   ([tract §2.4](../profiles/tract/02-catalogue.md)). KOTVA specifies no product vocabulary of its own.
-- **Discovery coordinator** — the `indexer` role ([coordinator/CONTRACT §5](../coordinator/CONTRACT.md)),
-  `blind`/`attested` (TEE-preferred) so a global search view need not read plaintext it does not
-  need. An indexer **authorizes, never classifies** (CONTRACT §4): it may rank and filter its *own*
+- **Discovery coordinator** — the `indexer` role ([coordinator/CONTRACT §5](../coordinator/CONTRACT.md)):
+  corpus `public` (offers are public objects; indexing them reads nothing secret) and query-channel
+  `terminating` unless `attested` (TEE-preferred), so a searcher's own query need not be read in the
+  clear. An indexer **authorizes, never classifies** (CONTRACT §4): it may rank and filter its *own*
   view, never revoke or delist from the network.
 - **Reputation / settlement / dispute** — bound out to REPUTATION (OpenRank), PAY (x402 +
-  stablecoins), ESCROW (HTLC), DISPUTE (Kleros-class) — all via their own primitives; OFFER holds
-  none of them.
+  stablecoins), ESCROW (multisig / HTLC / smart-contract, or a licensed custodial operator),
+  DISPUTE (Kleros-class) — all via their own primitives; OFFER holds none of them.
 
 No binding introduces a protocol token, a global score, or a surveillance signal — forbidden by
 [DIRECTION §5](../DIRECTION.md) and [`bindings/README.md`](../bindings/README.md).
@@ -190,6 +200,7 @@ degradation grade, with **no silent degradation** and **no fabricated completion
 | Action | Grade | Offline behaviour |
 |---|---|---|
 | Author / withdraw (supersede) an offer | **`full`** | Local-first: the offer and its feed entry are self-authenticating, created and signed with no network. |
+| Distribute an authored/withdrawn offer to peers | **`deferred`** | Signing is `full`, but reach to buyers and indexers is `deferred` until a network path exists ([OFFLINE §3.3](../substrate/OFFLINE.md)) — a sold-out/withdrawal supersede MUST be surfaced as not-yet-reached, never presented as taken down. |
 | Read / verify a peer's offer | **`full`** | Verifies from the object alone (`IK` + content address), zero-DNS ([§22.3.3](../22-public-objects.md)). |
 | Global discovery (indexer) | **`local-trust`** → **`blocked`** | Degrades to a local index over the following-graph; with no network and no anchor, discovery beyond local corpus is `blocked` and MUST say so, never faked. |
 

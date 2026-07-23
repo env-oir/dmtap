@@ -57,7 +57,9 @@ free-publishing common case:
 - **ATTEST** ([`ATTEST.md`](../primitives/ATTEST.md)) — a `RightsClaim` (§24.11), a verified-creator
   badge, and age-gating are attestations: `{issuer IK, subject, schema, claim}` proving *IK said
   this*, never the fact itself. Age-gating binds to a personhood attester the viewer chose, not to
-  the creator's word.
+  the creator's word; the work carries the flag as a signed `meta` text-key (§22.3.1 — inside the
+  signed body, not a new wire kind or discriminator, permitted under MED-1) that a client checks
+  against the viewer's attestation before rendering.
 - **ESCROW / PAY** ([`ESCROW.md`](../primitives/ESCROW.md)) — settlement for a paid work rides an
   existing stablecoin rail; nothing is escrowed for a completed download, and a `RailClass` carries
   the recourse weight.
@@ -67,8 +69,9 @@ swappable, self-hostable, never load-bearing, visibility declared:
 
 - **`indexer`** — search, category, "trending," recommendation. `blind` / `attested` (TEE)
   preferred. Derived, rebuildable, never authoritative (§6).
-- **`media-relay`** — forwards SFrame-encrypted **live** media so the streamer's uplink is not the
-  audience-size limit. `blind` / `structural` (§5).
+- **`media-relay`** — forwards SFrame-encrypted **gated/members-only live** media, MLS-keyed to the
+  entitled group, so the streamer's uplink is not the audience-size limit. `blind` / `structural`
+  for that case (§5). Public live has no SFrame keying and does not ride this coordinator (§4 MED-4).
 - **`relay`** — mesh reachability so a box behind CGNAT can still serve its feed. `blind` /
   `structural`.
 - **`reachability-adapter`** — a public subdomain for a box's PUB HTTP surface (§22.5.1).
@@ -115,7 +118,7 @@ author's own feed:
 **MOTE (the sealed object) is used in exactly two places, and only there:**
 
 1. **Gated media (§7).** A members-only or paid work whose *bytes* are confidential is a sealed file
-   ([§5.5](../02-mote.md)) keyed via MLS to the entitled group; the entitlement/key is delivered to
+   ([§5.5](../05-messaging.md)) keyed via MLS to the entitled group; the entitlement/key is delivered to
    each buyer as a MOTE. The public `pub_announce` still exists as the *listing* (an OFFER, §2);
    only the media payload is sealed.
 2. **Live-start notification.** A content-free **Wake** ([`ROLES.md`](../substrate/ROLES.md)) tells a
@@ -149,13 +152,18 @@ real-time must not be forced through MOTE delivery.
   ([CONTRACT §2.2](../coordinator/CONTRACT.md)). A CDN that could withhold or alter a work without
   detection would be a conformance violation; content addressing makes that impossible.
 
-- **MED-4 — Live is a media-relay plane, with a verifiable durable shadow.** Low-latency live
-  delivery rides the WebRTC + SFrame plane through a pool of `media-relay` coordinators
-  (`blind`/`structural`, because SFrame E2E-encrypts the media — the relay holds no key), coordinated
-  by a distributed SFU so the host's uplink is not the size limit ([DIRECTION §7](../DIRECTION.md)).
-  In parallel, the streamer MUST publish the §24.10 rolling `LiveManifest` chain on its feed, so the
-  stream has the **same integrity as VOD** and closes into an ordinary `VideoManifest` for archive.
-  The two planes are separate: MOTE delivery MUST NOT be on the real-time path.
+- **MED-4 — Gated live is a media-relay plane; public live is plaintext segment serving; both keep a
+  verifiable durable shadow.** A **gated/members-only** low-latency stream rides the WebRTC + SFrame
+  plane, keyed to the bounded MLS group, through a pool of `media-relay` coordinators
+  (`blind`/`structural`, because SFrame E2E-encrypts the media to that group — the relay holds no
+  key), coordinated by a distributed SFU so the host's uplink is not the size limit
+  ([DIRECTION §7](../DIRECTION.md)). §27 defines no anonymous-audience SFrame keying, so a **public**,
+  open-audience stream MUST NOT be presented as riding this blind plane: it is instead §24.10 rolling
+  `LiveManifest` segments served as ordinary public plaintext (§24.13 — a holder serves plaintext it
+  can read), fronted by the same CDN/mirror tier as VOD (MED-3), never a `media-relay`. In both cases
+  the streamer MUST publish the §24.10 rolling `LiveManifest` chain on its feed, so the stream has the
+  **same integrity as VOD** and closes into an ordinary `VideoManifest` for archive. The two planes
+  are separate: MOTE delivery MUST NOT be on the real-time path.
 
 - **MED-5 — Channels are feeds; the social graph is portable.** A channel is an author feed (§24.5);
   a `Follow` names the followed identity's `IK`, not a platform's user-id (§24.6.3). Subscribing,
@@ -164,11 +172,12 @@ real-time must not be forced through MOTE delivery.
 
 - **MED-6 — Discovery is a coordinator that authorizes, never classifies.** Search, trending, and
   recommendation are `indexer` output: **derived, rebuildable, never authoritative** (§22.4.3), TEE
-  (`attested`) preferred. An indexer MUST NOT drop, quarantine, re-rank, or annotate on a *content*
-  basis, and MUST NOT publish a global reputation score
-  ([CONTRACT §4](../coordinator/CONTRACT.md), [REPUTATION.md](../primitives/REPUTATION.md)). Multiple
-  indexers competing over the same feeds is the design, not a fault; a client MAY use several or its
-  own local index.
+  (`attested`) preferred. An indexer MAY rank or re-rank content within its own derived,
+  non-authoritative view — that ranking *is* its function; it MUST NOT drop, gate, quarantine, or
+  re-rank on a *delivery* or *canonical/authoritative* path, and MUST NOT publish a global reputation
+  score ([CONTRACT §4](../coordinator/CONTRACT.md), [REPUTATION.md](../primitives/REPUTATION.md)).
+  Multiple indexers competing over the same feeds is the design, not a fault; a client MAY use several
+  or its own local index.
 
 - **MED-7 — Paid and gated media use existing rails; no token, no surveillance ads.** Access to a
   paid work is an OFFER (§2) settled on an existing stablecoin rail (x402) or a payment-channel
@@ -185,11 +194,12 @@ real-time must not be forced through MOTE delivery.
 
 - **MED-9 — Every intermediary declares its content-visibility.** Per [CONTRACT §3](../coordinator/CONTRACT.md),
   each MUST declare exactly one class at one assurance level, surfaced to the user: a **public-blob
-  CDN/mirror** is `blind-routing` (it can read public bytes, but they are public by design — it sees
-  *what is fetched and by whom* as routing metadata, not a confidentiality breach); a **sealed-media
-  CDN** and a **`media-relay`** are `blind`/`structural`; an **`indexer`** is `blind`/`attested`
-  where TEE-run, else `declared`; a `reachability-adapter` is `blind-routing`. No silent downgrade to
-  `terminating`.
+  CDN/mirror** is **not blind** — the cache/pin role ([ROLES.md §6](../substrate/ROLES.md)) that
+  holds and serves plaintext a holder can read; payload confidentiality is n/a because the content is
+  public by design ([§22.1](../22-public-objects.md)). `blind-routing` is reserved for a party that
+  genuinely cannot read the payload: a `reachability-adapter` (SNI-passthrough). A **sealed-media CDN**
+  and a gated-stream **`media-relay`** are `blind`/`structural`; an **`indexer`** is `blind`/`attested`
+  where TEE-run, else `declared`. No silent downgrade to `terminating`.
 
 - **MED-10 — Moderation is edge-selected and opt-in.** A viewer's client decides what it renders,
   against `labeler` subscriptions it chose (§24.13); a labeler is itself a coordinator under the
@@ -234,6 +244,10 @@ every Evermesh object is self-authenticating and verifies identically over HTTPS
   reconnect; the intent is captured, never dropped (OFFLINE §3.3).
 - **Discovery / recommendation — `local-trust`.** A stale local index is a disclosed reduced-assurance
   view, never presented as authoritative (§22.4.3, OFFLINE §2).
+- **Age-gate — `blocked` (fresh proof) / `full` or `local-trust` (cached).** Checking the personhood
+  attestation against a fresh attester needs connectivity and is `blocked` offline; a cached VC the
+  viewer already holds lets the check proceed with no round trip — `full`/cryptographic for a
+  gated work via the MLS entitlement, `local-trust`/advisory for a public work (§7, §8).
 - **Live — `blocked` (disclosed honestly).** Real-time delivery needs a live media path and a
   `media-relay`; it cannot be deferred, because deferred real-time is not real-time. Evermesh MUST
   fail this closed and say why — never fake a live session offline (OFFLINE §2 R-GRADE-2). The
@@ -266,8 +280,8 @@ Inherits [`THREAT-MODEL.md`](../THREAT-MODEL.md) whole; the profile-specific pos
   aggregates-are-claims (§6) plus cold-contact cost and local web-of-trust — never central content
   filtering. Recommendation Sybil-resistance is REPUTATION's ceiling, disclosed, not solved.
 - **SEC-9 (metadata).** Public reads are anonymous content-addressed fetches (§22.5), but a CDN or
-  indexer sees *what is fetched and roughly by whom* as `blind-routing` metadata. This is reduced,
-  not eliminated, and is disclosed here rather than hidden.
+  indexer sees *what is fetched and roughly by whom*. This exposure is reduced, not eliminated, and
+  is disclosed here rather than hidden.
 
 Rendition trust is **accountability, not fidelity** (§24.4.4): a signed derivation proves *who*
 transcoded, and a malicious transcoder can still sign an unfaithful rendition — the remedy is
@@ -282,6 +296,11 @@ traces to a root ceiling in [DIRECTION §8](../DIRECTION.md).
 
 - **Live is not apocalypse-proof.** Real-time needs a live path; it is `blocked` offline (§6). The
   recorded stream survives; the *liveness* does not. This is honest, not a gap to close.
+- **Age-gating is enforceable only for gated works.** For a public (non-sealed) work the age flag is
+  a client-side rendering choice: a non-cooperating client can ignore it, exactly like a moderation
+  label (MED-10) — it is advisory, not a protocol guarantee. It is cryptographically enforced only for
+  a sealed/gated work, where the MLS entitlement is itself the gate (§7): the personhood attestation
+  must be presented to obtain the decryption key, not merely checked by a compliant renderer.
 - **No takedown.** Under §22.6 irrevocability, illegal or abusive content persists on any willing
   holder. Moderation is edge-selected + opt-in labelers (MED-10) — genuinely weaker than a platform's
   unilateral delete, and disclosed as such. The safety floor is a *labeler market*, not a switch.

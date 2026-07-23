@@ -49,8 +49,9 @@ adds only a message kind, a key label, and a capacity advertisement (§27.1, §2
 | **SYNC / MLS group** ([`../substrate/SYNC.md`](../substrate/SYNC.md)) | The MLS group that scopes the conversation supplies **membership** (the sole call authorization) and, via its epoch exporter, the **media key root** (§27.5). A 1:1 call is a call in a 2-member group. |
 | **Roles & Wake** ([`../substrate/ROLES.md`](../substrate/ROLES.md)) | The SFU is an infrastructure **role** any node may take — your own always-on box or an operator — never a privileged server type (§27.7.2). Wake is content-free push; it is **never relied on for correctness** ([`../substrate/OFFLINE.md`](../substrate/OFFLINE.md) §3). |
 
-RTC does **not** compose the seven commerce primitives
-(`OFFER · MATCH/RESERVE · REPUTATION · ESCROW · ORACLE · DISPUTE · PAY`) in its media path — a call
+RTC does **not** compose the commerce recipe roles
+(`OFFER · MATCH/RESERVE · REPUTATION · ESCROW · ORACLE · DISPUTE · PAY`, [DIRECTION §2](../DIRECTION.md))
+in its media path — a call
 is not a trade. They enter only at the seam where the call is **wrapped in a paid or booked
 service**: a metered third-party SFU discloses a signed tariff and issues signed receipts to the
 payer ([`../coordinator/CONTRACT.md §6`](../coordinator/CONTRACT.md)); its trust is
@@ -114,10 +115,14 @@ These are the family-level MUSTs; the authoritative, enumerated conformance set 
 (**RTC-1 … RTC-20**) and the errors are §27.12 (`0x0415`–`0x0417`). This section does not restate
 them — it states the rules a profile reader must not miss.
 
-- **R-RTC-1 (media is content-blind).** Media MUST be SFrame-protected under a key derived from the
-  MLS epoch exporter (§27.5.1); no intermediary may hold that key. An endpoint MUST NOT emit or
-  forward unprotected media on a call that negotiated SFrame, and MUST NOT accept a renegotiation
-  that removes it — protection **ratchets up only** (`ERR_RTC_SFRAME_REQUIRED`, §27.5.2).
+- **R-RTC-1 (media is content-blind, where the operator has committed to it).** Against an SFU that
+  publishes `sframe_required=true`, media MUST be SFrame-protected under a key derived from the MLS
+  epoch exporter (§27.5.1); no intermediary may hold that key. An endpoint MUST NOT emit or forward
+  unprotected media on a call that negotiated SFrame, and MUST NOT accept a renegotiation that
+  removes it — protection **ratchets up only** (`ERR_RTC_SFRAME_REQUIRED`, §27.5.2). An operator MAY
+  instead publish `sframe_required=false`, declaring it will forward unprotected media if offered;
+  that operator is a `terminating` coordinator, not `blind`, and a client MUST disclose it as such
+  before joining (§27.7.4, R-RTC-3) rather than treat content-blindness as unconditional.
 - **R-RTC-2 (membership is the authorization).** An `rtc_signal` MUST be accepted only from a
   **current member** of the group under whose epoch the MOTE decrypted, evaluated against the
   receiver's own applied state — never a claim in the signal (§27.4.5). This is
@@ -184,10 +189,14 @@ rather than pretending otherwise:
   connection. The async answer to "I called and you were out" is a **voicemail** — an ordinary
   sealed MOTE on the store-and-forward plane, a *different profile*, not a degraded call. RTC does
   not blur the two.
-- **Signaling reconciles, but a stale call does not resurrect.** `rtc_signal` MOTEs reconcile on
-  reconnect like any MOTE (mailbox drain, §27's ordinary path), but a signaling exchange that
-  completed minutes late is not a call (§27.4.6); it surfaces as a **missed call**, never as a
-  silently-late live session. This is OFFLINE §2's *no fabricated completion* applied to calls.
+- **Signaling reconciles; §27 defines no offer-freshness bound.** `rtc_signal` MOTEs reconcile on
+  reconnect like any MOTE (mailbox drain, §27's ordinary path). An opening `offer` carries a fresh
+  `call_id` (§27.4.1), and RTC-2/RTC-3 reject only a replay against an already-known `(call_id,
+  sender)` or a non-offer on an unknown one — neither rejects an offer merely for arriving late. A
+  `rtc_signal` exchange that reconciles minutes after it was sent will therefore still open and ring
+  the call rather than cleanly surface as a **missed call**; RTC does not claim otherwise. A bounded
+  offer-freshness check that gives late-reconciled signaling a missed-call disposition is
+  unspecified here and left to a future revision.
 - **No offline-money case.** A call moves media, not funds. Where a *metered* SFU is used, its usage
   receipts settle on reconnect under the payer's rail (OFFLINE §5 strategy C, settle-on-reconnect,
   the honest default) — the call bytes complete while settlement finality stays deferred. No token
@@ -200,16 +209,19 @@ rather than pretending otherwise:
 RTC inherits the family posture of [`../THREAT-MODEL.md`](../THREAT-MODEL.md); the falsifiable
 per-item statements are §27.11. The load-bearing claims:
 
-- **Content-blind media (SEC-3).** SFrame keyed from the MLS exporter means the SFU/relay forwards
-  ciphertext it *cannot* read — `blind` at `structural` assurance, the strongest level (no key,
-  provable), not a promise. This is **materially stronger than the legacy mail gateway** (§7), which
-  handles plaintext by construction; the difference is structural, not operator discipline
-  (§27.11 item 1).
+- **Content-blind media where the operator commits to it (SEC-3).** SFrame keyed from the MLS
+  exporter means an SFU/relay that publishes `sframe_required=true` forwards ciphertext it *cannot*
+  read — `blind` at `structural` assurance, the strongest level (no key, provable), not a promise.
+  This is **materially stronger than the legacy mail gateway** (§7), which handles plaintext by
+  construction; where the operator has made that commitment, the difference is structural, not
+  operator discipline (§27.11 item 1). An operator that instead publishes `sframe_required=false`
+  makes no such commitment and is `terminating`, not `blind` — see the table below.
 - **Every intermediary's visibility is declared (SEC-4, [CONTRACT §3](../coordinator/CONTRACT.md)).**
 
   | Party | Class | Sees |
   |---|---|---|
-  | SFU / media-relay | `blind` / structural | ciphertext + routing metadata (participants, timing, IPs, packet sizes) |
+  | SFU / media-relay (`sframe_required=true`) | `blind` / structural | ciphertext + routing metadata (participants, timing, IPs, packet sizes) |
+  | SFU / media-relay (`sframe_required=false`) | `terminating` | plaintext, if the client offers unprotected media — disclosed to the client before joining (R-RTC-3, §27.7.4) |
   | TURN relay | `blind` / structural | ciphertext + the two hops' addresses |
   | mesh peer | *endpoint*, not intermediary | plaintext (it is a participant) |
   | MCU | `terminating` | plaintext — **out of scope**, never called E2E |
@@ -255,6 +267,11 @@ Each is an inherent consequence of the design, disclosed rather than solved (§2
    admits no operator; an SFU hides peer IPs from each other but adds an operator that sees the
    metadata of item 1. RTC discloses both and lets the user choose; it does not pretend a costless
    option exists (§27.11 item 3).
+8. **An operator MAY decline content-blindness altogether.** `sframe_required=false` is a
+   conformant `RtcCapacity` value (§27.7.4): that SFU is `terminating`, not `blind`, and will
+   forward — and can read — unprotected media if the client offers it. Content-blindness is
+   therefore an operator commitment a client must check (R-RTC-1, R-RTC-3), not a structural
+   property of every SFU.
 
 Every residual traces to the design's premises, not to a missing feature: real-time cannot be
 mixnet-private, endpoints hold their own plaintext, and coordinators add reach without ever becoming

@@ -1,9 +1,17 @@
 # ATTEST — signed claims over the substrate
 
-> **Status:** additive normative primitive spec of the KOTVA family. It restates **no new wire
-> bytes**: an attestation is an existing substrate object — a public signed object (DMTAP-PUB,
-> §22 / [`substrate/FEEDS.md`](../substrate/FEEDS.md)) or a sealed `identity` MOTE (kind `0x09`,
-> §2.3) — carrying an **EAS attestation or a W3C Verifiable Credential** ([bindings](../bindings/README.md)).
+> **Status:** additive normative primitive spec of the KOTVA family. It defines **no new signed
+> wire object and no new signature**: an `Attestation` (§2) is an unsigned deterministic-CBOR map
+> carried as opaque bytes **inside** an existing substrate object, authenticated **only** by that
+> carrier's own existing signature —
+> - **public** — `det_cbor(Attestation)` embedded under a profile-named `meta` key of a
+>   `PubAnnounce` (kind `0x40`, §22.3.1 key 5 / [`22-public-objects.md`](../22-public-objects.md)),
+>   authenticated by `PubAnnounce.sig` (DS-tag `DMTAP-PUB-v0/announce`); or
+> - **private** — carried as the `body` of an ordinary sealed **content** MOTE (kind `0x00` mail /
+>   `0x01` chat, §2.3 of [`02-mote.md`](../02-mote.md)), authenticated by that MOTE's `Payload.sig`
+>   (DS-tag `DMTAP-v0/payload`, §18.9.2) —
+>
+> carrying an **EAS attestation or a W3C Verifiable Credential** ([bindings](../bindings/README.md)).
 > This document owns only the **mapping** (issuer/subject → substrate identity), the **carrier
 > selection**, the **revocation rules**, and the **honest residual**. Where it and a normative-byte
 > home (§18, §22, the ratifying binding) disagree, the byte home governs.
@@ -32,38 +40,55 @@ REPUTATION, never stamped into one.
 
 ## 2. Objects it defines (wire-shape sketch)
 
-No new MOTE kind is allocated (subtraction discipline, [DIRECTION §9](../DIRECTION.md)). An
-attestation rides one of **two existing carriers**:
+No new MOTE kind is allocated and no new signature is minted (subtraction discipline,
+[DIRECTION §9](../DIRECTION.md)). An attestation rides one of **two existing carriers** and is
+authenticated **only** by that carrier's own signature — the `Attestation` map itself carries none:
 
-- **public** — a `PubAnnounce` (kind `0x40`, §22.3 / FEEDS §4.2), signed in the clear, fetched by
-  content address, appended to the issuer's author feed. Use when the claim is meant to be openly
-  verifiable (badges, reviews, oracle facts).
-- **private** — a sealed `identity` MOTE (kind `0x09`, §2.3), delivered to the subject, revealed
-  only to the recipient. Use for private identity claims (a KYC pass the holder discloses
-  selectively).
+- **public** — embedded as `det_cbor(Attestation)` bytes under a profile-named key (e.g.
+  `"attestation"`) of a `PubAnnounce`'s `meta` map (kind `0x40`, §22.3.1 key 5, the profile-embedding
+  rule of [`22-public-objects.md`](../22-public-objects.md)), signed in the clear, fetched by
+  content address, appended to the issuer's author feed. `PubAnnounce.pub` **MUST** equal
+  `Attestation.issuer` (below). Use when the claim is meant to be openly verifiable (badges,
+  reviews, oracle facts).
+- **private** — carried as the `body` of an ordinary sealed **content** MOTE (kind `0x00` mail /
+  `0x01` chat, §2.3 of [`02-mote.md`](../02-mote.md)), delivered to the subject, revealed only to
+  the recipient. `Payload.from` **MUST** equal `Attestation.issuer`. Use for private identity
+  claims (a KYC pass the holder discloses selectively). KOTVA has **no dedicated sealed-attestation
+  MOTE kind**: `0x09` is `Identity`/`Move`/`RecoveryPolicy` only (02-mote.md:114) and MUST NOT be
+  used to carry a generic attestation claim.
 
 The `Attestation` map below is the **payload** carried inside whichever carrier is chosen; it is
 an integer-keyed deterministic-CBOR map (§18.1) whose `claim` body is an EAS attestation or a VC —
-**not a format defined here**.
+**not a format defined here**. It has **no signature field of its own**: the carrier's existing
+`sig` (`PubAnnounce.sig` or `Payload.sig`, above) covers the embedded bytes end-to-end and is the
+**only** signature a verifier checks.
 
 ```cddl
 Attestation = {
   1 => u8,            ; v         format version (0)
   2 => u8,            ; suite     algorithm suite (§1.1)
-  3 => bytes,         ; issuer    issuer root identity key IK (§1.2)
+  3 => bytes,         ; issuer    issuer root identity key IK (§1.2); MUST equal the carrier's
+                      ;           authenticated identity (PubAnnounce.pub / Payload.from, above)
   4 => Subject,       ; subject   who/what the claim is about (§2.1)
   5 => SchemaRef,     ; schema    EAS schema UID or VC type URI — identifies claim semantics
   6 => Claim,         ; claim     the EAS attestation / W3C VC body (bound, NOT invented — §bindings)
   7 => u64,           ; ts        issuance time (ms epoch), display/ordering only
-  ? 8 => Revoke,      ; revoke    revocation binding (§2.2); absent ⇒ irrevocable-by-issuer
+  ? 8 => Revoke,      ; revoke    revocation binding (§2.2); absent ⇒ no status-list/expiry
+                      ;           revocation is declared — supersession (key 9, §4.3) remains
+                      ;           available for feed-carried (public) attestations
   ? 9 => hash,        ; supersedes  content-address of a prior Attestation by the SAME issuer (§4.3)
-  10 => sig-val,      ; sig       signer over det_cbor(Attestation ∖ {10}),
-                      ;           DS-tag "KOTVA-ATTEST-v0" (§18.1.6); signer chains to `issuer`
+  ; key 10 (sig) is retired: the Attestation carries no signature of its own (§2, above); the
+  ; carrier's sig authenticates it.
 }
 
 Subject = bytes            ; a subject IK (§1), OR
         / hash             ; a content-address (an OFFER listing, an order, a blob), OR
-        / BlindedSubject   ; { salt, commit } — a hiding commitment for a private subject (§5)
+        / BlindedSubject   ; a hiding commitment for a private subject (below)
+
+BlindedSubject = {
+  1 => bytes,        ; salt    32-byte random salt, unique per commitment
+  2 => hash,         ; commit  0x1e ‖ BLAKE3-256(salt ‖ subject_IK) — the hiding commitment
+}
 
 SchemaRef = tstr           ; EAS schema UID (0x-hex) or a VC @type URI
 
@@ -71,19 +96,31 @@ Revoke = {
   1 => u8,                 ; mode   0 = status-list, 1 = supersede-only, 2 = expiry-only
   ? 2 => tstr,             ; list   status-list locator (W3C Bitstring Status List / EAS registry)
   ? 3 => u64,              ; index  bit index within the status list
-  ? 4 => u64,              ; nbf / exp bounds where mode = expiry
+  ? 4 => u64,              ; nbf    not-before bound (ms epoch); mode = expiry
+  ? 5 => u64,              ; exp    expiry bound (ms epoch); mode = expiry — at least one of
+                           ;        nbf/exp REQUIRED when mode = 2
 }
 ```
 
-- **`issuer` / `signer`.** `issuer` is the root `IK`. The signature MAY be produced by a
-  `DeviceCert` operational subkey (§1); a verifier MUST confirm `signer == issuer` **or** a valid
-  non-revoked `DeviceCert` chain from `signer` to `issuer` before accepting (identical to the
-  §22.3.3 `PubAnnounce` rule).
+- **`issuer` / `signer`.** `issuer` is the root `IK` and **MUST** equal the carrier's
+  authenticated identity — `PubAnnounce.pub` (public) or `Payload.from` (private). The carrier's
+  `sig` MAY be produced by a `DeviceCert` operational subkey (§1); a verifier MUST confirm
+  `signer == issuer` **or** a valid non-revoked `DeviceCert` chain from `signer` to `issuer` before
+  accepting (identical to the §22.3.3 `PubAnnounce` rule; the equivalent MOTE rule for the private
+  carrier is `Payload.from`'s device-key authorization, §1).
 - **`subject`.** Operator-independent by construction — an `IK` or a content address, never a
   registry handle or a coordinator-local row id. This is what makes an attestation **portable**:
   it names the same subject after any coordinator is swapped ([CONTRACT §2.2](../coordinator/CONTRACT.md)).
 - **`claim`.** Opaque to the substrate. Its semantics are the referenced EAS schema / VC type;
   the substrate verifies only the *signature over* it, never *its truth* (§7).
+- **`BlindedSubject` (open/verify).** `commit` hides `subject_IK` behind a salted digest. A
+  verifier holding a claimed `subject_IK` and the matching `salt` **opens** the commitment by
+  recomputing `commit' = 0x1e ‖ BLAKE3-256(salt ‖ subject_IK)` and accepting iff `commit' == commit`
+  (S-ATT-2's "does not open ⇒ reject"). The opening (`salt`, `subject_IK`) is supplied
+  out-of-band by whichever party needs to prove the subject to that verifier — the issuer at
+  issuance, or the subject itself later — never inside the `Attestation` (that would defeat the
+  hiding). A verifier that never receives an opening treats `subject` as unresolved, not as a
+  match.
 
 **Profile instances (normative examples, not re-definitions).** TRACT `PurchaseAttestation`
 ([§10.2a](../profiles/tract/10-trust.md)) and WRAP work attestations are already this shape,
@@ -100,13 +137,16 @@ fields; it MUST NOT invent a parallel attestation object (the waist adoption rul
   issuer's standing (cf. TRACT §10.2a "what attestation does not establish"). What the claim is
   *worth* is the verifier's judgement of the issuer, made on the verifier's device.
 - **R-ATT-2 (offline-verifiable).** Verification **MUST** succeed offline, zero-DNS, from the
-  object alone: reject unknown `v`/`suite`; verify `sig` under `signer`; verify `signer`'s
-  authority chains to `issuer`; if `supersedes` is present, require the predecessor's `issuer` to
-  match (§4.3). A name is needed only to *display* who `issuer` is, never to verify (§3.13).
+  object alone: reject unknown `v`/`suite`; verify the **carrier's** `sig` (`PubAnnounce.sig` /
+  `Payload.sig`, §2) under `signer`; verify `signer`'s authority chains to `issuer`, and that
+  `issuer` equals the carrier's authenticated identity (`PubAnnounce.pub` / `Payload.from`); if
+  `supersedes` is present, require the predecessor's `issuer` to match (§4.3). A name is needed
+  only to *display* who `issuer` is, never to verify (§3.13).
 - **R-ATT-3 (self-issuance is legal and worthless).** An issuer MAY attest about any subject,
   including itself. The substrate does not forbid self-dealing; it makes it **visible** — a
   self-issued or fresh-key attestation is a genuine signature that a discounting verifier
-  (REPUTATION, §6) is free to weight at zero. Do not confuse *signed* with *credible*.
+  (REPUTATION §3 [`REPUTATION.md`](REPUTATION.md), REP-5 — anchoring/discounting) is free to
+  weight at zero. Do not confuse *signed* with *credible*.
 - **R-ATT-4 (revocation = supersede or status-list, cooperative).** Revoking an attestation is
   either publishing a **superseding** attestation (§4.3) or flipping a bit in the referenced
   **status list**. Both are **cooperatively honoured** (as with review retraction, TRACT §10.2d):
@@ -168,7 +208,7 @@ Per [`bindings/README.md`](../bindings/README.md), ATTEST binds and does not rei
 | Need | Bind to | Note |
 |---|---|---|
 | Claim / credential shape | **EAS** + **W3C Verifiable Credentials** | the `claim` body (key 6); mature plumbing, nascent portable-reputation layer |
-| Revocation status | **W3C Bitstring Status List** / EAS revocation registry | the `Revoke.list` locator (key 8) |
+| Revocation status | **W3C Bitstring Status List** / EAS revocation registry | the `Revoke.list` locator (Revoke key 2, carried under Attestation key 8) |
 | Proof-of-personhood | **World ID** / **Human Passport** | the anti-Sybil anchor; imperfect (§10) |
 | Selective disclosure | VC selective-disclosure / BBS-class, when the binding matures | a `Claim` profile, not a substrate change |
 | Reputation compute | **OpenRank** (EigenTrust, TEE-verified) | consumes the graph; produces no stored score |
@@ -225,24 +265,26 @@ Per the degradation grades of [`substrate/OFFLINE.md`](../substrate/OFFLINE.md):
 
 Inheriting [`THREAT-MODEL.md`](../THREAT-MODEL.md):
 
-- **S-ATT-1 (intrinsic authenticity — SEC-2).** Acceptance rests **only** on a valid signature
-  chaining to `issuer` and a self-consistent content address, never on transport trust. A
-  `terminating` intermediary can read a public attestation but **MUST NOT** be able to forge one.
+- **S-ATT-1 (intrinsic authenticity — SEC-2).** Acceptance rests **only** on a valid **carrier**
+  signature (`PubAnnounce.sig` / `Payload.sig`, §2) chaining to `issuer` and a self-consistent
+  content address, never on transport trust. A `terminating` intermediary can read a public
+  attestation but **MUST NOT** be able to forge one.
 - **S-ATT-2 (fail-closed — SEC-1).** Unknown `v`/`suite`, a broken `DeviceCert` chain, a revoked
   signer, a subject-commitment that does not open, or unverifiable revocation status ⇒ **reject or
   mark unverified**, never accept-by-default.
-- **S-ATT-3 (replay-inert, downgrade-impossible — SEC-8).** The DS-tagged signing preimage binds
-  `issuer`, `subject`, `schema`, `ts`, and any `supersedes`; a captured attestation cannot be
-  re-bound to a different subject, issuer, or schema. An attestation carries no bare re-usable
-  bearer token.
+- **S-ATT-3 (replay-inert, downgrade-impossible — SEC-8).** The carrier's DS-tagged signing
+  preimage (`DMTAP-PUB-v0/announce` / `DMTAP-v0/payload`, §2) covers the entire embedded
+  `Attestation` map and so binds `issuer`, `subject`, `schema`, `ts`, and any `supersedes`; a
+  captured attestation cannot be re-bound to a different subject, issuer, or schema. An attestation
+  carries no bare re-usable bearer token.
 - **S-ATT-4 (issuer-key compromise — SEC-5).** Issuer keys use account-abstraction recovery /
   `DeviceCert` rotation (§1); a compromised operational subkey is revoked via `DeviceCert`
   revocation, and attestations under a revoked-then-superseded key are re-evaluable on reconnect.
   No single device can unilaterally destroy an issuer's standing.
-- **S-ATT-5 (sealed-carrier privacy — SEC-9).** A private (`0x09`) attestation is sealed to the
-  subject; intermediaries see routing metadata only, and MAY use a **`BlindedSubject`** commitment
-  so the subject is not in the clear even to the holder's storage. Public (`0x40`) attestations are
-  public **by design** (§22.9) — that is the point, not a leak.
+- **S-ATT-5 (sealed-carrier privacy — SEC-9).** A private (`0x00`/`0x01` sealed content MOTE, §2)
+  attestation is sealed to the subject; intermediaries see routing metadata only, and MAY use a
+  **`BlindedSubject`** commitment so the subject is not in the clear even to the holder's storage.
+  Public (`0x40`) attestations are public **by design** (§22.9) — that is the point, not a leak.
 - **S-ATT-6 (coordinator visibility declared — SEC-4).** Any `oracle` / `indexer` in an attestation
   path **MUST** declare its visibility class and assurance level and clients **MUST** surface it
   ([CONTRACT §3](../coordinator/CONTRACT.md)); a `declared`-level blind claim is never shown as
@@ -279,6 +321,11 @@ hidden.
   Sybil floor; they do not close it. Local scale substitutes web-of-trust, which is weaker in
   coverage and stronger in context.
 - **Revocation is cooperative** (§9) — no hard clawback of a claim already relied upon.
+- **The sealed (private) carrier has no cross-recipient equivocation detection.** §4.3's
+  equivocation-surfacing property holds only for the **public** feed carrier, because it depends on
+  the issuer's append-only author feed (§22.4.2). A private attestation delivered as a sealed
+  `0x00`/`0x01` content MOTE (§2) is on no feed: a malicious issuer can hand two recipients
+  contradictory sealed claims and no single verifier ever holds both to detect it.
 - **`declared`-level blindness is unprovable** ([CONTRACT §3.4](../coordinator/CONTRACT.md)) — a
   `terminating` oracle promising it does not log cannot be cryptographically disproven; only
   `structural`/`attested` are verifiable.

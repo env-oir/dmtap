@@ -56,8 +56,9 @@ are public author-feed objects under §22 / [`FEEDS.md`](../substrate/FEEDS.md):
 
 ### 2.1 `TrustEdge` — the web-of-trust primitive (an ATTEST specialization)
 
-A directed, signed vouch from a **truster** to a **subject**, in a **context**. It is the local
-trust-matrix input EigenTrust consumes (§5), and it is a specialization of the ATTEST primitive
+A directed, signed vouch from a **truster** to a **subject**, in a **context**. It is
+trust-matrix input to the adopted EigenTrust/OpenRank compute (§5) — with the transitivity and
+polarity caveats disclosed in §9 — and it is a specialization of the ATTEST primitive
 ([`ATTEST.md`](ATTEST.md)) — *"IK asserts this claim about subject"* — narrowed to trust polarity.
 
 ```cddl
@@ -86,7 +87,7 @@ Feedback = {
   1 => subject,       ; subject   one of: content-address (an OFFER/product) OR ik-pub (a party)
   2 => uint,          ; score     0..5 ordinal; the protocol assigns NO meaning beyond order (§2.3)
   3 => tstr,          ; body      bounded free text (profile MAX; the one natural-person public field)
-  ? 4 => hash,        ; proof     OPTIONAL content-address of a PurchaseAttestation / ATTEST (§3)
+  ? 4 => hash,        ; proof     OPTIONAL content-address of a PurchaseAttestation / ATTEST (ATTEST.md §2)
   5 => ts,            ; ts        display/ordering only
   ? 6 => hash,        ; supersedes prior Feedback this revises (§2.4)
 }
@@ -138,9 +139,10 @@ irrevocability to the author before the object is published** (§8, SEC-9 residu
   be available; it MUST NOT be sold as a solution.
 - **REP-6 — Feedback binds to evidence where it claims to.** Where a `Feedback` or `TrustEdge`
   asserts it reflects a real interaction, it MUST carry the content-address of an ATTEST /
-  `PurchaseAttestation` (§3) that a verifier can independently check. An index MAY gate on the
-  presence of such a proof (`deny-policy`, TRACT §10.2a); whether it does is **index-local policy,
-  never a protocol mandate** — mandating it network-wide would require the authority REP-3 removes.
+  `PurchaseAttestation` (ATTEST.md §2; TRACT §10.2a/§16.5.5) that a verifier can independently
+  check. An index MAY gate on the presence of such a proof (`deny-policy`, TRACT §10.2a); whether
+  it does is **index-local policy, never a protocol mandate** — mandating it network-wide would
+  require the authority REP-3 removes.
 - **REP-7 — Ranking policy is local, and disclosed.** An index that ranks MUST publish its weighting
   policy in its signed descriptor ([`CONTRACT § 2.1`](../coordinator/CONTRACT.md)) so a reader knows
   which discounting, anchoring, and web-of-trust measures produced the order. A reader MUST be able to
@@ -148,7 +150,7 @@ irrevocability to the author before the object is published** (§8, SEC-9 residu
 - **REP-8 — Reputation is shared across profiles, not bridged.** Because sellers, couriers, workers,
   and reviewers are all just `IK`s on one substrate (§1.2), a subject's reputation is a property of
   its key across TRACT, WRAP, and every profile — one shared, unsolved Sybil surface, never two
-  separately-solved ones (TRACT §10.2b, §10.3a; WRAP §8). A profile MUST NOT redefine another
+  separately-solved ones (TRACT §10.2b, §10.3a; WRAP §9). A profile MUST NOT redefine another
   profile's reputation record; it names its own input objects and shares the key.
 
 ---
@@ -184,7 +186,9 @@ binds rather than reinvents. Two slots, both swappable:
   row): context-specific EigenTrust, optionally run inside a TEE so the `indexer` holds a global view
   **without** being able to forge the result — the `attested` assurance level
   ([`CONTRACT § 3.3`](../coordinator/CONTRACT.md)), disclosed as chip-vendor-trust, never trustless.
-  KOTVA computes **no** reputation of its own; it feeds signed edges to an adopted engine.
+  KOTVA computes **no** reputation of its own; it feeds signed edges to an adopted engine — an
+  engine whose transitivity these objects only partly deliver, and whose polarity handling drops
+  distrust; both disclosed in §9.
 - **Anchor — proof-of-personhood or stake.** The Sybil anchor binds to World ID / Human Passport (the
   *"adopt (ceiling)"* row) **or** to staked existing value ([`DIRECTION § 5`](../DIRECTION.md), sized
   to value at risk). A protocol token is **forbidden** as an anchor — it is either a financing scheme
@@ -273,6 +277,22 @@ Reputation inherits [`THREAT-MODEL.md`](../THREAT-MODEL.md) unchanged; the invar
 Reputation is where three of the four root ceilings ([`DIRECTION § 8`](../DIRECTION.md)) converge, and
 this primitive **discloses them rather than solving them**:
 
+- **The adopted EigenTrust/OpenRank engine does not run transitively over these objects.**
+  EigenTrust's Sybil-resistance depends on every party being identifiable as both truster and
+  trustee, so trust can flow *through* it. REP-1 keys the trustee to a stable root `IK`; REP-2
+  requires the truster to sign under a per-context pseudonym unlinkable to any root `IK` by a
+  third party. A party's incoming trust (into its root `IK`) and outgoing vouches (from an
+  unlinkable pseudonym) therefore attach to disjoint keys, and no indexer can compose them: the
+  global-view compute degenerates to a near-non-transitive tally over directly-known edges, not
+  the transitive engine §5 binds to. Closing this needs either an author-held mapping linking a
+  truster's pseudonym to its subject `IK` (a privacy cost REP-2 exists to avoid) or scoping both
+  truster and trustee to the same per-context key (a portability cost to REP-1) — KOTVA has
+  chosen neither and discloses the gap instead.
+- **Distrust does not reach the global-view compute.** Standard EigenTrust clips negative input
+  to zero (`c_ij = max(s_ij,0) / Σ_k max(s_ik,0)`), and OpenRank inherits this. A `TrustEdge`
+  with `polarity = -1` is therefore discarded, not aggregated, by the bound compute — it carries
+  no weight against a bad actor's score there — and remains usable only as local, reader-side
+  policy, never as input the adopted engine consumes.
 - **The Sybil-cost floor is an open question, not a solved one.** The achievable floor on a
   signed-feed substrate is unresearched (TRACT §21.8), shared identically with WRAP. Personhood raises
   it; it does not close it, and every method trades off (biometrics + operator, or zk-passport that

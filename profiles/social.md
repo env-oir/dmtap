@@ -47,14 +47,14 @@ SOCIAL adds a spine on top of substrate machinery it does not modify.
 |---|---|---|
 | ① | **Identity** ([`IDENTITY.md`](../substrate/IDENTITY.md), §1) | The account **is** the keypair `IK`. No platform account; portable across every client, indexer and labeler. Names (DNS / key-name floor) are swappable display pointers, never the identity. |
 | ② | **Feeds & Blobs** ([`FEEDS.md`](../substrate/FEEDS.md), §22) | The carrier for **every** public object: posts, follows, likes, reposts, profile cards, and labels are all `PubAnnounce`s in append-only signed feeds; media are `PubManifest` blobs. |
-| ③ | **REPUTATION** ([`REPUTATION.md`](../primitives/REPUTATION.md)) | Anti-Sybil discovery weighting and reply/mention gating: the public follow-and-interaction graph is trust-edge input an indexer computes over (EigenTrust), and a reader's web-of-trust is the cold-contact filter (§7.2). No published score (REP-3). |
+| ③ | **REPUTATION** ([`REPUTATION.md`](../primitives/REPUTATION.md)) | Anti-Sybil discovery weighting and reply/mention gating: the public follow-and-interaction graph is trust-edge input an indexer computes over (EigenTrust), and a reader's web-of-trust is the cold-contact filter (SOC-9). No published score (REP-3). |
 | ④ | **MOTE** ([`02-mote.md`](../02-mote.md), §2) | Only for what is genuinely private: DMs ride `chat` (`0x01`); the account's identity/key-rotation announcement is `identity` (`0x09`). SOCIAL allocates no new kind. |
 
 **Coordinators** (each an instance of [`CONTRACT`](../coordinator/CONTRACT.md), all non-load-bearing):
 
 | Kind | Job in SOCIAL | Visibility (§4) |
 |---|---|---|
-| **`labeler`** | Publishes moderation labels over public posts/accounts; **opt-in and subscribable** — the reader applies only labelers it trusts, client-side (§4.3, CONTRACT §4). | n/a — labels public objects; sees only what is already public. |
+| **`labeler`** | Publishes moderation labels over public posts/accounts; **opt-in and subscribable** — the reader applies only labelers it trusts, client-side (SOC-3, CONTRACT §4). | n/a — labels public objects; sees only what is already public. |
 | **`indexer`** | Search, trending, "who replied," follower graphs — **derived and never authoritative** (REP-4, §22.4.3). TEE-preferred so a global-view compute holds no advantage it can forge. | `attested` (TEE) preferred; sees reader **queries** — a metadata leak, declared (§6). |
 
 **Bindings** ([`bindings/README.md`](../bindings/README.md), swapped as version bumps, never rebuilt):
@@ -83,12 +83,15 @@ Post    = { 1 => 0,  2 => tstr,          ; type=post, body (bounded; the natural
             ? 3 => hash,                 ; reply_to   announce_id of the post replied to
             ? 4 => [+ hash],             ; embeds     PubManifest roots (images/video/quoted blobs)
             ? 5 => tstr,                 ; lang       BCP-47 tag
-            ? 6 => [+ tstr] }            ; self_labels author-declared content warnings (§4.4)
+            ? 6 => [+ tstr] }            ; self_labels author-declared content warnings (SOC-6)
 Repost  = { 1 => 1,  2 => hash,          ; type=repost, target announce_id (pure boost)
-            ? 3 => tstr }                ; quote      OPTIONAL added commentary → a quote-post
-Like    = { 1 => 2,  2 => hash }         ; type=like, target announce_id (a public reaction)
+            ? 3 => tstr,                 ; quote      OPTIONAL added commentary → a quote-post
+            ? 9 => bool }                ; retracted  OPTIONAL; true on a supersede that retracts this repost (SOC-5)
+Like    = { 1 => 2,  2 => hash,          ; type=like, target announce_id (a public reaction)
+            ? 9 => bool }                ; retracted  OPTIONAL; true on a supersede that retracts this like (SOC-5)
 Follow  = { 1 => 3,  2 => ik-pub,        ; type=follow, subject = the followed account's IK
-            ? 3 => tstr }                ; list       OPTIONAL named list/circle (reader-defined)
+            ? 3 => tstr,                 ; list       OPTIONAL named list/circle (reader-defined)
+            ? 9 => bool }                ; retracted  OPTIONAL; true on a supersede that retracts this follow (SOC-5)
 Profile = { 1 => 4,  ? 2 => tstr,        ; type=profile (a superseding revision chain), display name
             ? 3 => hash, ? 4 => tstr }   ; avatar PubManifest root, bio
 Label   = { 1 => 5,  2 => subject,       ; type=label (issued by a LABELER in its OWN feed)
@@ -99,7 +102,8 @@ subject = hash / ik-pub                  ; a post (announce_id) or an account (I
 - **A post's author is not a field** — it is the feed key that signs the `PubAnnounce` (§22.3),
   displayed via ordinary pinning/KT, verified with none (§22.3.3).
 - **`Follow`/`Like`/`Repost` are public by design.** Unfollow / unlike / delete-repost is a
-  **supersede**, never a deletion (§22.3.4); the graph is public and irrevocable (SOC-5, §9).
+  **supersede** carrying `retracted = true` (key 9, above) over the same subject/target — never a
+  deletion (§22.3.4); the graph is public and irrevocable (SOC-5, §9).
 - **`Label` lives in the *labeler's* feed**, subject-attached to a post or account. It is the
   ATTEST/Feedback-shaped input of composable moderation (§4).
 
@@ -118,10 +122,18 @@ REPUTATION defines no score object (REP-3).
 - **SOC-2 — The timeline is composed at the reader, and reverse-chronological is the baseline.** A
   following-graph feed MUST be constructible on the reader's own node by merging the `FeedHead`s of
   the accounts it follows (§22.4.4), with **strict reverse-chronological order as the REQUIRED
-  default and offline fallback** (ordering by feed `seq`, never self-asserted `ts` — §22.3.1). Any
-  other ordering (relevance, trending, "for you") is a **disclosed, swappable indexer policy** the
-  reader hired (SOC-8), never a protocol default and never carried by any object. There is no
-  ranking token and no ranking authority ([`DIRECTION § 5`](../DIRECTION.md), REP-3).
+  default and offline fallback**. Feed `seq` (§22.4.1) is per-author and orders entries only
+  **within** a single author's feed; it carries no cross-author meaning and MUST NOT be used to order
+  a multi-author merge. The merge key across authors is `PubAnnounce.ts` (§22.3.1) — the only
+  wall-clock field the merge has. Because `ts` is self-asserted and offline-unverifiable (§22.3.3),
+  it is **forgeable**: an author who sets `ts` far in the future pins that post atop every follower's
+  timeline indefinitely. A client MUST clamp any `ts` exceeding the reader's local receive time down
+  to that receive time before using it to order the merge (the PUB analogue of SYNC's one-sided HLC
+  future-skew bound), and MAY fall back to local receive-order where it cannot establish a reliable
+  clock. This is a disclosed residual, not a solved one (§8). Any other ordering (relevance, trending,
+  "for you") is a **disclosed, swappable indexer policy** the reader hired (SOC-8), never a protocol
+  default and never carried by any object. There is no ranking token and no ranking authority
+  ([`DIRECTION § 5`](../DIRECTION.md), REP-3).
 - **SOC-3 — Moderation is opt-in labelers, applied at the reader.** A client MUST NOT apply a label
   from a `labeler` the user has not explicitly subscribed to. Labels are **advisory and
   reader-applied**: subscribing to multiple labelers is composable, and precedence among them is
@@ -136,15 +148,21 @@ REPUTATION defines no score object (REP-3).
   §4 forbids.
 - **SOC-5 — Social graph and reactions are public, irrevocable, supersede-only.** `Follow`, `Like`,
   `Repost`, `Post`, and `Profile` are public author-feed objects; retraction is a superseding entry
-  (§22.3.4), never an erasure, and binds only a reader who checks the author's feed head — nothing
-  obliges an independent holder to notice (REPUTATION §2.4). A client MUST disclose irrevocability
-  **before** the act (§22.7).
+  (§22.3.4), never an erasure. For `Follow`/`Like`/`Repost` the superseding entry carries the same
+  subject/target with `retracted = true` (§3); a client MUST treat the latest entry in a `supersedes`
+  chain as authoritative and MUST render a `retracted = true` entry as absence (unfollowed / unliked /
+  un-reposted). Retraction binds only a reader who checks the author's feed head — nothing obliges an
+  independent holder to notice (REPUTATION §2.4). A client MUST disclose irrevocability **before**
+  the act (§22.7).
 - **SOC-6 — No personal data beyond what the author publishes.** Published objects are irrevocable
   and content-addressed; a right to erasure cannot be satisfied against them (TRACT §0.5.1). A
   `Post.body` and `Profile` fields are the natural-person public surface; a client SHOULD warn on a
   body that appears to carry a third party's personal data, and MUST NOT auto-publish anything the
-  user did not explicitly post (§22.2.4 publish-act boundary). Private conversation is a sealed MOTE
-  (`0x01`), never a public object.
+  user did not explicitly post (§22.2.4 publish-act boundary). An author MAY self-declare content
+  warnings via `Post.self_labels` (§3); a client MUST render a post carrying `self_labels` behind the
+  declared warning by default, and MUST NOT treat the author's own `self_labels` as `labeler` output
+  (SOC-3) — it is a first-person disclosure, not third-party moderation. Private conversation is a
+  sealed MOTE (`0x01`), never a public object.
 - **SOC-7 — Discovery is derived and non-authoritative.** Any node MAY build a search index, trending
   list, or follower graph over the public feeds; the result is rebuildable and MUST NOT be treated as
   authoritative — the authoritative state is always the set of signed feeds (REP-4, §22.4.3). Two
@@ -154,11 +172,16 @@ REPUTATION defines no score object (REP-3).
   reader MUST be able to substitute its own local computation or another provider (REP-7). Neither
   publishes a global score (REP-3).
 - **SOC-9 — Reply/mention reach is web-of-trust, never content classification.** A public reply or
-  mention cannot be *blocked* (it is a post in the author's own feed). Whether it surfaces in a
-  recipient's notifications MAY be filtered by the recipient's local web-of-trust or a subscribed
-  labeler; a cold reply from outside the follow graph MAY require a cold-contact proof
-  ([`OFFLINE` R-MOTE-2](../substrate/OFFLINE.md), §22.6). The filter authorizes on identity and rate;
-  it MUST NOT be a coordinator classifying content in a delivery path (CONTRACT §4).
+  mention cannot be *blocked* — it is a `Post`, an ordinary fee-free, challenge-less `PubAnnounce`
+  (§22.3.2, §22.6.3); a §2.2b cold-contact proof is a per-recipient construct that does not apply to
+  a pulled public object and is NOT required to publish or fetch one, cold or not. Whether a reply or
+  mention *surfaces in a recipient's notifications* is entirely the recipient's own local computation:
+  a client MAY scan followed/indexed feeds for a `reply_to`/mention match and rank or suppress the
+  result by the recipient's local web-of-trust or a subscribed labeler's advisory label — never by
+  gating the underlying `Post`. SOCIAL defines no push-delivered mention/notification object and
+  allocates no new MOTE kind (§2); a client wanting live-push notice of a mention runs its own
+  polling or indexer subscription, outside this protocol's scope. The filter authorizes on identity
+  and rate; it MUST NOT be a coordinator classifying content in a delivery path (CONTRACT §4).
 
 ---
 
@@ -234,9 +257,9 @@ SOCIAL inherits [`THREAT-MODEL.md`](../THREAT-MODEL.md) unchanged; the invariant
   disclosed, swappable, self-hostable policy the reader hired (SOC-4, SOC-8); neither is load-bearing,
   and neither gates delivery on content. Ranking that "finishes" and centralizes is what REP-4 forbids.
 - **SEC-7 (abuse priced and localized; anti-Sybil not solved).** A client MUST NOT describe bot /
-  trending manipulation as solved. Cold-reply proofs (SOC-9) and the personhood/stake anchor raise the
-  floor; web-of-trust dissolves it at local scale — but a funded, patient sockpuppet operator defeats
-  all three (§9, REPUTATION SEC-7).
+  trending manipulation as solved. The personhood/stake anchor raises the floor; a reader's local
+  web-of-trust notification filter (SOC-9) dissolves it further at local scale — but a funded,
+  patient sockpuppet operator defeats both (§9, REPUTATION SEC-7).
 - **SEC-9 (irrevocability / metadata).** A client MUST disclose, before publishing, that a post/follow
   is public and irrevocable and that retraction is cooperative-only (SOC-5, §22.7). Reads leak *which
   reader fetched which public object*; a reader who must hide that they read supplies their own
@@ -249,6 +272,12 @@ SOCIAL inherits [`THREAT-MODEL.md`](../THREAT-MODEL.md) unchanged; the invariant
 Each is disclosed rather than solved; every one traces to a root ceiling
 ([`DIRECTION § 8`](../DIRECTION.md)).
 
+- **Timeline ordering is forgeable via self-asserted `ts`.** Feed `seq` only orders within one
+  author's feed, so the cross-author merge (SOC-2) necessarily keys on `PubAnnounce.ts`, which is
+  self-asserted and offline-unverifiable (§22.3.3): a malicious author who future-dates `ts` pins a
+  post atop every follower's timeline. The client-side future-skew clamp (SOC-2) bounds this — a
+  forged post cannot outrun the reader's own clock — but does not eliminate a moderately-skewed
+  forgery sorting ahead of genuinely recent posts. Disclosed, not solved.
 - **The algorithm is genuinely better UX, and we ship reverse-chron by default.** A tuned engagement
   feed reads better than a chronological one; refusing a surveillance ranking authority costs real
   usability. The fix — a TEE `indexer` you hired — converges toward centralized-grade discovery

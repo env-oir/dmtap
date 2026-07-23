@@ -2,7 +2,7 @@
 
 **Status: non-normative research.** This is the long form of the coverage audit summarised in
 [`README.md §1`](README.md). It exists to make one claim checkable: that the six-capability
-waist ([DIRECTION §1](../../DIRECTION.md)) plus the seven primitives ([DIRECTION §2](../../DIRECTION.md))
+waist ([DIRECTION §1](../../DIRECTION.md)) plus the six primitives ([DIRECTION §2](../../DIRECTION.md))
 plus the one [coordinator contract](../../coordinator/CONTRACT.md) cover the product space —
 and to name, without softening, the shapes they cover only partly and the *minimal* addition
 that would close each gap. Nothing here is normative; the normative surface is the profiles
@@ -24,9 +24,11 @@ a new coordinator *kind*, or an unbuilt thin profile. One shape (surveillance ad
 **Waist** ([DIRECTION §1](../../DIRECTION.md)) — `ID` identity · `MOTE` sealed object ·
 `TRANS` transport · `PUB` public objects · `SYNC` multi-author CRDT · `WAKE` roles + content-free push.
 
-**Primitives** ([DIRECTION §2](../../DIRECTION.md)) — `OFFER` · `MATCH` (assignment: nearest /
-best-fit / highest-bid) · `RESERVE` (single-owner calendar, no matcher) · `REP` reputation ·
-`ESC` escrow · `ORC` physical-event oracle · `DIS` dispute · `PAY`.
+**Primitives** ([DIRECTION §2](../../DIRECTION.md)) — the six are `OFFER` · `MATCH` (assignment:
+nearest / best-fit / highest-bid) · `RESERVE` (single-owner calendar, no matcher) · `REP`
+reputation · `ESC` escrow · `ATTEST` attestation. The matrix also uses three composite
+coordinator/binding roles, not primitives (DIRECTION §2): `ORC` physical-event oracle (⊂
+ATTEST) · `DIS` dispute (the arbiter kind) · `PAY` (the stablecoin binding).
 
 **Coordinators** ([CONTRACT §5](../../coordinator/CONTRACT.md)) carry their declared
 content-visibility ([CONTRACT §3](../../coordinator/CONTRACT.md)) inline: `blind` /

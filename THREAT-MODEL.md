@@ -34,7 +34,7 @@ Two framing rules from [`DIRECTION.md`](DIRECTION.md) govern the whole document:
   never the primitive. When the frontier improves, the filling swaps and this floor does not move
   ([DIRECTION §9](DIRECTION.md)).
 - **Every claim ships with its residual.** A security section that lists only strengths is
-  marketing. Each MUST below carries the boundary it does **not** cross (§11), disclosed rather
+  marketing. Each MUST below carries the boundary it does **not** cross (§6), disclosed rather
   than hidden — the same discipline as [`coordinator/CONTRACT §3.4`](coordinator/CONTRACT.md).
 
 ---
@@ -49,9 +49,9 @@ Profiles narrow this; none may widen a defended cell into an undefended one with
 | **Content-blind intermediary** (relay, media-relay, mailbox, SNI ingress) | forwards/holds ciphertext it cannot read | **contained by contract** — holds no decrypting key; visibility class declared and surfaced (SEC-4, [CONTRACT §3](coordinator/CONTRACT.md)). |
 | **`terminating` intermediary** (legacy gateway, TLS-terminating ingress) | sees plaintext at a disclosed boundary | **bounded, never silent** — declared `terminating`, no downgrade into it (SEC-4, SEC-8). |
 | **Malicious coordinator** (indexer, matcher, labeler, arbiter, oracle) | withholds, favours, mis-orders, or lies about its own operation | **hired, not depended-on** — authorizes but never classifies; swappable with zero migration; audit is one-directional (SEC-6). |
-| **Sybil / flooding peer** | mints unlimited identities, floods well-formed objects | **raised, not closed** — cost-for-cold-contact + local web-of-trust + bounded pending state (SEC-7); a disclosed ceiling globally (§11). |
-| **Compromised endpoint** | reads/keys one seized, unlocked device | **hardened then bounded** — hardware-backed non-exportable keys, fast revocation, recovery heals all cases *except* a device actively compromised while unlocked (SEC-5, §11). |
-| **Metadata / traffic-analysis adversary** | observes who talks to whom, when, how much | **reduced where a profile buys it, disclosed where it does not** — sealed sender hides the sender from intermediaries; it is a reduction, not elimination; strong graph privacy against a global passive adversary is a **research-tier** profile property, non-normative here (SEC-9, §11). |
+| **Sybil / flooding peer** | mints unlimited identities, floods well-formed objects | **raised, not closed** — cost-for-cold-contact + local web-of-trust + bounded pending state (SEC-7); a disclosed ceiling globally (R-7). |
+| **Compromised endpoint** | reads/keys one seized, unlocked device | **hardened then bounded** — hardware-backed non-exportable keys, fast revocation, recovery heals all cases *except* a device actively compromised while unlocked (SEC-5, R-5). |
+| **Metadata / traffic-analysis adversary** | observes who talks to whom, when, how much | **reduced where a profile buys it, disclosed where it does not** — sealed sender hides the sender from intermediaries; it is a reduction, not elimination; strong graph privacy against a global passive adversary is a **research-tier** profile property, non-normative here (SEC-9, R-9). |
 
 The single headline: **an intermediary that cannot read is the default; one that can is a
 declared exception.**
@@ -66,7 +66,7 @@ MAY add, MUST NOT subtract, and MUST disclose any residual it cannot close.
 ### SEC-1 — Fail-closed everywhere
 A security-relevant failure MUST either be **refused** (fail closed) or surfaced as an **explicit
 user choice** — never a silent fallback to an unauthenticated, unencrypted, or unverified path
-(the core fail-closed governance, §10.7; [`substrate/README.md §3` rule 5](substrate/README.md)).
+(the core fail-closed governance, §10.7; [`substrate README §3 rule 5`](substrate/README.md)).
 This binds every layer: an unknown suite is rejected, never guessed (`ERR_UNKNOWN_SUITE`, §1.1); a
 signature that does not verify blocks the object; an unverifiable `declared`-blind claim MUST NOT
 be shown as verified ([CONTRACT §3.4](coordinator/CONTRACT.md)); a clock-skew or membership check
@@ -117,7 +117,11 @@ profile MUST NOT expose an API that lets one device silently take over the ident
 ### SEC-6 — Coordinators authorize; they never classify, gate, or lock in
 Every coordinator MUST satisfy all four [CONTRACT](coordinator/CONTRACT.md) clauses — accountable,
 swappable (zero data migration, zero identity change), self-hostable, visibility-declared — and
-MUST be **never load-bearing**: removing it degrades reach, never function. A coordinator's every
+MUST be **never load-bearing**: removing it degrades reach, never function — with **one disclosed
+exception**, the **custodial escrow operator**, which holds the float for a trade window and is
+therefore structurally load-bearing by design, not oversight ([CONTRACT §1](coordinator/CONTRACT.md);
+[ESCROW §10](primitives/ESCROW.md)), bounded by bonding/staking sized to the float and by per-order
+swappability, never eliminated. A coordinator's every
 gate MUST be an **authorization** answered from *sender identity + rate* — never a content
 classification (no spam scoring, no ML filter, no content-basis drop/re-rank/annotate)
 ([CONTRACT §4](coordinator/CONTRACT.md)). "Wanted" is judged by the recipient, on the recipient's
@@ -132,9 +136,13 @@ Anti-abuse MUST hold **without** a central content filter and **without** deanon
 The permitted tools are: **authenticated-by-default** identity (no anonymous unauthenticated
 injection), **anonymous-but-accountable** rate-limit tokens, **cost-for-cold-contact** (proof-of-work,
 issued token, or paid postage; known contacts free), and **local recipient policy** applied before
-the inbox (§9). Every such proof MUST be **cryptographically bound to the carrying envelope** (to the
-ephemeral `sender_key`) so a proof stripped from a victim and re-attached to an attacker's message is
-worthless (§9.2a). Global anti-Sybil is **not solved**: at local scale it dissolves into
+the inbox (§9). Every proof that admits envelope binding — `ArcToken`, `PowSolution`,
+`PostageStamp` — MUST be **cryptographically bound to the carrying envelope** (to the ephemeral
+`sender_key`) so a copy stripped from a victim and re-attached to an attacker's message is worthless
+(§9.2a). A **vouch** cannot be bound at mint time — the voucher cannot know a key the vouchee has
+not yet generated — and is instead bound to its **named subject**, verified post-decryption; a
+lifted vouch still buys the thief one decryption before rejection, a disclosed residual, not a gap
+in this MUST (§9.2a; R-7). Global anti-Sybil is **not solved**: at local scale it dissolves into
 web-of-trust; at global scale it binds to proof-of-personhood (World ID / Human Passport) which
 **raises the floor, never closes it** ([bindings](bindings/README.md), [DIRECTION §8](DIRECTION.md)).
 A profile MUST NOT describe Sybil resistance as solved. *Residual: R-7.*
@@ -171,7 +179,9 @@ A profile MUST NOT claim graph/timing privacy it does not implement, and MUST de
 Every MUST above MUST hold with **no coordinator and no connectivity** ([DIRECTION §6](DIRECTION.md)).
 Concretely: SEC-2 authenticity and SEC-3 confidentiality are intrinsic to the object and need no
 server; SEC-7 anti-abuse collapses to web-of-trust and local policy; SEC-6 coordinators are absent,
-so nothing they did was load-bearing; SEC-8 replay-inertness and deterministic merge let a partitioned
+so nothing they did was load-bearing — except a custodial-escrow trade window, the disclosed
+exception, whose settlement is `blocked` offline by design ([ESCROW §8](primitives/ESCROW.md)),
+leaving only the trade objects to reconcile; SEC-8 replay-inertness and deterministic merge let a partitioned
 replica **reconcile on reconnect** with byte-identical convergence (SYNC §2.2). A security property
 that only holds while a coordinator is reachable is a conformance violation of this document, not a
 degraded mode. Graceful offline degradation plus reconcile-on-reconnect is the test.
@@ -182,12 +192,12 @@ degraded mode. Graceful offline degradation plus reconcile-on-reconnect is the t
 
 | # | Every primitive / binding / coordinator / profile… | Anchor |
 |---|---|---|
-| SEC-1 | fails **closed** — refuse or explicit choice, never silent unauthenticated/unencrypted fallback | §10.7; substrate §3.5 |
+| SEC-1 | fails **closed** — refuse or explicit choice, never silent unauthenticated/unencrypted fallback | §10.7; substrate README §3 rule 5 |
 | SEC-2 | ships **self-authenticating**, domain-separated, cert-chained objects; names point, never authorize | §18.1.6; IDENTITY §2 |
 | SEC-3 | encrypts payloads **end-to-end** with adopted crypto (MLS/HPKE/SFrame), deterministic encoding | bindings; DIRECTION §7 |
 | SEC-4 | **declares** one visibility class + assurance level, surfaces it, never misrepresents | CONTRACT §2.4, §3 |
 | SEC-5 | makes key-loss/compromise **recoverable** (adopted); no single device rewrites recovery | IDENTITY §2.2; bindings |
-| SEC-6 | is a coordinator that **authorizes, never classifies**; swappable, never load-bearing; no token | CONTRACT §2, §4, §6 |
+| SEC-6 | is a coordinator that **authorizes, never classifies**; swappable, never load-bearing (except custodial escrow, disclosed — R-6); no token | CONTRACT §2, §4, §6 |
 | SEC-7 | prices **cold contact**, binds proofs to the envelope, never central-filters or deanonymizes | §9, §9.2a |
 | SEC-8 | makes replay **inert** and downgrade **impossible** (suite/visibility/TLS no-downgrade) | SYNC §2.2, §3; CONTRACT §3.2 |
 | SEC-9 | **minimizes** metadata (sealed sender where bought), **discloses** what it does not hide | §6.2; DIRECTION §9 |
@@ -225,11 +235,19 @@ profile author cannot silently assume them away:
   operation, it cannot disconfirm one the coordinator fabricated or silently omitted
   ([CONTRACT §6](coordinator/CONTRACT.md)). One honest scarcity exception is disclosed rather than
   papered over — legacy SMTP egress needs a resource (reputable IP, unblocked port 25) an ISP may deny
-  ([CONTRACT §2.3](coordinator/CONTRACT.md)).
+  ([CONTRACT §2.3](coordinator/CONTRACT.md)). A second, structural exception to "never load-bearing"
+  itself: the **custodial escrow operator** is the family's one honest load-bearing coordinator — it
+  holds the trade-window float and can abscond, become insolvent, or freeze funds, a counterparty
+  risk bonding/staking bounds but does not eliminate ([CONTRACT §1](coordinator/CONTRACT.md);
+  [ESCROW §10](primitives/ESCROW.md)).
 - **R-7 (anti-abuse).** **Global anti-Sybil is imperfect** — every personhood method trades off
   (biometrics + operator, or zk-passport that excludes the undocumented); it raises the floor and does
   not close it ([DIRECTION §8](DIRECTION.md)). Cost-for-cold-contact deters bulk sending; it does not
-  stop a funded, patient, low-volume abuser.
+  stop a funded, patient, low-volume abuser. **Vouch is bound post-decryption, not to the envelope**:
+  a lifted vouch still buys the thief one decryption before `ERR_VOUCH_SUBJECT_MISMATCH`, and because
+  a replayed vouch is charged against the *subject's* budget, the replay MUST be surfaced to the
+  recipient rather than silently rate-limited into invisibility — otherwise the mechanism becomes a
+  way to frame the vouched-for party (§9.2a).
 - **R-8 (replay/downgrade).** Object-replay inertness holds **only because** merges are idempotent
   joins; a profile that adds non-idempotent side effects on receipt reintroduces replay and MUST carry
   its own freshness. Downgrade is closed against **protocol** paths; a user who manually overrides a

@@ -40,6 +40,8 @@ publish a **signed descriptor** carrying its kind, its policy, and — where it 
 signed tariff. The descriptor is **discovery-only and self-asserted**: it carries no global
 reputation score, no price ranking, and no stake field. Reputation is **locally measured** by
 each client from its own results, never a globally published number (DMTAP §7.5, generalized).
+Stake is kept out of the descriptor for the same reason price-ranking is — see §6 for where and
+how a relying party verifies it instead.
 
 ### 2.2 Swappable
 Leaving a coordinator MUST be a **configuration change with zero data migration and zero
@@ -51,12 +53,14 @@ violation, not a business model.
 ### 2.3 Self-hostable
 For every coordinator kind there MUST exist a **self-host backstop**: a user who can meet the
 kind's requirement can always run it for themselves and depend on no third party. Exactly one
-honest exception is disclosed rather than papered over — a **scarce network reachability**
-class: a reputable IP + unblocked port 25 for legacy SMTP egress (the `gateway`), and a public
-reachable ingress for the `reachability-adapter`. Both are a network resource a third party
-(ISP/host) allocates, not something a user can always self-provision. The contract confines the
-scarcity to this narrow reachability class instead of letting it spread to custody, naming, or
-moderation.
+honest exception **class** is disclosed rather than papered over — a **scarce network-
+reachability class**, with two members: a reputable IP + unblocked port 25 for legacy SMTP
+egress (the `gateway`), and a public reachable ingress for the `reachability-adapter`. Both
+members are a network resource a third party (ISP/host) allocates, not something a user can
+always self-provision. The contract confines the scarcity to this one reachability class instead
+of letting it spread to custody, naming, or moderation. (THREAT-MODEL.md R-6 names this same
+class and its residual; its text is a member short and should be updated to name both members
+consistently with this section.)
 
 ### 2.4 Content-visibility declared
 Every coordinator MUST declare, in its descriptor, exactly one **visibility class** at one
@@ -74,8 +78,8 @@ property of every intermediary.
 
 | Class | Meaning | Examples |
 |---|---|---|
-| **`blind`** | Forwards/holds ciphertext, holds no key that decrypts the payload, reads neither content nor routing beyond what the wire exposes. | mesh relay (Circuit Relay v2), mix, SFrame media-relay, TURN-over-SFrame |
-| **`blind-routing`** | Cannot read the payload; sees routing metadata (envelope, SNI, addresses, size, timing). | SNI-passthrough ingress, buffer/mailbox |
+| **`blind`** | Forwards/holds ciphertext, holds no key that decrypts the payload, reads neither content nor routing beyond what the wire exposes. | mesh relay (Circuit Relay v2), mix, TURN-over-SFrame |
+| **`blind-routing`** | Cannot read the payload; sees routing metadata (envelope, SNI, addresses, size, timing). | SNI-passthrough ingress, buffer/mailbox, SFU media-relay (RFC 9605 — reads per-frame metadata, RTP routing, stream sizes, speaker timing, and participant graph to make forwarding decisions; media payload stays sealed by SFrame) |
 | **`terminating`** | Terminates encryption and sees plaintext — a deliberate, disclosed trust boundary. | legacy mail gateway, TLS-terminating ingress |
 
 ### 3.2 The four rules
@@ -107,28 +111,31 @@ generalized). Clients MUST NOT present a `declared`-level `blind` claim as if it
 
 ## 4. Authorize, never classify (normative)
 
-Every gate a coordinator applies MUST be an **authorization** question answered from **sender
-identity and rate** — *is this party who they claim, and within their limits?* A coordinator
-MUST NOT run content classification (spam scoring, ML filters, keyword/URL reputation) and
-MUST NOT drop, quarantine, re-rank, or annotate on a content basis. "Wanted" is a property of
-a relationship, judged by the recipient, on the recipient's device, against the recipient's
-own corpus.
+Every gate a coordinator applies **on a delivery path or a canonical/authoritative path** MUST
+be an **authorization** question answered from **sender identity and rate** — *is this party who
+they claim, and within their limits?* On that path, a coordinator MUST NOT run content
+classification (spam scoring, ML filters, keyword/URL reputation) and MUST NOT drop, quarantine,
+re-rank, or annotate on a content basis. "Wanted" is a property of a relationship, judged by the
+recipient, on the recipient's device, against the recipient's own corpus.
 
-This is structural, not a preference: a coordinator that classifies content becomes permanent
-by construction (classification improves with corpus size, so it centralizes, and it never
-"finishes"). The rule is what stops anti-abuse from forming a second centralized tier (DMTAP
-§7.11.4, generalized to every coordinator).
+This is structural, not a preference: a coordinator that classifies content on a delivery or
+authoritative path becomes permanent by construction (classification improves with corpus size,
+so it centralizes, and it never "finishes"). The rule is what stops anti-abuse from forming a
+second centralized tier (DMTAP §7.11.4, generalized to every coordinator).
 
 **Anti-abuse that _is_ allowed:** authenticated-by-default identity, anonymous-but-accountable
 rate-limit tokens, optional postage/proof-of-work for cold contact, and — for moderation — a
 **market of opt-in labelers** each of which is itself a coordinator under this contract (it
 labels; you subscribe to the ones you trust; you can leave).
 
-**Ranking carve-out (parallel to labelers):** a coordinator MAY rank or re-rank content within
-its **own derived, non-authoritative view** — this is exactly what the `indexer` and `matcher`
-kinds do. The prohibition is on dropping, gating, quarantining, or re-ranking content on a
-**delivery path** or a **canonical/authoritative path**. "Rank my own view" is permitted;
-"gate what reaches you" is not.
+**Derived-view carve-out (labelers, indexers, matchers):** a coordinator MAY classify, annotate,
+rank, or re-rank content within its **own derived, non-authoritative, opt-in, subscribable
+view** — this is exactly what the `labeler` kind does (it classifies content into labels; you
+subscribe to the ones you trust) and what `indexer`/`matcher` do (they rank their own corpus or
+match set). The §4 prohibition is scoped to a **delivery path** or a **canonical/authoritative
+path**: a coordinator MUST NOT classify, annotate, drop, gate, quarantine, or re-rank content
+that reaches — or is withheld from — a recipient by default. "Classify/rank my own opt-in view"
+is permitted; "gate what reaches you" is not.
 
 ---
 
@@ -138,17 +145,21 @@ kinds do. The prohibition is on dropping, gating, quarantining, or re-ranking co
 |---|---|---|
 | **gateway** | Legacy-mail bridge (MX, DKIM egress, legacy client surfaces) | `terminating` (legacy leg is plaintext) |
 | **relay** | Mesh reachability for NAT'd peers | `blind` / structural |
-| **media-relay** | Forwards SFrame-encrypted call/stream media (scales calls) | `blind` / structural |
+| **media-relay** | Forwards SFrame-encrypted call/stream media (scales calls) | `blind-routing` / structural — media payload sealed by SFrame; per-frame metadata, RTP routing, size, timing, participant graph are visible to the SFU (RFC 9605) |
 | **reachability-adapter** | ngrok-style public subdomains for arbitrary box services | `blind-routing` (SNI-passthrough) preferred |
-| **indexer** | Search / discovery / global product-and-price view | corpus `public` / query-channel `terminating` unless `attested` |
+| **indexer** | Search / discovery / global product-and-price view | corpus is public plaintext (nothing to be blind about); query-channel `terminating` unless `attested` |
 | **labeler** | Moderation labels, opt-in, subscribable | n/a (labels public objects) |
 | **matcher** | Real-time supply↔demand matching (rides, delivery) | **terminating** (default) / **attested** (TEE) |
 | **compute** *(provisional)* | Hosted/outsourced computation (e.g. private-AI inference on rented GPU) | `terminating` (default) / `attested` (TEE, for blind compute) |
 | **arbiter** | Dispute resolution (staked jury) | `terminating` for evidence, disclosed |
 | **oracle** | Physical-world / real-fact attestation (delivered? ride done?) | `terminating`, disclosed |
+| **custodial-escrow** | Holds the trade float for a trade window ([primitives/ESCROW.md](primitives/ESCROW.md) SEC-6a) | `terminating` for evidence, disclosed — the family's **one load-bearing exception** (§1) |
 
 `gateway` (DMTAP §7) and the legacy `adapter`s (§26) are the first, fully-worked instances;
-every kind above inherits the four clauses and the visibility property unchanged.
+every kind above inherits the four clauses and the visibility property unchanged. `custodial-escrow`
+satisfies all four clauses like every other kind but, uniquely, does not fade once hired — see §1
+and [primitives/ESCROW.md](primitives/ESCROW.md) §9–§10 (SEC-6a, "the one honest load-bearing
+exception").
 
 ---
 
@@ -159,6 +170,14 @@ every kind above inherits the four clauses and the visibility property unchanged
   directly to the paying party (auditable, never merely asserted).
 - **Out of scope (operator policy):** the *numbers* — quotas, rate limits, prices — and the
   settlement rail (an existing stablecoin or fiat; KOTVA brokers none and takes no cut).
+- **Stake verification (where a kind requires stake).** §2.1 excludes a stake field from the
+  descriptor so stake cannot become a ranking signal. Where a kind carries skin-in-the-game
+  (`arbiter`, `oracle` — DIRECTION §5, "sized to the value at risk"), the stake MUST instead be
+  verifiable **on the settlement/staking rail itself** — e.g. an on-chain stake balance or lock a
+  client can query directly (Kleros-class staked arbitration, OpenRank-class staked attestation,
+  DIRECTION §3) — never merely asserted in the descriptor or taken on faith. A client relying on a
+  staked coordinator MUST verify the on-rail stake meets the value at risk before relying on it;
+  an unverifiable stake claim MUST be treated as no stake (SEC-1, fail closed).
 - **Never:** a protocol token, an advertising mechanism, or a payout-fairness scheme. Absent
   by decision.
 
@@ -174,9 +193,9 @@ fabricated. Disclosed, not hidden.
 |---|---|---|
 | COORD-1 | publishes a signed, discovery-only descriptor with no global score/price-rank/stake | §2.1 |
 | COORD-2 | imposes zero lock-in — switching is config-only, identity unchanged | §2.2 |
-| COORD-3 | has a self-host backstop (or discloses the one scarce-resource exception) | §2.3 |
+| COORD-3 | has a self-host backstop (or discloses the one scarce-reachability exception class) | §2.3 |
 | COORD-4 | declares exactly one visibility class + assurance level, and clients surface it | §2.4, §3 |
 | COORD-5 | never silently downgrades from blind to terminating | §3.2 |
-| COORD-6 | authorizes from identity + rate only; never classifies content | §4 |
+| COORD-6 | authorizes from identity + rate on any delivery/authoritative path; classifies only within opt-in derived views | §4 |
 | COORD-7 | if metered, issues signed usage receipts directly to the payer | §6 |
 | COORD-8 | mints no token; stakes/settles only in existing assets | §6, DIRECTION §5 |

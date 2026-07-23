@@ -48,7 +48,7 @@ new `Reservable` superseding the old (never an in-place edit — [`tract § 3`](
 Reservable = {
   ; ... common header (keys 1-5) ...
   6  => uint,        ; grain     0 = time-slots (claimed whole) | 1 = capacity-per-interval (shared to a cap)
-  7  => tstr,        ; schedule  RFC 5545 VAVAILABILITY / VFREEBUSY / RRULE (profiled, not re-specified)
+  7  => tstr,        ; schedule  RFC 5545 VFREEBUSY / RRULE + RFC 7953 VAVAILABILITY (profiled, not re-specified)
   ? 8 => uint,       ; slotlen   minutes per slot            (grain 0 only)
   ? 9 => uint,       ; cap       units available per interval (grain 1 only; the bounded-counter bound, §3.2)
   10 => bstr(32),    ; owner     the sole authorized writer of holds/receipts for this Reservable (§3.1)
@@ -60,6 +60,13 @@ Reservable = {
 `grain` reuses the [`tract § 3.5`](../profiles/tract/03-availability.md) distinction exactly: a time
 slot is claimed whole by one hold; a capacity interval is shared by many holds up to `cap`. A
 `Reservable` MUST carry exactly one grain.
+
+`owner` (key 10) MUST equal the common-header `author` (key 4) of this `Reservable`. RESERVE has no
+delegated-authoring mode: the same key that lists the resource is the only key ever authorized to
+write a `Receipt` against it (§3.1); a `Reservable` whose `owner` differs from its `author` MUST be
+rejected. `owner` is carried as an explicit field, not left implicit in the header, so that a
+`ReservationRequest` or `Receipt` verifier can state and check the authority binding directly against
+this field without re-deriving it from the `Reservable`'s signature every time.
 
 ### 2.2 `ReservationRequest` — the intent (requester-authored)
 
@@ -122,6 +129,15 @@ accept only from rights it holds, so under arbitrary loss/delay/reorder/partitio
 A device with no local right MUST fail closed (`ERR_RESERVE_EXHAUSTED`) — decline or queue — and MUST
 NOT oversell. A plain counter measurably *does* oversell under partition and MUST NOT be used.
 
+This invariant holds provided rights are never reclaimed from a device that is only *presumed* dead.
+[`Tract § 6.2a` constraint 3](../profiles/tract/06-cart.md) states the residual precisely: reclaiming
+rights stranded on a permanently-departed device is an explicit, fallible decision, never a silent
+background sweep, because if the liveness call is wrong and the "dead" device returns, its stranded
+rights are double-issued and *accepted ≤ cap* breaks. RESERVE MUST NOT reclaim a device's rights
+automatically; a booking profile that reclaims stranded rights at all MUST treat the decision as
+explicit, disclosed, and fallible, and MUST state this double-issue failure mode to its operators
+(tract §6.2a constraint 3) rather than presenting reclamation as safe.
+
 ### 3.3 Resolution is `placed → accepted / declined`
 On receiving a `ReservationRequest`, the owner MUST emit a `Receipt`. `placed` acknowledges receipt
 without committing a right; `accepted` commits a right from the bounded counter (§3.2) and is the
@@ -177,7 +193,7 @@ reinvents nothing:
 | Need | Bind to | Not |
 |---|---|---|
 | No-oversell hold under partition | **bounded counter** — escrow/demarcation family (Preguiça/Balegas et al., SRDS 2015), in production as AntidoteDB `antidote_crdt_counter_b` (via SYNC op algebra) | a new inventory CRDT |
-| Schedule / availability | **RFC 5545** `VAVAILABILITY` / `VFREEBUSY` / `RRULE` | a bespoke schedule grammar |
+| Schedule / availability | **RFC 5545** `VFREEBUSY` / `RRULE` + **RFC 7953** `VAVAILABILITY` | a bespoke schedule grammar |
 | Convergent multi-replica state | **SYNC** LWW register + single-owner device cluster ([`§ 4.4`](../substrate/SYNC.md), [`§ 5.6`](../substrate/SYNC.md)) | a new merge algebra |
 | Request/receipt transport | **MOTE** store-and-forward ([`OFFLINE § 3.2`](../substrate/OFFLINE.md)) | a booking API |
 | Settlement (if paid) | **x402 + stablecoin** ([`bindings`](../bindings/README.md)) | **a protocol token (none exists, none will)** |
@@ -230,12 +246,21 @@ merge).
 **Reconcile on reconnect.** Divergent state heals by version-vector diff → range-Merkle drill-down →
 op exchange (SYNC [`§ 4`](../substrate/SYNC.md)); requests dedup by content-address (idempotent,
 order-independent, R-REC-1). Two of the owner's devices that *both* accepted while partitioned is the
-one interesting case: the bounded counter **prevents** joint over-acceptance up to `cap` (safety), so
-reconcile finds no oversell to fix; a device that ran out of local rights merely **stranded quota** —
-declining requests it could have served — which surfaces as spurious "sold out," never as an oversell
-(§8). A genuinely over-committed *dishonest* owner is surfaced as **attributable equivocation** (two
-signed `accepted` receipts on one unit), routed to dispute — **not swallowed by the merge**
-([`OFFLINE`](../substrate/OFFLINE.md) R-REC-2).
+one interesting case: the bounded counter **prevents** joint over-acceptance up to `cap` (safety, but
+see the reclamation residual, §3.2), so reconcile finds no oversell to fix; a device that ran out of
+local rights merely **stranded quota** — declining requests it could have served — which surfaces as
+spurious "sold out," never as an oversell (§8). A genuinely over-committed *dishonest* owner is **not
+automatically surfaced by reconcile or the merge.** A `Receipt` is a private point-to-point object,
+not a feed entry: §2.3 keys it `(reservable, slot, request)`, so each victim's `accepted` `Receipt`
+lives on a *different* register and is delivered as a sealed MOTE to that one requester (SEC-R5) — no
+replica ever compares two victims' receipts, so R-REC-1's dedup-by-content-address sees no conflict to
+fork. For grain 0, the two signed `accepted` receipts become dispute evidence only if the victims
+combine them out-of-band (typically because they physically collide at the same slot); for grain 1 two
+receipts alone prove nothing — establishing oversell needs summing granted `qty` across *every*
+`accepted` receipt for the interval against `cap`, a computation no third party, and no single victim,
+can perform. The receipts remain signed and permanent evidence — **not swallowed by the merge** in
+that narrow sense — but that is a claim about the durability of evidence, not about its automatic
+detection or routing (§9).
 
 ---
 
@@ -272,11 +297,14 @@ Inherits the family posture of [`THREAT-MODEL.md`](../THREAT-MODEL.md); each MUS
   attributable** (the WRAP [`§ 3.6`](../profiles/wrap/02-objects.md) point). The `Receipt` makes
   double-booking *evidence*, not *impossibility*, against a dishonest owner.
 - **Non-Byzantine — protects the seller from itself, not the buyer from the seller.** The bounded
-  counter's guarantee is **safety-only, paid entirely in liveness** ([`tract § 6.2a`](../profiles/tract/06-cart.md),
+  counter's guarantee is **safety-only, paid entirely in liveness, so long as no stranded rights are
+  reclaimed** ([`tract § 6.2a`](../profiles/tract/06-cart.md),
   [`tract § 3.9`](../profiles/tract/03-availability.md)): a partitioned device **strands the quota it
-  holds** and returns **spurious "sold out"** rather than ever overselling. It shields an owner from
-  its own concurrency; it makes **no** promise to a buyer about a dishonest owner. Documentation MUST
-  NOT present it as trust between the parties.
+  holds** and returns **spurious "sold out"** rather than ever overselling. If an owner reclaims a
+  presumed-dead device's stranded rights and the liveness call was wrong, that safety guarantee itself
+  breaks (double-issue, §3.2) — reclamation is an explicit, fallible, disclosed decision, never a
+  background sweep. It shields an owner from its own concurrency; it makes **no** promise to a buyer
+  about a dishonest owner. Documentation MUST NOT present it as trust between the parties.
 - **The hold does not prove the resource is honored.** Whether the reserved table, room, or slot is
   actually delivered reduces to confirm-plus-dispute — the physical-event oracle ceiling
   ([`DIRECTION § 8`](../DIRECTION.md)) — and is *more* exposed offline, where the oracle is
