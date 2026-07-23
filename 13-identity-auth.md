@@ -53,10 +53,12 @@ DMTAP-Auth introduces almost no new cryptography — it reuses:
    ceremony (§13.3.1). BEFORE signing, the client generates a fresh per-RP, per-device SESSION
    keypair (§13.4) and computes  cnf = H(session_pubkey).
 5. The user's key signs the DOMAIN-SEPARATED preimage
-     "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ scope ‖ cnf)
-   (canonical, §2; scope defaults to the empty array [] when the Challenge omits it; the exact
-    preimage and DS-tag are normative in §18.9.8 — like every other DMTAP signature this one is
-    domain-separated, so an assertion can never be confused with any other signed object)
+     "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ 0x1e ‖ H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ scope ‖ cnf)
+   (canonical, §2; scope defaults to the empty array [] when the Challenge omits it; H(...) MUST
+    appear in its §18.1.5 multihash form — the 0x1e prefix shown, or 0x16 under suite 0x05 —
+    never as a bare digest (§18.1.6); the exact preimage and DS-tag are normative in §18.9.8 —
+    like every other DMTAP signature this one is domain-separated, so an assertion can never be
+    confused with any other signed object)
 6. RP verifies the signature against alice's pinned key (§3.4), that rp_origin == its own
    origin, nonce unused, not expired → authenticated, and binds the session ONLY to the key
    named by cnf (proof-of-possession, §13.4). Because scope is INSIDE the signed preimage, the RP
@@ -78,7 +80,7 @@ sequenceDiagram
   RP->>TC: Challenge { rp_origin, nonce, issued_at, exp, aud, [scope] }
   Note over TC: bind + display VERIFIED rp_origin —<br/>WebAuthn/passkey user-verification (§13.3.1)
   Note over TC: gen fresh per-RP session keypair — cnf = H(session_pubkey)
-  TC->>K: sign "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ scope ‖ cnf)
+  TC->>K: sign "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ 0x1e ‖ H(rp_origin ‖ nonce ‖ issued_at ‖ exp ‖ aud ‖ scope ‖ cnf)
   K-->>TC: SignedAssertion { challenge, cnf, sig }
   TC->>RP: SignedAssertion
   Note over RP: verify sig vs alice's pinned key (§3.4) —<br/>rp_origin == own origin, nonce unused, not expired

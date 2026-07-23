@@ -400,14 +400,29 @@ DeliveryTag = KeyTag / GroupTag / BlindedTag
 
 KeyTag     = { 0 => 1, 1 => ik-pub }   ; deliver to a recipient identity key (default)
 GroupTag   = { 0 => 2, 1 => bytes }    ; deliver to an MLS group id (§5)
-BlindedTag = { 0 => 3, 1 => bytes }    ; blinded per-contact tag BT = HKDF(ss, epoch_day)
+BlindedTag = { 0 => 3, 1 => bytes }    ; blinded per-contact tag; BT construction pinned below (16 B)
 ```
 
 | Variant | Disc. (key 0) | Value (key 1) | Meaning & constraints |
 |---------|:-------------:|---------------|-----------------------|
 | `KeyTag` | `1` | `ik-pub` | The recipient's persistent identity public key. Simplest; links the packet to the persistent key for any observer. |
 | `GroupTag` | `2` | `bytes` (group id) | The stable group identifier (§5.8). Resolves to a group the receiving node is a member of. |
-| `BlindedTag` | `3` | `bytes` (BT) | A per-contact blinded tag `BT = HKDF(shared_secret, epoch_day)` (§2.2a). RECOMMENDED for the `private` tier. Unlinkable to the persistent key across time/observers, but does NOT hide last-hop delivery (§6.4); implementations MUST NOT present it as full recipient anonymity. |
+| `BlindedTag` | `3` | `bytes` (BT, 16 B) | A per-contact blinded tag (§2.2a), its construction pinned below. RECOMMENDED for the `private` tier. Unlinkable to the persistent key across time/observers, but does NOT hide last-hop delivery (§6.4); implementations MUST NOT present it as full recipient anonymity. |
+
+**`BT` is pinned (normative).** `BlindedTag`'s per-contact tag is a normative steady-state routing
+primitive (§2.2a): two conformant implementations MUST derive the identical `BT` for the same
+`(shared_secret, epoch_day)`, or the recipient cannot recognise a known contact's envelope. The
+construction is:
+
+> `BT = HKDF-SHA256( IKM = shared_secret, salt = ASCII "DMTAP-v0/blinded-tag", info =
+> epoch_day-as-8-byte-big-endian-uint64, L = 16 )`
+
+HKDF is RFC 5869 (HMAC-SHA-256, Extract-then-Expand) — the same HKDF-SHA256 already used for HPKE
+(RFC 9180) and push-wake (RFC 8291) key derivation elsewhere in this spec — and is independent of
+the suite-0x05 hash migration (§1.1), which governs the §18.1.5 multihash *digest* domain, not
+this KDF. `shared_secret` is the per-contact secret established at first contact (§2.2a);
+`epoch_day` is the §0.8 day-counter epoch. `BlindedTag.bytes` (key 1) is therefore **exactly 16
+bytes**; a tag of any other length is non-conformant.
 
 ### 18.3.3 `ChallengeResponse` (§2.2b, §9)
 
@@ -475,13 +490,13 @@ Vouch = {
 | | `currency` | 4 | `tstr` | MUST | ISO-4217 currency code. |
 | | `expiry` | 5 | `ts` | MUST | Expiry; an expired stamp MUST be rejected. |
 | | `audience` | 6 | `bytes` | OPTIONAL | Scopes the stamp to a specific recipient/gateway. |
-| | `sig` | 7 | `sig-val` | MUST | Issuer signature over `(serial, amount, currency, expiry, audience)` (§18.9.7). |
+| | `sig` | 7 | `sig-val` | MUST | Issuer signature over `det_cbor(PostageStamp ∖ {sig})` per §18.9.7 (the whole object minus `sig` — includes the discriminator at key 0 and `issuer` at key 1, not merely `serial`/`amount`/`currency`/`expiry`/`audience`). |
 | `Vouch` | disc | 0 | `4` | MUST | Selects vouch. |
 | | `voucher` | 1 | `ik-pub` | MUST | IK of the introducing contact; the recipient MUST trust it (pinned contact) for the vouch to count. |
 | | `subject` | 2 | `ik-pub` | MUST | The cold sender's key being introduced. |
 | | `recipient` | 3 | `ik-pub` | MUST | The recipient the vouch is scoped to; MUST match the verifying node. |
 | | `exp` | 4 | `ts` | MUST | Expiry; vouches MUST be rate-limited to prevent farming (§9.7). |
-| | `sig` | 5 | `sig-val` | MUST | Signature by `voucher` over `(subject, recipient, exp)` (§18.9.7). |
+| | `sig` | 5 | `sig-val` | MUST | Signature by `voucher` over `det_cbor(Vouch ∖ {sig})` per §18.9.7 (the whole object minus `sig` — includes the discriminator at key 0 and `voucher` at key 1, not merely `subject`/`recipient`/`exp`). |
 
 ### 18.3.4 `KeyPackageRef` (§2.2, §5.3)
 
@@ -2268,10 +2283,22 @@ signature of their own — an ARC presentation is verified by the ARC protocol
 Per §13.3 step 5 the signature is over the hash of the origin-bound fields **including `cnf`**:
 
 ```
-auth_hash    = BLAKE3-256( det_cbor([ rp_origin, nonce, issued_at, exp, aud, scope, cnf ]) )
+auth_hash    = 0x1e ‖ BLAKE3-256( det_cbor([ rp_origin, nonce, issued_at, exp, aud, scope, cnf ]) )
+               ; 33 bytes — the §18.1.5 MULTIHASH form, prefix INCLUDED, not a bare digest;
+               ; 0x16 ‖ SHA3-256(...) under suite 0x05 (§18.1.5 selects the prefix from `from`'s
+               ; pinned Identity.suites, §18.7.2 — Assertion carries no `suite` field of its own)
 preimage     = "DMTAP-v0/auth-assertion" ‖ 0x00 ‖ auth_hash
 Assertion.sig = Sign(sk_device, preimage)          ; sk_device = the IK-authorized login signer
 ```
+
+**The digest is prefixed, and this is load-bearing (normative).** `auth_hash` is one of the
+preimages §18.1.6's general rule governs: computed over a *digest* rather than over the body, so
+the bare 32-byte digest is replaced by its §18.1.5 multihash form before it enters the preimage —
+otherwise a dual-hash verifier (precisely what the suite-0x05 migration produces, §1.1) would
+accept `Assertion.sig` under *either* BLAKE3-256 or SHA3-256, collapsing login-assertion integrity
+to min(BLAKE3, SHA3) — see §18.9.2 for the identical reasoning applied to `Payload.sig`. A
+verifier MUST reconstruct the prefixed form and MUST NOT accept a signature that verifies only
+against an unprefixed 32-byte representative.
 
 The hashed array is a fixed 7-element CBOR array in exactly that order — the five echoed
 `Challenge` fields, then `scope` (`Assertion` key 9; the **empty array `[]`** when the Challenge
