@@ -338,7 +338,12 @@ which is why step 1a is a locally-configured policy floor rather than a protocol
 **The exception (narrow, and evidence the verifier already holds).** A verifier MAY accept a
 below-floor announce where a **pinned `Identity`** (§3.4) independently establishes that the object
 predates the retirement of its suite — for example the announce is reachable from a feed entry
-(§22.4) already covered by a pinned, at-or-above-floor `FeedHead`, or the publisher's pinned
+(§22.4) already covered by a pinned, at-or-above-floor `FeedHead` **whose `pub` is the announce's own
+`pub`**. Reachability through **another** author's feed MUST NOT satisfy the exception: a third party
+listing a content address in *their* feed says nothing about when *this* identity's key was retired,
+and admitting it would let any current-suite publisher launder a below-floor forgery attributed to
+someone else past this floor (the §22.4.1 author-binding rule is what makes the same-author form of
+this evidence meaningful). Alternatively the publisher's pinned
 identity chain (§1.5) records the below-floor key's retirement at a point the verifier's own
 history places after the announce. The exception MUST be satisfied only by evidence the verifier
 **already holds**; it MUST NOT be satisfied by anything carried in the announce itself, and in
@@ -423,7 +428,7 @@ FeedHead = {
 | | `ts` | 4 | `ts` | MUST | Entry time (§16.1). |
 | `FeedHead` | `v` | 1 | `u8` | MUST | `= 0`; unknown ⇒ `0x0901`. |
 | | `suite` | 2 | `suite` | MUST | Unknown ⇒ `0x0901`. |
-| | `pub` | 3 | `ik-pub` | MUST | The feed's author `IK`. A feed is **single-author** by construction — one identity, one feed. |
+| | `pub` | 3 | `ik-pub` | MUST | The feed's author `IK`. A feed is **single-author** — one identity, one feed — and this is **enforced, not merely asserted**: a verifier walking the feed MUST resolve each `FeedEntry.announce` and reject the feed where the referenced `PubAnnounce`'s `pub` is not equal to this `pub` (`ERR_PUB_FEED_CHAIN_BROKEN`, `0x0908`, FAIL_CLOSED_BLOCK). `FeedEntry.announce` is a bare content address (§22.4.1) and so, absent this binding, could reference **any** author's announce — which would let a current-suite feed launder a below-floor forgery attributed to someone else past the §22.3.3 step-1a floor. This is the feed analogue of §22.3.4's same-author `supersedes` check. |
 | | `seq` | 4 | `u64` | MUST | The tip's `seq` — the highest position this head commits to. |
 | | `tip` | 5 | `hash` | MUST | Content address of the `FeedEntry` at `seq`. Because each entry chains `prev` to its predecessor, `tip` **transitively commits to the entire log** (RFC 6962 discipline); signing the head therefore authenticates every entry reachable from it, so `FeedEntry` needs **no** per-entry signature (as with cluster journal entries, §5.6.3(b), and KT leaves, §3.5). |
 | | `ts` | 6 | `ts` | MUST | Head time. |
@@ -687,6 +692,7 @@ implementation of `pub-1` enforces every row.
 | **Announce content-address bind** | §22.3.1, §22.3.3 | recomputed `announce_id` ≠ the address it was fetched by | reject; `ERR_PUB_ANNOUNCE_ID_MISMATCH` `0x0905`, DROP_SILENT |
 | **Announce signature + IK chain** | §22.3.1, §22.3.3 | `sig` fails under `signer`, or `signer` is not authorized by `pub` (DeviceCert chain, §1.2) | reject; `ERR_PUB_ANNOUNCE_SIG_INVALID` `0x0904`, FAIL_CLOSED_BLOCK |
 | **Supersede is same-author** | §22.3.4 | `supersedes` references an announce whose `pub` differs from this one | reject the revision link; `ERR_PUB_SUPERSEDE_INVALID` `0x090B`, FAIL_CLOSED_BLOCK — a publisher may only supersede its own announcements |
+| **Feed entry is same-author** | §22.4.1 | a `FeedEntry.announce` resolves to a `PubAnnounce` whose `pub` differs from the enclosing `FeedHead.pub` | reject the feed; `ERR_PUB_FEED_CHAIN_BROKEN` `0x0908`, FAIL_CLOSED_BLOCK — a feed lists only its own author's announcements, so "reachable from a pinned feed" is evidence about **that author** only (§22.3.3 step 1a) |
 | **Feed `seq` anti-rollback** | §22.4.2 | a `FeedHead` with `seq` strictly below the highest accepted for that `pub` | reject the stale head, retain the higher tip; `ERR_PUB_FEED_ROLLBACK` `0x0907`, FAIL_CLOSED_BLOCK. Equal `seq` + identical `tip` ⇒ idempotent re-fetch, accept; equal `seq` + different `tip` ⇒ equivocation, `0x0908` HALT_ALERT — never a rollback |
 | **Feed hash-chain integrity (fork)** | §22.4.2 | two `FeedEntry`s at one `seq` with the same `prev`, or a `prev` not resolving to `seq-1` | `ERR_PUB_FEED_CHAIN_BROKEN` `0x0908`, HALT_ALERT — same posture as a committer fork (`0x0404`) / cluster-journal break (`0x0412`); publish the conflicting entries as evidence |
 | **Feed head signature** | §22.4.1 | `FeedHead.sig` fails under `signer`/`pub` chain | reject; `ERR_PUB_FEED_SIG_INVALID` `0x0906`, FAIL_CLOSED_BLOCK |
