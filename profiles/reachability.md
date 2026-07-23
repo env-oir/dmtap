@@ -66,9 +66,10 @@ libp2p *peers* (HOP/STOP) and cannot carry a non-libp2p client (ROLES §4); **TL
 for content-blind stream routing; **ACME TLS-ALPN-01** (RFC 8737) so the *box* obtains its
 certificate over the same SNI-passthrough path, with no zone write and no adapter key (REACH-2a);
 **ACME DNS-01** (RFC 8555) only where a wildcard is needed, through the box↔adapter challenge seam
-REACH-2a defines; **DMTAP-Auth** ([§13](../13-identity-auth.md)) for mutual key-authentication of
-the box↔adapter tunnel; DNS wildcard delegation for the adapter's zone. REACH specifies **no** new
-cryptography and **no** protocol token.
+REACH-2a defines; a **libp2p-Noise `XX` signed-static-key handshake** (each peer's libp2p identity
+key is its kotva Ed25519 `IK`) for mutual key-authentication of the box↔adapter tunnel; DNS
+wildcard delegation for the adapter's zone. REACH specifies **no** new cryptography and **no**
+protocol token.
 
 ---
 
@@ -76,18 +77,24 @@ cryptography and **no** protocol token.
 
 REACH mints no new kinds. It rides:
 
-- **Adapter descriptor** — a signed, **discovery-only, self-asserted** coordinator descriptor
-  (kind/policy/signed tariff/region/visibility), the exact shape of the gateway directory descriptor
-  ([§7.5](../07-gateway.md), [CONTRACT §2.1](../coordinator/CONTRACT.md)). It carries **no** global
-  score, price-rank, or stake field.
+- **Adapter descriptor** — the unified **[§18.8a.1](../18-wire-format.md) `CoordinatorDescriptor`**
+  with `kind = "reachability-adapter"` — one object family for every coordinator kind
+  ([CONTRACT §5](../coordinator/CONTRACT.md)), signed under DS-tag `DMTAP-COORD-v0/descriptor`.
+  Its `Visibility` maps REACH-1a directly: `blind-routing` at `structural` for an own-domain name,
+  `declared` for a bare adapter-zone vanity. It carries **no** global score, price-rank, or stake
+  field.
 - **`LocationRecord`** ([ROLES §2](../substrate/ROLES.md)) — the box's signed `key → location`
   record; REACH adds an adapter-tunnel `multiaddr` as one reachability hint among direct and relay
   hints. Monotonic `seq` + short TTL, resolved in the order *cached-direct → rendezvous/home-adapter
   → DHT* ([ROLES §2](../substrate/ROLES.md)).
-- **Subdomain registration** — the adapter's rebuildable operational state binding
-  `label → box IK → tunnel`, exactly analogous to the gateway `GatewayAliasMap`
-  ([§18.3.12](../18-wire-format.md)) and to a §7.10.5 vanity registration. It is edge-independent
-  state the adapter holds *for* the box, never the box's identity or data.
+- **Subdomain registration** — a **conceptual**, not byte-level, parallel to the gateway
+  `GatewayAliasMap` ([§18.3.12](../18-wire-format.md)): both are adapter-local, single-writer,
+  **unsigned**, never mesh-transmitted, and never the box's identity — REACH does not reuse the
+  mail object's shape. REACH's own shape is `label → box IK → { allowed_services }`
+  (REACH-2b), held as **rebuildable adapter-local operational state** re-established on each
+  Noise-authenticated reconnect ([§6](#6-offline--apocalypse-behaviour--reconcile)); **persisting
+  it is OPTIONAL** (warm-restart only) and defines no mesh object. It is edge-independent state
+  the adapter holds *for* the box, never the box's identity or data.
 - **`identity` MOTE (`0x09`)** — the box IK the tunnel authenticates to; **`system` MOTE (`0x0a`)** —
   tunnel capability negotiation / control ([§2 kind table](../02-mote.md)).
 - **Signed usage receipts** — if the adapter meters bandwidth/connections, receipts delivered
@@ -133,7 +140,34 @@ and cannot be squatted.
   monitor Certificate Transparency logs for its served names to detect covert issuance. These
   detect a `declared`-level breach; they do not make it `structural`.
 - **REACH-2 — the tunnel is key-authenticated; the adapter authorizes, never classifies.** The
-  box↔adapter tunnel MUST be mutually authenticated to the box `IK` (DMTAP-Auth, [§13](../13-identity-auth.md)).
+  box↔adapter tunnel MUST be established as an ordinary **libp2p-secured stream** — a
+  **libp2p-Noise `XX` handshake** (Noise transport security + yamux stream-mux, the
+  ordinary-libp2p-transport leg already named in [§2](#2-primitives-coordinators-and-bindings-it-composes),
+  **not** Circuit Relay v2, [ROLES §4](../substrate/ROLES.md)) — which provides confidentiality,
+  integrity, **and mutual authentication in a single pass**.
+  Each side's **libp2p identity key MUST be its kotva Ed25519 `IK`** (the raw 32-byte suite-`0x01`
+  key; the peer identifier is the identity-multihash of that key). The handshake payload carries
+  each peer's identity key and an `identity_sig` — a signature **under the Ed25519 `IK`** over the
+  ASCII label `noise-libp2p-static-key:` concatenated with that session's ephemeral **X25519 Noise
+  static public key**. Each peer MUST verify the received `identity_sig` against the received
+  static key and MUST terminate the connection on any mismatch.
+  Because identity is bound **into** the handshake (the `IK` signs the static key, and possession
+  of that static key is proven by the `XX` Diffie-Hellman), the tunnel is **channel-bound by
+  construction**: no separate challenge-response, and no application-layer binding to the
+  handshake hash, is required or permitted on this leg. (A bare challenge-response run *inside* an
+  otherwise-unauthenticated tunnel would be relay/MITM-vulnerable — the Asokan-Niemi-Nyberg
+  tunnelled-authentication attack; REACH-2 avoids it by using the handshake's own SIGMA-style
+  identity binding rather than a layered nonce challenge.)
+  The Ed25519 `IK` **only signs**; a **distinct X25519 static key performs the Diffie-Hellman** —
+  the signing/DH key separation is preserved and the two keys are never the same material.
+  The adapter MUST recover the box's authenticated `IK` from the handshake-established peer
+  identity and MUST bind any subdomain registration (REACH-3/-7) to that **proven** `IK` — never
+  to an identity asserted in a control frame.
+  **§13 DMTAP-Auth MUST NOT be used to authenticate this leg**: it is a relying-party / web-login
+  assertion ceremony (origin-binding for a human via a trusted client, [§13](../13-identity-auth.md))
+  with no node↔node analogue — §13.3.1 itself flags a relayed node-signed challenge as a critical
+  hazard. The libp2p-Noise mutual signed-static-key handshake is the correct node-to-node
+  embodiment of "prove `IK` possession, channel-bound."
   The adapter gates on **identity + rate only** ([CONTRACT §4](../coordinator/CONTRACT.md)); it MUST
   NOT inspect, score, re-rank, drop, or annotate tunneled content. Reachability is not moderation.
 - **REACH-2a — certificate issuance: TLS-ALPN-01 over the passthrough path (normative).** The box
@@ -150,6 +184,26 @@ and cannot be squatted.
   value without otherwise writing the zone; REACH-7's "sole writer" remains true of the zone's
   physical writes, with the adapter now acting as the box's authorized agent for one named record,
   not a silent co-issuer.
+- **REACH-2b — tunnel control frames (register / register-ack).** Immediately **after** the Noise
+  handshake completes and **before** the yamux session starts, on the now-encrypted+authenticated
+  channel, the box MUST send a `ReachRegister { name, allowed_services }` (a thin
+  **deterministic-CBOR** preamble: `name` = the SNI hostname this tunnel serves;
+  `allowed_services` = the REACH-5 default-deny allow-list). The registration carries **no
+  identity field** — the identity is the proven handshake `IK` (REACH-2).
+  The adapter MUST reply `ReachRegisterAck { status, ?reason }` with `status` ∈ {`granted`,
+  `refused`}. On `granted`, both sides start the yamux session (**adapter = stream
+  initiator/client, box = stream responder/server**, since the box holds the long-lived outbound
+  connection), one stream per inbound public connection. On `refused` — e.g. REACH-7 single-writer:
+  the name is already held by a **different** `IK` — the adapter MUST close/RST the connection;
+  the refusal reason is **session-local** (carried in `ReachRegisterAck.reason`), **not** a mesh
+  error code.
+  Opening a data stream **is** the yamux stream-open (no bespoke frame). Teardown/failure **is**
+  connection-or-stream close: a Noise-handshake failure, a malformed register, or a REACH-6
+  fail-closed condition is a dropped/RST connection (FAIL_CLOSED_BLOCK at the transport layer,
+  REACH-6) — never an application-layer error object. These control frames are **session-local,
+  unsigned, and never mesh-transmitted** (they ride inside the authenticated channel), so they
+  define **no** new [§18](../18-wire-format.md) wire object and **no** new
+  [§21](../21-errors-iana.md) error code.
 - **REACH-3 — subdomain naming is [§7.10.5](../07-gateway.md) generalized to DNS labels.** A **vanity
   subdomain** is a user-chosen label in the adapter's own zone (`alice.reach.example`). It is the
   only REACH name with ownership semantics and is fenced identically: it MUST be **dot-free** (a
@@ -284,7 +338,8 @@ Inheriting [THREAT-MODEL.md](../THREAT-MODEL.md) (SEC-1…SEC-9); the REACH-spec
 - **SEC-1 fail-closed.** An unregistered/expired name, no usable SNI (above), a failed tunnel auth,
   or a request to a non-allow-listed service/port fails closed (REACH-5, REACH-6), never a guess or
   best-effort.
-- **SEC-2 intrinsic authenticity.** The box authenticates to its `IK` (DMTAP-Auth); the client
+- **SEC-2 intrinsic authenticity.** The box authenticates to its `IK` (the REACH-2 libp2p-Noise
+  `XX` signed-static-key handshake); the client
   authenticates the *service* by its TLS certificate, which the box — not the adapter — presents.
   For an **own-domain** name publishing an RFC 8657 `accounturi`-bound CAA record (REACH-1a), this
   is intrinsic: the adapter cannot mint a competing cert for a zone it does not write, and the CAA
@@ -302,7 +357,7 @@ Inheriting [THREAT-MODEL.md](../THREAT-MODEL.md) (SEC-1…SEC-9); the REACH-spec
   rate-limit tokens, optional postage for cold registration — never content classification. A poisoned
   adapter is one adapter, swappable; there is no network-wide reachability authority to poison.
 - **SEC-8 replay-inert / downgrade-resistant for own-domain names with an RFC 8657 binding.**
-  `LocationRecord` monotonic `seq`; DMTAP-Auth challenge-response on the tunnel; TLS with no
+  `LocationRecord` monotonic `seq`; the REACH-2 libp2p-Noise `IK`-signed handshake on the tunnel; TLS with no
   downgrade into `terminating` (REACH-1, REACH-10) is cryptographically enforced when the box owns
   its zone **and** publishes the REACH-1a `accounturi`-bound CAA record — a bare RFC 8659 CAA alone
   does not enforce this, since it does not bind the validation method or account an in-path adapter
@@ -311,6 +366,16 @@ Inheriting [THREAT-MODEL.md](../THREAT-MODEL.md) (SEC-1…SEC-9); the REACH-spec
   declaring `blind-routing` — a conformance violation the protocol can detect — via
   `LocationRecord` TLS-key pinning and CT monitoring (REACH-1a) — but cannot structurally prevent; a
   disclosed gap (§8), not a guarantee.
+- **No mis-sell: the tunnel leg's security is scoped to the tunnel leg.** The box↔adapter tunnel's
+  libp2p-Noise security (REACH-2) protects the **control/tunnel leg only** (mutual `IK`-auth +
+  confidentiality + integrity); it does **not** affect the REACH-1a certificate-issuance residual
+  (§8), which remains a separate declared trust boundary closed only by an RFC 8657 CAA binding +
+  `LocationRecord` TLS-pinning + CT monitoring.
+- **Signature-domain separation for the tunnel handshake.** Under REACH-2's binding, the box's
+  Ed25519 `IK` additionally produces **libp2p-namespaced** signatures (the
+  `noise-libp2p-static-key:` prefix) over its per-session X25519 static key — a domain
+  **byte-disjoint** from every kotva `DMTAP-*` / `DMTAP-COORD-*` DS-tag, so no cross-protocol
+  signature confusion is possible.
 
 ---
 
