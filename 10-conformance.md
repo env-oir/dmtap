@@ -14,6 +14,35 @@
   object with a redundant `v` byte.
 - Every wire object also carries an algorithm `suite` (or inherits the enclosing object's, per
   §18.1.4).
+- **Structural-version migration (normative — additive, never a flag day).** Incrementing the DS-tag
+  and the `v=dmtap<N>` anchor is the *discriminator*; the *migration* follows the same additive,
+  capability-negotiated discipline as a new algorithm suite (§1.3, §21.15) or a new transport
+  substrate (§21.25), never a coordinated flag day:
+  1. **Dual-stack verification.** During a transition a conformant node MUST be able to **verify**
+     preimages under both the outgoing and the incoming DS-tag version, while **originating** under
+     exactly one — the version its own DNS `v=dmtap<N>` anchor advertises. A verifier reconstructs the
+     preimage under the version the signer's anchor names; a mismatch fails signature verification
+     (fail closed) — never a guess, and never "try both" (§18.1.6's rule for digests applies here in
+     spirit: one definite reconstruction, never an oracle over candidates).
+  2. **Announcement.** Supported structural versions are announced like any other capability (§10.2,
+     `system` MOTE) and published in the identity's DNS anchor (§3.2), so a sender learns which
+     version a recipient can verify *before* it originates.
+  3. **Anti-downgrade ratchet.** The per-contact high-water-mark rule (§1.3) applies to the structural
+     version exactly as it does to the suite: once a peer has been observed originating at `v(N)`, a
+     later object from that peer under `v(N-1)` MUST be rejected — an attacker cannot walk an
+     established relationship back onto a retired structural version.
+  4. **Retirement.** The outgoing version is retired only once no pinned relationship still needs it; a
+     node MAY continue to **verify** a retired version for archival objects long after it stops
+     **originating** under it.
+
+  **Honest residual.** Unlike `suite` (an in-band field, §18.1.4), the structural version is bound into
+  the DS-tag *inside* the signing preimage, so a verifier must learn it out-of-band (the DNS anchor or
+  a capability announcement) rather than reading it off the object. Two consequences are disclosed
+  rather than solved: an identity whose anchor and DS-tag fall out of lockstep is simply **unverifiable**
+  (fail-closed, never silently downgraded); and long-lived **public objects** (§22) remain verifiable
+  only under the structural version they were minted at — the same archival-floor problem §22's
+  origination floor (`ERR_PUB_SUITE_BELOW_FLOOR`, `0x0914`) already names for suites. This is the
+  deliberate cost of not spending a redundant version byte on every object.
 - Unknown `v`/`suite` MUST be rejected (fail closed), never guessed.
 - New message kinds use the reserved `0x40–0x7f` range (§2.3); a node ignores unknown kinds it
   is not required to process, but MUST NOT ack a kind it cannot validate.
