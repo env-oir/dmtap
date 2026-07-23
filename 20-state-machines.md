@@ -41,7 +41,7 @@ backoff/deadline of §16.1, the dedup-ack of §2.6, and the `private`-vs-`fast` 
 | `QUEUED` | MOTE constructed and admitted to the sender's outbound queue; not yet sealed. |
 | `SEALED` | Envelope encrypted (MLS/HPKE) and, for the `private` tier, onion-wrapped ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)); tier fixed for this MOTE. |
 | `IN_FLIGHT` | Handed to the transport: mixnet hops (`private`) or the reachability ladder, §20.4 (`fast`). |
-| `RETRY` | Backing off after a failed/blocked attempt; will re-enter `IN_FLIGHT` (or retry sealing) when its timer fires or its precondition clears. |
+| `RETRY` | Backing off after a failed/blocked attempt. Two structurally distinct entries: **pre-seal** (from `QUEUED` via `resolve_or_seal_blocked` — no Envelope built, `tier` not yet fixed) and **post-seal** (from `IN_FLIGHT` via `tier_unreachable` — `tier` fixed, `SEALED` object exists). On `retry_timer_fires`, pre-seal returns to `QUEUED` to re-attempt resolution/sealing; post-seal re-enters `IN_FLIGHT` (`fast`) or `SEALED` (`private`) to re-dispatch. |
 | `ACKED` | Terminal (success). Recipient's `ack(id)` received (§2.6), or dedup-acked. |
 | `EXPIRED` | Terminal (failure). §16.1's 72 h retry deadline elapsed; user notified. |
 
@@ -65,7 +65,7 @@ never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_e
 |---|---|---|---|
 | `QUEUED` | `enqueue` | `QUEUED` | Start the 72 h deadline timer [§16.1]; begin recipient resolution (§20.3) and, if this is an async/offline recipient, MLS async join (§5.3). |
 | `QUEUED` | `resolve_and_seal_ok` | `SEALED` | Fix `tier` (message-kind default, §4.6, or explicit override); build Envelope; onion-wrap if `tier=private` ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)). |
-| `QUEUED` | `resolve_or_seal_blocked` | `RETRY` | Start/continue backoff timer [§16.1]. **[fill]** §3.3's fail-closed-at-first-contact (KT unreachable) is a *user-trust* decision, not a transient fault, but it re-enters exactly this bounded retry loop: held pending either KT recovery or explicit user/OOB action (§20.3), capped by the same 72 h deadline. |
+| `QUEUED` | `resolve_or_seal_blocked` | `RETRY (pre-seal)` | Start/continue backoff timer [§16.1]. **[fill]** §3.3's fail-closed-at-first-contact (KT unreachable) is a *user-trust* decision, not a transient fault, but it re-enters exactly this bounded retry loop: held pending either KT recovery or explicit user/OOB action (§20.3), capped by the same 72 h deadline. |
 | `QUEUED` | `deadline_exceeded` | `EXPIRED` | Notify user: undelivered, resolution never completed. |
 | `SEALED` | `dispatch_ok` | `IN_FLIGHT` | Hand sealed object to mixnet (3 hops, §16.3) if `tier=private`; else invoke §20.4 reachability ladder if `tier=fast`. |
 | `SEALED` | `deadline_exceeded` | `EXPIRED` | Notify user. |
@@ -73,6 +73,7 @@ never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_e
 | `IN_FLIGHT` | `ack_invalid` | `IN_FLIGHT` | No-op (H-6). Ignore: not delivery evidence, no state change, deadline timer and any pending backoff continue exactly as if nothing arrived. |
 | `IN_FLIGHT` | `tier_unreachable` | `RETRY` | Start backoff timer [§16.1: base 30 s, exp, cap 1 h, jittered]. |
 | `IN_FLIGHT` | `deadline_exceeded` | `EXPIRED` | Notify user. |
+| `RETRY (pre-seal)` | `retry_timer_fires` | `QUEUED` | Re-attempt resolution + sealing (§20.3); `tier` remains unfixed until `resolve_and_seal_ok` fires again. Mirrors §20.3's `RESOLVING --dns_fail_transient--> UNRESOLVED`: a MOTE blocked pre-seal (KT/DNS lag, or §3.3 fail-closed-at-first-contact) gets a genuine re-attempt on every backoff tick — if KT/DNS recovers before the 72 h deadline it can reach `SEALED`/`ACKED`, not only `EXPIRED`. |
 | `RETRY` (`fast`) | `retry_timer_fires` | `IN_FLIGHT` | Re-dispatch the same `SEALED` object (no re-sealing; `id` is stable, §2.2). Sound **only** for `fast`: a direct/mesh resend carries no per-hop mix tag, so an identical resend is just a retransmission. |
 | `RETRY` (`private`) | `retry_timer_fires` | `SEALED` | **MUST re-onion-wrap before re-dispatch.** Re-run the sealing step: build **fresh** mixnet paths ([docs/research/mixnet.md §4.4.3](docs/research/mixnet.md)), a **fresh `α`** and **current-epoch** mix keys ([docs/research/mixnet.md §4.4.4](docs/research/mixnet.md)), keeping the **stable envelope `id`** (§2.2). Re-sending the *identical* Sphinx bytes is **forbidden** for `private`: every honest first hop drops the copy as a per-hop-tag replay (`ERR_MIX_REPLAY_DETECTED`, `0x030E`, [docs/research/mixnet.md §4.4.6](docs/research/mixnet.md)), so an unmodified `private` resend can **never** deliver under any packet loss until `EXPIRED`. Re-onion-wrapping produces distinct per-hop tags, so the retry is a genuine fresh delivery attempt. |
 | `RETRY` | `ack_received` | `ACKED` | A duplicate in-flight copy was delivered before the retry fired; cancel timer. |
@@ -112,14 +113,15 @@ never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_e
 ```mermaid
 stateDiagram-v2
   [*] --> QUEUED : enqueue
-  QUEUED --> RETRY : resolve_or_seal_blocked
+  QUEUED --> RETRY : resolve_or_seal_blocked (pre-seal)
   QUEUED --> SEALED : resolve_and_seal_ok
   SEALED --> IN_FLIGHT : dispatch_ok
   SEALED --> EXPIRED : deadline_exceeded
   IN_FLIGHT --> ACKED : ack_received
   IN_FLIGHT --> IN_FLIGHT : ack_invalid (ignored, H-6)
-  IN_FLIGHT --> RETRY : tier_unreachable
+  IN_FLIGHT --> RETRY : tier_unreachable (post-seal)
   IN_FLIGHT --> EXPIRED : deadline_exceeded
+  RETRY --> QUEUED : retry_timer_fires (pre-seal: re-attempt resolution, §20.3)
   RETRY --> IN_FLIGHT : retry_timer_fires (fast: same bytes)
   RETRY --> SEALED : retry_timer_fires (private: MUST re-onion-wrap, docs/research/mixnet.md §4.4.6)
   RETRY --> RETRY : ack_invalid (ignored, H-6)
@@ -130,6 +132,13 @@ stateDiagram-v2
 *ACKED is reachable only from IN_FLIGHT (or RETRY) via a **verified** `ack_received` — never via
 `ack_invalid`, which is a self-loop no-op at every non-terminal state (H-6). The terminal `EXPIRED`
 absorbs a late ack rather than resurrecting the send.*
+
+*`RETRY` has two entry origins, both diagrammed above: **pre-seal** (`QUEUED
+--resolve_or_seal_blocked-->`, tier unfixed, no Envelope) and **post-seal** (`IN_FLIGHT
+--tier_unreachable-->`, tier fixed, `SEALED` object exists). `retry_timer_fires` is defined for
+both, per §20.0's totality requirement: pre-seal bounces back to `QUEUED` to re-attempt
+resolution/sealing (so KT/DNS recovery within the 72 h deadline can still reach `SEALED`/`ACKED`,
+not only `EXPIRED`); post-seal re-dispatches (`fast`) or re-seals (`private`) the existing object.*
 
 ---
 
