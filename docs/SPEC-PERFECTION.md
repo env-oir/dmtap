@@ -95,13 +95,23 @@ ADOPTION/RGA = not a contradiction (ADOPTION calls *Yjs* load-bearing, RGA gaps 
 correctly silent. The 6 confirmed (each a different file → 2 disjoint fix-agents):
 - [~] **F1 (HIGH)** substrate/SYNC.md §6.2 — stability cut = min-of-max-applied but §2.3/§5.1 require the
   contiguous_below completeness watermark; silent lost-write in §4.6 PN-counter compaction under gapped
-  delivery (C-15 fixed pull-vector/covers but skipped the cut). **agent F1 in flight.**
+  delivery (C-15 fixed pull-vector/covers but skipped the cut). **F1 re-dispatched `a96fab49` after a
+  user stop (SYNC.md was clean, no partial edit).**
 - [~] **F2 batch** (agent F2 in flight): (MED) coordinator/CONTRACT.md 5 cross-dir links missing `../`;
   (MED) 18-wire-format.md:1803 "kind … key 1" → key 2 (kind is key 2, suite is key 1); (MED) 17-parity.md:113
   stale "full mixnet privacy"/"onion" attachment-tier labels → fast default + never-mixnet bulk; (LOW)
   docs/research/coverage-matrix.md compute "does not exist / add it" → already a provisional kind; (LOW)
   11-grounding-and-references.md:75 unqualified "DMTAP targets a global passive adversary" → mixnet does; default = reduction.
 After F1+F2 land → **critique round 3** (different lens mix); two consecutive clean → PERFECTED.
+
+## PARALLEL TRACK — REACH profile (founder pivot 2026-07-23: "both in parallel" + "spec-first")
+The founder redirected to wakala's #1 gap (content-blind ingress) while this spec loop keeps converging in
+the background. Decision: **spec-first** — finish the REACH profile in kotva (zone/descriptor + Noise
+control-channel handshake + REACH-* error codes) to freeze it, THEN implement the wakala
+`reachability-adapter` against it. **Disjointness rule for the background loop:** the REACH thread OWNS
+`profiles/reachability.md` (+ any new REACH wire additions to 18-wire-format/21-errors it introduces) —
+spec-perfection fix-agents MUST NOT touch those while REACH is being developed; critique may still READ
+them. Recon agent mapping REACH draft + adapter status in flight; profile draft follows.
 
 **W3 (simplify):** compress per-doc SEC-invariant/honest-residual boilerplate to reference tables
 (THREAT-MODEL = single argued source, ~15-20% cut, zero normative loss); turn reproduced index tables into
