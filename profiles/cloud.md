@@ -144,29 +144,32 @@ Only **`bucket`** (and public-object **`cdn`**) are structurally private. **`edg
 ## 5. `ServiceMeasurement` — the one new wire object (thin, PUB-carried)
 
 A signed observation that rides a PUB feed (§22); it defines **no new error code** — a malformed or
-unverifiable measurement is simply **ignored by aggregators** (never a fail-closed event).
+unverifiable measurement is simply **ignored by aggregators** (never a fail-closed event). Like every
+PUB object, it carries **no numeric discriminator key** — it is discriminated by its **DS-tag**
+(`DMTAP-DEPOT-v0/measurement`, §22.2.1's DS-tag-as-discriminator convention), not a `0 => N` field.
 
 ```cddl
 ServiceMeasurement = {
-  0 => 7,               ; discriminator (PUB object family; value assigned in §22 registry)
-  1 => suite,           ; signature suite (§18.1.4)
-  2 => {                ; subject — the rated (coordinator, service)
-        1 => ik-pub,    ;   coordinator IK
-        2 => tstr,      ;   service (§3 registry value)
+  1 => suite,           ; suite     signature suite (§18.1.4)
+  2 => {                ; subject   the rated (coordinator, service)
+        1 => ik-pub,    ;             coordinator IK
+        2 => tstr,      ;             service (§3 registry value)
       },
-  3 => tstr,            ; metric   e.g. "uptime" / "conformance" / "visibility-audit" / "latency-ms"
-  4 => ext-value,       ; value    metric-specific (number, pass/fail, bucket)
-  5 => tstr,            ; method   "probe" / "conformance-vector" / "audit" / "self-report"
+  3 => tstr,            ; metric    e.g. "uptime" / "conformance" / "visibility-audit" / "latency-ms"
+  4 => ext-value,       ; value     metric-specific (number, pass/fail, bucket)
+  5 => tstr,            ; method    "probe" / "conformance-vector" / "audit" / "self-report"
   6 => ts,              ; observed_at
   ? 7 => bytes,         ; evidence  OPTIONAL reproducible recipe / vector-id / signed transcript
-  8 => ik-pub,          ; rater     the signing rater's IK (== subject.ik ⇒ a self-measurement)
-  9 => sig-val,         ; sig       over det_cbor(body ∖ {sig}), DS-tag DMTAP-DEPOT-v0/measurement
+  8 => ik-pub,          ; rater     the signing rater's IK (== subject.coordinator ⇒ self-measurement)
+  9 => sig-val,         ; sig       §18.9 composite preimage
 }
 ```
 
-A consumer MUST verify `sig` against `rater`, MUST treat `rater == subject.coordinator` as a
-self-measurement, and SHOULD re-run any `method` = `probe`/`conformance-vector` whose `evidence`
-supplies a reproducible recipe rather than trusting the reported `value`.
+Signing preimage is the standard §18.9 composite form (this object carries a `suite`, key 1):
+`M' = "DMTAP-DEPOT-v0/measurement" ‖ 0x00 ‖ u8(suite) ‖ det_cbor(body ∖ {9})`. A consumer MUST verify
+`sig` against `rater`, MUST treat `rater == subject.coordinator` as a self-measurement, and SHOULD
+re-run any `method` = `probe`/`conformance-vector` whose `evidence` supplies a reproducible recipe
+rather than trusting the reported `value`.
 
 ---
 
