@@ -1,9 +1,9 @@
 # The DMTAP Substrate — the narrow waist
 
-> **Status:** additive companion to the core specification (§0–§24). This directory does **not**
+> **Status:** additive companion to the core specification (§0–§27). This directory does **not**
 > renumber, replace, or amend any existing section; it **re-presents** parts of the core spec as a
 > small, standalone substrate that products other than mail may adopt à la carte, and cross-references
-> the normative text that governs each. Where this directory and a numbered section (§1–§24) appear to
+> the normative text that governs each. Where this directory and a numbered section (§1–§27) appear to
 > differ, **the numbered section governs the normative bytes and behavior**; these documents govern the
 > framing and the adoption rules.
 
@@ -189,10 +189,10 @@ Mail is not privileged; it is **complete**. DMTAP-mail is the profile that:
 - adopts **Identity** unchanged (§1, §3) — the same `IK`/`DeviceCert`/KT/key-name every product uses;
 - adopts **Sync** for the device-cluster mailbox (§5.6 is the CRDT replica whose op algebra
   [`SYNC.md`](SYNC.md) generalizes);
-- adopts **Feeds & Blobs** for public list archives / release announcements (§22, and the CAD profile §23
-  and the Video/Media profile §24 are *further* applications over the same substrate — proof the waist
-  already carries far more than mail; the video profile is also the convergence path for the independently
-  built *vidmesh* protocol onto DMTAP-PUB's wire);
+- adopts **Feeds & Blobs** for public list archives / release announcements (§22, and the engineering-artifact facet §24.18,
+  the Video/Media profile §24, and pubsub over the same feeds §25 are *further* applications over the
+  same substrate — proof the waist already carries far more than mail; the video profile is also the
+  convergence path for the independently built *vidmesh* protocol onto DMTAP-PUB's wire);
 - adopts **Infrastructure Roles** — announce/resolve for reachability (§4.2), circuit relay for NAT'd
   boxes (§4.3, §14.5), and the short-TTL content-blind relay-mailbox for offline holding (§14.3, §14.5);
 - adopts **Wake** for the push-woken mobile client (§4.9, §14.3);

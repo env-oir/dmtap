@@ -39,10 +39,10 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — canonical CBOR (`CBOR`) | 12 | 4 | 6 | 2 | 0 |
 | **Core** — content address (`ADDR`) | 6 | 6 | 0 | 0 | 0 |
 | **Core** — Ed25519 (`SIG`) | 6 | 6 | 0 | 0 | 0 |
-| **Core** — signing preimages (`PRE`) | 3 | 3 | 0 | 0 | 0 |
-| **Core** — key-name (`NAME`) | 6 | 6 | 0 | 0 | 0 |
+| **Core** — signing preimages (`PRE`) | 5 | 3 | 0 | 2 | 0 |
+| **Core** — key-name (`NAME`) | 7 | 1 | 0 | 5 | 1 |
 | **Core** — safety number (`SAFE`) | 2 | 2 | 0 | 0 | 0 |
-| **Core** — suite fail-closed (`SUITE`) | 8 | 8 | 0 | 0 | 0 |
+| **Core** — suite fail-closed (`SUITE`) | 10 | 9 | 0 | 1 | 0 |
 | **Core** — §2.7 validation pipeline (`VAL`) | 15 | 0 (2 reuse ADDR/PRE) | 0 | 15 | 0 |
 | **Core** — identity / KT / naming (`IDENT`) | 6 | 0 | 0 | 6 | 0 |
 | **Core** — aliases (`ALIAS`) | 3 | 0 | 0 | 3 | 0 |
@@ -67,7 +67,7 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — zero-relationship delivery floor (`FLOOR`) | 4 | 0 | 0 | 4 | 0 |
 | **Core** — §10.7.0 failure classes (`FAILCLASS`) | 2 | 0 | 0 | 2 | 0 |
 | **Legacy** — gateway role boundaries (`GWROLE`) | 3 | 0 | 0 | 1 | 2 |
-| **Core** — DMTAP-PUB extension, optional `pub-1` (`PUB`) | 21 | 12 | 0 | 8 | 1 |
+| **Core** — DMTAP-PUB extension, optional `pub-1` (`PUB`) | 22 | 12 | 0 | 9 | 1 |
 | **Core** — CAD/artifact profile, optional `pub-1` (`CAD`) | 11 | 0 | 0 | 11 | 0 |
 | **Core** — Video/Media profile, optional `pub-1` (`VIDEO`) | 15 | 0 | 0 | 15 | 0 |
 | **Legacy** — operator prerequisites, discovery & modes (`GWOPS`) | 7 | 0 | 0 | 4 | 3 |
@@ -98,19 +98,21 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — wire objects with no vector: decode & cross-field rules (`WIRE`) | 10 | 0 | 0 | 10 | 0 |
 | **Core** — §18 KATs: manifest, mix descriptor, Sphinx framing (`WIREKAT`) | 9 | 9 | 0 | 0 | 0 |
 | **Core** — DMTAP-PUBSUB extension, optional `pubsub-1` (`PUBSUB`) | 15 | 0 | 0 | 14 | 1 |
-| **Total** | **343** | **56** | **6** | **263** | **18** |
+| **Total** | **358** | **52** | **6** | **281** | **19** |
 
-The 56 vectored + 6 self-contained cases (**62**) are fully machine-runnable **today** from
+The 52 vectored + 6 self-contained cases (**58**) are fully machine-runnable **today** from
 `vectors.json` / `pub_vectors.json` + the inline bytes here, with **no reference implementation
 required**. They pin the entire deterministic, security-critical Core spine — canonical CBOR,
 content addressing, the two MOTE signature preimages (§18.9.1/§18.9.2), Ed25519 (with RFC 8032
-cross-checks), the 8-word key-name, safety numbers, suite fail-closed — **and the full DMTAP-PUB
+cross-checks), the key-name's fail-closed folded checksum (its *encode* KATs are withdrawn pending
+regeneration under §18.9.17's algorithm-bound preimage — see the NAME section), safety numbers,
+suite fail-closed — **and the full DMTAP-PUB
 manifest/announce/feed KAT set** (§22.2/§22.3/§22.4: plaintext chunk hashing + DS-tagged Merkle
 root, the announce and feed-head signing preimages, `announce_id`, the prev-chain,
 type-incompatibility with sealed manifests, the same-author supersede rule, and feed anti-rollback
 incl. the idempotent-refetch and fork/equivocation branches).
 
-The 263 `construction-todo` cases give the exact recipe and expected §21 error for every remaining
+The 281 `construction-todo` cases give the exact recipe and expected §21 error for every remaining
 normative branch — the full §2.7 pipeline, identity/KT fail-closed, the higher levels, the
 hardening families (`DENIABLE`/`ORG`/`KTV1`/`ATTEST`), the `PROFILE` display-data guards, the
 pluggable-resolver guards (`RESOLVE`), the optional `PUSH` wake-signaling guards, the `FILE`
@@ -121,7 +123,7 @@ vectored, the profile-level `CAD` and `VIDEO` checklists, and the DMTAP-PUBSUB e
 (`PUBSUB`, §25). Each becomes byte-backed when the corresponding subsystem gains a fixed-input KAT
 (see README "Coverage vs. deferred").
 
-The 18 `manual-attestation` cases are the MUSTs with **no wire bytes to recompute**: an in-product
+The 19 `manual-attestation` cases are the MUSTs with **no wire bytes to recompute**: an in-product
 disclosure, a share sheet, a process boundary or the population a deployment actually serves. They
 are identified by `manual-attestation` in the **status** column, and each names the review that
 settles it — client-UX review, operator-copy review, or deployment review.
@@ -137,10 +139,10 @@ easy to over-read, so:
 - It is **section-level, not MUST-level.** A section counts as covered if *any* case cites it, not
   if every MUST in it is exercised. The metric is a deliberately generous floor: it says "nothing
   in the implementable spec is entirely unattended", never "everything is checked".
-- It counts cases that **exist**, not cases that **pass.** Of 343 cases, 62 are byte-runnable
+- It counts cases that **exist**, not cases that **pass.** Of 358 cases, 58 are byte-runnable
   today; the rest carry a construction recipe or are settled by review. **No implementation has
   been run against this suite**, so the suite is a specification of tests, not a test result.
-- The denominator is **curated.** [`scope.json`](scope.json) classifies all 345 MUST-bearing
+- The denominator is **curated.** [`scope.json`](scope.json) classifies all 347 MUST-bearing
   sections and states a reason for each; the 89 non-IMPL sections are excluded because their MUSTs
   are owned by another clause (the §21 registry Action column, the §19/§20 appendices), bind a
   future registrant or an operator's process, or are not requirements at all. Inclusion is the
@@ -152,7 +154,7 @@ numbers are printed by `make coverage`, deliberately, so the curation can be che
 trusted.
 
 **Sync status:** `SUITE.md` and [`suite.json`](suite.json) are **in sync** — both carry the same
-**343** case ids, and `make lint` (check C5) fails the build if they ever disagree, or if any
+**358** case ids, and `make lint` (check C5) fails the build if they ever disagree, or if any
 document states a different count. The changed deniable objects (§5.2.1 dedicated-`idk`) are still
 to be re-vectored when the reference regenerates `vectors.json`.
 
@@ -221,19 +223,33 @@ crypto/encoding case below is a prerequisite the higher levels inherit.
 |----|-----|--------|--------|-------|--------|--------|
 | DMTAP-PRE-01 | MUST | §18.9.1 | `sender_sig` over `DS ‖ id ‖ det_cbor(to) ‖ u64be(ts) ‖ u8(kind) ‖ challenge_enc` (challenge absent ⇒ `0xf6`), under the ephemeral `sender_key` | vector `mote_sender_sig` | match (`sig_hex`,`pubkey_hex`) | vectored |
 | DMTAP-PRE-02 | MUST | §18.9.1, §2.7 step 3 | that `sender_sig` verifies under `sender_key` before any decryption | vector `mote_sender_sig_verify` | accept | vectored |
-| DMTAP-PRE-03 | MUST | §18.9.2, §2.7 step 8 | `Payload.sig` over `DS ‖ BLAKE3-256(det_cbor(Payload ∖ {sig}))` under the IK | vector `mote_payload_sig` | match | vectored |
+| DMTAP-PRE-03 | MUST | §18.9.2, §18.1.6, §2.7 step 8 | `Payload.sig` over `DS ‖ 0x1e ‖ BLAKE3-256(det_cbor(Payload ∖ {sig}) ‖ u8(kind) ‖ u64be(ts) ‖ det_cbor(to))` under the IK — the digest carries its **§18.1.5 multihash prefix**, never a bare 32 B representative | vector `mote_payload_sig` (regenerated for the prefixed preimage) | match | vectored |
+| DMTAP-PRE-04 | MUST | §18.1.6, §18.9.1, §18.9 preamble | **Composite suites sign the `suite` byte.** Under `0x02` — the v0 REQUIRED originating suite — `sender_sig` is over `M' = "DMTAP-v0/envelope-sender" ‖ 0x00 ‖ u8(0x02) ‖ body`, both components over the same `M'`, and a component that verifies only against the single-component form `DS ‖ 0x00 ‖ body` MUST be rejected | construction: build the DMTAP-PRE-01 envelope with `suite = 0x02`; sign the composite representative with Ed25519 ‖ ML-DSA-65; present (a) the correct `M'` signature and (b) one computed without the `u8(suite)` byte | (a) accept; (b) reject — verification fails against the reconstructed `M'` | construction-todo |
+| DMTAP-PRE-05 | MUST | §18.1.6, §18.9.2 | **A pre-hashed preimage MUST be algorithm-labelled.** A `Payload.sig` computed over the **bare** 32-byte digest rather than `0x1e ‖ digest` MUST NOT verify | construction: recompute the DMTAP-PRE-03 preimage without the `0x1e` prefix and sign it under the same IK seed | reject → `ERR_HASH_ALG_MISMATCH` (0x0127); a verifier MUST NOT fall back to the unprefixed representative | construction-todo |
 
 ### NAME — zero-authority 8-word key-name (§3.9.1, §16.2)
 
 | id | req | clause | checks | input | expect | status |
 |----|-----|--------|--------|-------|--------|--------|
-| DMTAP-NAME-01 | MUST | §3.9.6, §18.9.17, §16.2 | key-name is deterministic (+ checksum verifies) — all-zero key | vector `keyname_zero_key` | match (`name`), accept (checksum) | vectored |
-| DMTAP-NAME-02 | MUST | §3.9.6, §18.9.17 | key-name of all-`0x01` key | vector `keyname_key_ones` | match | vectored |
-| DMTAP-NAME-03 | MUST | §3.9.6, §18.9.17 | key-name of all-`0x02` key | vector `keyname_key_twos` | match | vectored |
-| DMTAP-NAME-04 | MUST | §3.9.6, §18.9.17 | key-name of a real Ed25519 public key | vector `keyname_real_pubkey` | match | vectored |
-| DMTAP-NAME-05 | MUST | §3.9.6, §18.9.17 | distinct keys ⇒ distinct names (`keyname_key_ones` ≠ `keyname_key_twos`) | derived from NAME-02 / NAME-03 | accept (names differ) | vectored |
+| DMTAP-NAME-01 | MUST | §3.9.6, §18.9.17, §16.2 | key-name is deterministic (+ checksum verifies) — all-zero key | construction: `keyname_digest = BLAKE3-256(0x01 ‖ 0x1e ‖ pubkey)` with `pubkey = 00×32`; take the leading 80 bits, render 8 words + folded checksum word over the curated ~1024-word list (§3.4.1) | match (`name`), accept (checksum) | construction-todo |
+| DMTAP-NAME-02 | MUST | §3.9.6, §18.9.17 | key-name of all-`0x01` key | construction: as NAME-01 with `pubkey = 01×32` | match | construction-todo |
+| DMTAP-NAME-03 | MUST | §3.9.6, §18.9.17 | key-name of all-`0x02` key | construction: as NAME-01 with `pubkey = 02×32` | match | construction-todo |
+| DMTAP-NAME-04 | MUST | §3.9.6, §18.9.17 | key-name of a real Ed25519 public key | construction: as NAME-01 with `pubkey = d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737` (Ed25519 public key of seed `0x11×32`) | match | construction-todo |
+| DMTAP-NAME-05 | MUST | §3.9.6, §18.9.17 | distinct keys ⇒ distinct names (NAME-02 ≠ NAME-03) | construction: derive both names per NAME-02 / NAME-03 and compare | accept (names differ) | construction-todo |
 | DMTAP-NAME-06 | MUST | §3.9.6, §18.9.17, §16.2 | a single mistyped word fails the folded checksum (fail closed) | vector `keyname_typo_rejected` | reject (checksum) | vectored |
 | DMTAP-NAME-07 | MUST | §3.9.6, §3.13.4, §6.6 | **A bare key-name is not a destination.** The key-name is a one-way digest, so a client MUST NOT accept one alone as a send destination for a stranger — the key cannot be recovered from it, and the key is what the HPKE seal, `DeliveryTag`, work-proof scope and DHT key all consume. Confirming an out-of-band key against a key-name is its actual purpose and MUST work | manual attestation: (a) key-name as sole destination for an uncontacted identity; (b) key-name used to confirm a key received via QR/contact card | (a) rejected, with the client stating the identity key is required and offering §3.13.5 paths — silently DHT-resolving and presenting that as resolution is non-conformant (§4.2.1); (b) accepted, confirming or rejecting by recomputing §18.9.17 | manual-attestation |
+
+> **Why NAME-01…-05 are construction-todo again.** They were byte-backed until §18.9.17 bound the
+> hash algorithm **inside** the key-name preimage — `BLAKE3-256(0x01 ‖ 0x1e ‖ ik_pub_bytes)`, a
+> derivation-version byte plus the §18.1.5 multihash prefix — so that a future hash migration
+> yields a *distinguishable* key-name instead of silently replacing every existing one with no key
+> rotation to signal it. That changes every key-name, and the four committed `keyname_*` known
+> answers were generated under the old bare-digest derivation. They are **withdrawn** rather than
+> retained-and-annotated (`vectors.json`, `withdrawn_vectors`): a byte-exact corpus containing a
+> known-wrong answer is worse than a smaller one, because a runner cannot tell the difference.
+> Regeneration needs the curated ~1024-word list, which lives in the reference core, not here.
+> NAME-06 is unaffected — a mistyped word fails the folded checksum whatever digest produced the
+> name.
 
 ### SAFE — out-of-band safety number (§3.4.1)
 
@@ -248,12 +264,14 @@ crypto/encoding case below is a prerequisite the higher levels inherit.
 |----|-----|--------|--------|-------|--------|--------|
 | DMTAP-SUITE-01 | MUST | §1.1, §18.1.4 | unknown suite `0x00` MUST be rejected on decode (never guess) | vector `suite_reject_0x00` | reject → `ERR_UNKNOWN_SUITE` (0x0101) / `ERR_UNKNOWN_VERSION_OR_SUITE` (0x0201) | vectored |
 | DMTAP-SUITE-02 | MUST | §1.1, §18.1.4, §18.2 | suite id `0x03` (reserved AEAD-diverse) is a **known reserved id** and decodes; note an object whose crypto actually **uses** `0x03` MUST still fail closed until the suite is implemented | vector `suite_accept_0x03` | accept (id) | vectored |
-| DMTAP-SUITE-03 | MUST | §1.1, §18.1.4 | unknown suite `0x05` rejected | vector `suite_reject_0x05` | reject → 0x0101 / 0x0201 | vectored |
+| DMTAP-SUITE-03 | MUST | §1.1, §18.1.4 | unknown suite `0x06` rejected — the lowest unallocated Standards-Action point now that `0x01`–`0x05` are registered (this case tested `0x05` until §1.1 reserved it) | vector `suite_reject_0x06` | reject → 0x0101 / 0x0201 | vectored |
 | DMTAP-SUITE-04 | MUST | §1.1, §18.1.4 | unknown suite `0xff` rejected | vector `suite_reject_0xff` | reject → 0x0101 / 0x0201 | vectored |
 | DMTAP-SUITE-05 | MUST | §1.1, §18.1.4 | known suite id `0x01` (classical) decodes | vector `suite_accept_0x01` | accept | vectored |
 | DMTAP-SUITE-06 | MUST | §1.1, §18.1.4, §18.2 | suite id `0x02` (reserved PQ) is a **known id** and decodes; note an object whose crypto actually **uses** `0x02` MUST still fail closed until the PQ suite is implemented (§18.2) | vector `suite_accept_0x02` | accept (id) | vectored |
 | DMTAP-SUITE-07 | MUST | §1.1, §1.2.0, §18.1.4 | registered-but-reserved suite `0x04` (the SLH-DSA anchor profile) **decodes** as a known id — registered and implemented are different questions; any *use* under it still fails closed | vector `suite_accept_0x04` | accept (decode only) | vectored |
 | DMTAP-SUITE-11 | MUST | §1.1, §18.1.4 | an **unregistered** suite byte (`0x7f`) is rejected on decode — never guessed | vector `suite_reject_0x7f` | reject → 0x0101 / 0x0201 | vectored |
+| DMTAP-SUITE-12 | MUST | §1.1, §18.1.4, §16.7 | registered-but-reserved suite `0x05` (the **hash-diverse** SHA3-256 target) **decodes** as a known id — registered and implemented are different questions; any *use* under it still fails closed | vector `suite_accept_0x05` | accept (decode only) | vectored |
+| DMTAP-SUITE-13 | MUST | §18.1.5, §18.1.4 | **The suite is authoritative over the multihash prefix.** An object carrying a `suite` whose `hash` fields bear a prefix the suite does not select MUST be rejected — the prefix is self-description for suite-less objects and a redundancy check elsewhere, never an independent selector, or whoever writes it picks which hash the object's integrity rests on | construction: take any suite-bearing object with a `hash` field and rewrite the prefix byte from `0x1e` (BLAKE3-256, the hash of `0x01`–`0x04`) to `0x16` (SHA3-256, the hash of `0x05`), leaving the digest bytes and the `suite` unchanged | reject → `ERR_HASH_ALG_MISMATCH` (0x0127), FAIL_CLOSED_BLOCK; MUST NOT verify under SHA3-256 and MUST NOT try both | construction-todo |
 
 ### VAL — the §2.7 ordered recipient-validation pipeline
 
@@ -706,35 +724,36 @@ Each row of the normative §22.8 table, as its own case, in the table's own orde
 | DMTAP-PUB-19 | MUST | §22.6.2 | **Serve refusal is policy, not fault:** a holder declining to serve a requested public object per its own serve policy is a policy deny at the holder, never a correctness error; the fetcher rotates to another holder | construction: holder policy configured to decline a given `announce_id`/`manifest_root` | reject (at holder) → `ERR_PUB_NOT_SERVED` (0x090C), DENY_POLICY; fetcher ROTATE_RETRY | construction-todo |
 | DMTAP-PUB-20 | MUST | §22.6.3 | **Serving resource limit:** exceeding a serving node's admission policy (object size / per-publisher quota / feed-append rate) is a policy deny, never a security/crypto gate | construction: publish/append past a configured per-publisher storage quota | reject → `ERR_PUB_SERVE_QUOTA` (0x090D), DENY_POLICY | construction-todo |
 | DMTAP-PUB-21 | MUST | §22.7 | **Publish is explicit + irrevocable (client UX, no wire bytes):** a client MUST NOT create/announce/serve a public object except as the direct result of an explicit user publish act; MUST warn, before completing a publish, that publishing is irrevocable; MUST express retraction only as a successor `supersedes` announcement, never as deletion | manual attestation (implementer/UX review — see "How to read a case" `status: manual-attestation`) | non-conformant if any of the three sub-requirements is missing | manual-attestation |
+| DMTAP-PUB-22 | MUST | §22.3.3 step 1a, §1.1 | **Public-object origination floor:** a `PubAnnounce` carrying a **known but below-floor** `suite` MUST be rejected unless a pinned `Identity` the verifier already holds establishes that it predates that suite's retirement. The floor defaults to the §1.1 originating floor (`0x02`), never to "anything registered": §1.3's per-contact high-water-mark needs a pin, and a first-contact archive fetch has none, so a recovered classical key could otherwise mint a permanently-`supersedes`-ing forgery with a self-asserted `ts` (§22.7 irrevocability) | construction: a well-formed `PubAnnounce` at `suite = 0x01` whose `sig` and `DeviceCert` chain both verify, `supersedes` pointing at a genuine announce, presented to a verifier at the default floor with no pinned `Identity` for `pub` | reject → `ERR_PUB_SUITE_BELOW_FLOOR` (0x0914), FAIL_CLOSED_BLOCK — note steps 2–5 all *pass*, which is the point; a verifier configured to a lower floor MUST surface the reduced assurance rather than accept silently | construction-todo |
 
 ---
 
-## CAD/Artifact profile (§23) — `CAD`
+## CAD/Artifact profile (§24.18) — `CAD`
 
-An **application profile** over DMTAP-PUB, not a new wire mechanism (§23.1): it allocates no
+An **application profile** over DMTAP-PUB, not a new wire mechanism (§24.18): it allocates no
 message kind, capability token, DS-tag, or error block. Conformance to this profile is therefore
 **additive and orthogonal** to §22/§21 conformance — a node can be Core/`pub-1`-conformant without
 ever having heard of this document, and a CAD-aware client is `pub-1`-conformant-by-construction
 because it is only ever a consumer/producer of ordinary §22 objects (`ArtifactMetadata` rides
-inside an already-signed `pub_announce.meta["artifact"]`, §23.3.1). The 11 checks below are the
-**§23.10 conformance checklist**, one case per row, in the checklist's own order. None allocates a
+inside an already-signed `pub_announce.meta["artifact"]`, §24.18.1). The 11 checks below are the
+**§24.18.10 conformance checklist**, one case per row, in the checklist's own order. None allocates a
 §21 error code (the profile has none); "reject" below means a CAD-aware client/index MUST refuse
 to treat the artifact as usable/well-formed, not that a §22/§21 wire error is raised — a
-non-CAD-aware §22 node stores and serves the same bytes unaffected (§23.2).
+non-CAD-aware §22 node stores and serves the same bytes unaffected (§24.2).
 
 | id | req | clause | checks | input | expect | status |
 |----|-----|--------|--------|-------|--------|--------|
-| DMTAP-CAD-01 | MUST | §23.4, §23.10 CAD-1 | every artifact `pub_announce`'s `ArtifactMetadata` carries a `license` field (SPDX expression); an announce omitting it is malformed for this profile | construction: `ArtifactMetadata` with key 7 (`license`) omitted | reject (profile-level; generic §22 node still stores/serves it) | construction-todo |
-| DMTAP-CAD-02 | MUST | §23.3.4, §23.10 CAD-2 | `formats` contains **at least one** entry | construction: `ArtifactMetadata` with `formats` (key 4) an empty array | reject | construction-todo |
-| DMTAP-CAD-03 | MUST | §23.3.4, §23.10 CAD-3 | exactly one `formats` entry carries `role = canonical-source` (non-`assembly` kinds) or `role = structure` (`assembly` kind); an `assembly` with no `structure` entry is malformed | construction: two `role=1` entries (ambiguous canonical source); and separately, an `assembly`-kind with no `role=3` entry | reject (both variants) | construction-todo |
-| DMTAP-CAD-04 | MUST | §23.3.4, §23.10 CAD-4 | no `format_id = 3` (glTF/mesh) entry ever carries `role = 1` (canonical-source) — the profile's central integrity guarantee: a lossy tessellation is never the artifact of record | construction: `ArtifactFormat{format_id:3, role:1, manifest_root:<any hash>}` | reject | construction-todo |
-| DMTAP-CAD-05 | MUST | §23.3.4, §23.10 CAD-5 | every `role = 2` (derived-rendition) entry carries `derived_from_format` (key 4) | construction: `ArtifactFormat{format_id:1, role:2}` with `derived_from_format` omitted | reject | construction-todo |
-| DMTAP-CAD-06 | MUST | §23.3.3, §23.10 CAD-6 | `units.length_unit` is present and explicit; a client MUST NOT default or infer it | construction: `Units` with key 1 (`length_unit`) omitted | reject (client MUST refuse to interpret geometry; MAY still show name/description/license) | construction-todo |
-| DMTAP-CAD-07 | MUST | §23.3.1, §23.10 CAD-7 | `deprecated = true` is always accompanied by `deprecation_reason` (key 9) | construction: `ArtifactMetadata{deprecated: true}` with key 9 absent | reject (flagged by a CAD-aware index) | construction-todo |
-| DMTAP-CAD-08 | MUST | §23.5, §23.10 CAD-8 | deprecation/yank is expressed **only** as a successor announcement (`supersedes` + `deprecated=true`), never as a deletion — no operation removes a previously published revision | construction: attempt to model "deletion" of a prior revision (no protocol operation exists; a CAD-aware client MUST NOT present one) | reject (no-such-operation; client MUST NOT imply deletion) | construction-todo |
-| DMTAP-CAD-09 | MUST | §23.6.1, §23.10 CAD-9 | assembly children reference exclusively by `pin` (`ref_kind=1`, a `manifest_root`) or `track` (`ref_kind=2`, a `pub_announce` id) | construction: `AssemblyChild.ref_kind` outside `{1,2}` | reject | construction-todo |
-| DMTAP-CAD-10 | MUST | §23.6.3, §23.10 CAD-10 | a BOM-walking client MUST detect and reject a cycle in an assembly's resolved DAG (a `track` reference can form one across revisions) rather than recurse indefinitely or silently drop it | construction: assembly A `track`s part B; B's publisher later republishes B as an assembly that `track`s back to A; walk A's BOM | reject (abort the walk at the cycle; surface it to the user — never infinite-recurse, never silently drop) | construction-todo |
-| DMTAP-CAD-11 | MUST | §23.7, §23.10 CAD-11 | no client treats any single index (category/search/workshop) as authoritative over the signed announces/feeds it was derived from | construction: two independently-built indexes over the same feed set disagree (different crawl coverage) | accept (neither index is "wrong"; ground truth is always the signed announces, re-derivable by any client) | construction-todo |
+| DMTAP-CAD-01 | MUST | §24.11, §24.18.10 CAD-1 | every artifact `pub_announce`'s `ArtifactMetadata` carries a `license` field (SPDX expression); an announce omitting it is malformed for this profile | construction: `ArtifactMetadata` with key 7 (`license`) omitted | reject (profile-level; generic §22 node still stores/serves it) | construction-todo |
+| DMTAP-CAD-02 | MUST | §24.18.4, §24.18.10 CAD-2 | `formats` contains **at least one** entry | construction: `ArtifactMetadata` with `formats` (key 4) an empty array | reject | construction-todo |
+| DMTAP-CAD-03 | MUST | §24.18.4, §24.18.10 CAD-3 | exactly one `formats` entry carries `role = canonical-source` (non-`assembly` kinds) or `role = structure` (`assembly` kind); an `assembly` with no `structure` entry is malformed | construction: two `role=1` entries (ambiguous canonical source); and separately, an `assembly`-kind with no `role=3` entry | reject (both variants) | construction-todo |
+| DMTAP-CAD-04 | MUST | §24.18.4, §24.18.10 CAD-4 | no `format_id = 3` (glTF/mesh) entry ever carries `role = 1` (canonical-source) — the profile's central integrity guarantee: a lossy tessellation is never the artifact of record | construction: `ArtifactFormat{format_id:3, role:1, manifest_root:<any hash>}` | reject | construction-todo |
+| DMTAP-CAD-05 | MUST | §24.18.4, §24.18.10 CAD-5 | every `role = 2` (derived-rendition) entry carries `derived_from_format` (key 4) | construction: `ArtifactFormat{format_id:1, role:2}` with `derived_from_format` omitted | reject | construction-todo |
+| DMTAP-CAD-06 | MUST | §24.18.3, §24.18.10 CAD-6 | `units.length_unit` is present and explicit; a client MUST NOT default or infer it | construction: `Units` with key 1 (`length_unit`) omitted | reject (client MUST refuse to interpret geometry; MAY still show name/description/license) | construction-todo |
+| DMTAP-CAD-07 | MUST | §24.18.1, §24.18.10 CAD-7 | `deprecated = true` is always accompanied by `deprecation_reason` (key 9) | construction: `ArtifactMetadata{deprecated: true}` with key 9 absent | reject (flagged by a CAD-aware index) | construction-todo |
+| DMTAP-CAD-08 | MUST | §24.7, §24.18.10 CAD-8 | deprecation/yank is expressed **only** as a successor announcement (`supersedes` + `deprecated=true`), never as a deletion — no operation removes a previously published revision | construction: attempt to model "deletion" of a prior revision (no protocol operation exists; a CAD-aware client MUST NOT present one) | reject (no-such-operation; client MUST NOT imply deletion) | construction-todo |
+| DMTAP-CAD-09 | MUST | §24.18.6, §24.18.10 CAD-9 | assembly children reference exclusively by `pin` (`ref_kind=1`, a `manifest_root`) or `track` (`ref_kind=2`, a `pub_announce` id) | construction: `AssemblyChild.ref_kind` outside `{1,2}` | reject | construction-todo |
+| DMTAP-CAD-10 | MUST | §24.18.8, §24.18.10 CAD-10 | a BOM-walking client MUST detect and reject a cycle in an assembly's resolved DAG (a `track` reference can form one across revisions) rather than recurse indefinitely or silently drop it | construction: assembly A `track`s part B; B's publisher later republishes B as an assembly that `track`s back to A; walk A's BOM | reject (abort the walk at the cycle; surface it to the user — never infinite-recurse, never silently drop) | construction-todo |
+| DMTAP-CAD-11 | MUST | §24.18.9, §24.18.10 CAD-11 | no client treats any single index (category/search/workshop) as authoritative over the signed announces/feeds it was derived from | construction: two independently-built indexes over the same feed set disagree (different crawl coverage) | accept (neither index is "wrong"; ground truth is always the signed announces, re-derivable by any client) | construction-todo |
 
 ---
 
@@ -744,21 +763,27 @@ An **application profile** over DMTAP-PUB (§24.1), the convergence path for the
 Like `CAD`, it is **additive and orthogonal** to §22/§21 conformance: a node can be Core/`pub-1`-conformant
 without parsing any of it, and a video-aware client is `pub-1`-conformant-by-construction because it only
 ever produces/consumes ordinary §22 objects (its metadata rides inside an already-signed
-`pub_announce.meta[<key>]`, §24.4.1). The 15 checks below are the **§24.15 conformance checklist**, one
-case per row, in checklist order. The profile allocates **no §21 error code** (so "reject" means a
-video-aware client MUST refuse to treat the object as usable/well-formed — a non-video §22 node stores and
-serves the same bytes unaffected). **The one exception is VID-3/VID-5**, the rendition-derivation statement
-(§24.4.4): it *does* have a signable preimage (DS-tag `"DMTAP-VID-v0/derivation"`), so those two become
-byte-backed KATs once a fixed-input derivation vector is generated — until then they carry a construction
-recipe like the rest.
+`pub_announce.meta[<key>]`, §24.4.1). The 15 checks below cover the **§24.15 conformance checklist**
+in checklist order — one case per row for VID-1…VID-15, with the three later checklist rows carried as
+**variants of existing cases** rather than as new ids: **VID-16** (`width`/`height` both-present-or-
+both-absent, absence ⇒ audio-only, §24.4.2) and **VID-17** (the fixed six-element derivation statement
+with CBOR `null` for an absent dimension, §24.4.4) ride on `DMTAP-VIDEO-02` and `DMTAP-VIDEO-05`
+respectively, and **VID-18** (an unrecognized `Caption.format` token is skipped, never fatal) rides on
+`DMTAP-VIDMIG-01`, whose subject is exactly that unrecognized-token forward-compatibility rule. The
+profile allocates **no §21 error code** (so "reject" means a media-aware client MUST refuse to treat the
+object as usable/well-formed — a non-media §22 node stores and serves the same bytes unaffected).
+**The one exception is VID-3/VID-5/VID-17**, the rendition-derivation statement
+(§24.4.4): it *does* have a signable preimage (DS-tag `"DMTAP-VID-v0/derivation"`), so those become
+byte-backed KATs once a fixed-input derivation vector is generated — which MUST include an audio-only
+(`0xf6`-dimension) case — until then they carry a construction recipe like the rest.
 
 | id | req | clause | checks | input | expect | status |
 |----|-----|--------|--------|-------|--------|--------|
 | DMTAP-VIDEO-01 | MUST | §24.11, §24.15 VID-1 | every `VideoManifest` carries a `license` field (SPDX expression or a profile consent token `all-rights-reserved`/`mirror-freely`/`endorsed-only`) | construction: `VideoManifest` with key 9 (`license`) omitted | reject (profile-level; generic §22 node still stores/serves it) | construction-todo |
-| DMTAP-VIDEO-02 | MUST | §24.4.3, §24.15 VID-2 | `original` (key 5) is present and is the canonical rendition — a `Rendition` is never the artifact of record | construction: `VideoManifest` with `original` (key 5) omitted; and separately, a client treating a `Rendition.blob` as the source of truth | reject (both variants) | construction-todo |
+| DMTAP-VIDEO-02 | MUST | §24.4.3, §24.4.2, §24.15 VID-2, §24.15 VID-16 | `original` (key 5) is present and is the canonical rendition — a `Rendition` is never the artifact of record; and the `Media`/`Rendition` dimension rule: `width` (key 5) and `height` (key 6) are **both present or both absent**, absence meaning the encoding carries no video track (audio-only), with the media kind inferred from that and never from a discriminator field | construction: `VideoManifest` with `original` (key 5) omitted; separately, a client treating a `Rendition.blob` as the source of truth; separately (VID-16), a `Media`/`Rendition` carrying exactly one of `width`/`height`; and separately, a well-formed audio-only `Media` carrying neither, plus an audio-only `Rendition` of a manifest whose `original` does have dimensions | reject (the first three variants); accept the audio-only variants and render them as audio without requiring any kind field | construction-todo |
 | DMTAP-VIDEO-03 | MUST | §24.4.3, §24.4.4, §24.15 VID-3 | every `Rendition` carries `produced_by` (key 8) and a `derivation_sig` (key 9) that verifies over the derivation statement | construction: `Rendition` with `derivation_sig` omitted; and separately, a `derivation_sig` that fails to verify over the reconstructed statement | reject (not an authorized rendition; MAY be shown labeled as unverified, or dropped) | construction-todo |
 | DMTAP-VIDEO-04 | MUST | §24.4.4, §24.4.6, §24.15 VID-4 | a rendition is treated as *authorized* only if `produced_by` is the manifest author or holds an unrevoked, unexpired `rendition` delegate grant from the author | construction: a validly-signed `Rendition` whose `produced_by` is neither the author nor a valid delegate | reject-as-authorized (present only as a labeled third-party encoding, never as an equivalent authorized rendition) | construction-todo |
-| DMTAP-VIDEO-05 | MUST | §24.4.4, §24.15 VID-5 | the derivation statement binds `derived_from`→`rendition.blob` + codec/width/height/bitrate, signed under `"DMTAP-VID-v0/derivation"` by a device key chaining to `produced_by` | construction (signable KAT recipe): `stmt = det_cbor([derived_from, rendition.blob, codec, width, height, bitrate])`; `sig = Sign(dev_key, "DMTAP-VID-v0/derivation" ‖ 0x00 ‖ BLAKE3-256(stmt))`; mutate any tuple element ⇒ signature MUST fail | reject (replayed/mismatched statement); accept (matching) | construction-todo |
+| DMTAP-VIDEO-05 | MUST | §24.4.4, §24.15 VID-5, §24.15 VID-17 | the derivation statement binds `derived_from`→`rendition.blob` + codec/width/height/bitrate, signed under `"DMTAP-VID-v0/derivation"` by a device key chaining to `produced_by`; and it is **always a six-element array**, an absent `width`/`height` being CBOR `null` (`0xf6`) at its fixed position — never omitted, never `0` | construction (signable KAT recipe): `stmt = det_cbor([derived_from, rendition.blob, codec, width_or_null, height_or_null, bitrate])`; `sig = Sign(dev_key, "DMTAP-VID-v0/derivation" ‖ 0x00 ‖ BLAKE3-256(stmt))`; mutate any tuple element ⇒ signature MUST fail; then (VID-17) for an audio-only rendition build the statement three ways — the normative `0xf6`/`0xf6` form, a shortened four-element array, and a `0`/`0` sentinel — and verify each against a signature made over the normative form | reject (replayed/mismatched statement; and both non-normative reconstructions, which a verifier MUST NOT try in order to make a signature verify); accept (the six-element `0xf6` form only) | construction-todo |
 | DMTAP-VIDEO-06 | MUST | §24.5, §24.15 VID-6 | a video's `channel` (key 10) reference resolves to an announce with the **same `pub`** as the video's author (a video cannot join another identity's channel) | construction: `VideoManifest.channel` naming a `Channel` announce with a different `pub` | reject | construction-todo |
 | DMTAP-VIDEO-07 | MUST | §24.4.1, §24.15 VID-7 | `retracted = true` (key 12) is always accompanied by `retract_reason` (key 13) | construction: `VideoManifest{retracted: true}` with key 13 absent | reject (malformed for this profile) | construction-todo |
 | DMTAP-VIDEO-08 | MUST | §24.7, §24.15 VID-8 | retraction/removal is expressed **only** as a successor `supersedes` announcement (`retracted=true`), never as deletion; a client MUST NOT imply deletion of prior bytes | construction: attempt to model "deletion" of a prior revision (no protocol operation exists) | reject (no-such-operation; retracted bytes remain fetchable, only status changes) | construction-todo |
@@ -1221,7 +1246,7 @@ operator's choice or a default is a deployment fact, not a wire fact.
 
 ---
 
-## Assembly structure (§23.6.2) — `CADASM`
+## Assembly structure (§24.18.7) — `CADASM`
 
 Level **Core**, optional capability **`pub-1`**. `AssemblyStructure` is the one CAD object with
 structural invariants an implementation can get wrong quietly: an assembly with no children is a
@@ -1231,7 +1256,7 @@ immutable, `track` names a `pub_announce` id and follows the author's revision c
 
 | id | req | clause | checks | input | expect | status |
 |----|-----|--------|--------|-------|--------|--------|
-| DMTAP-CADASM-01 | MUST | §23.6.2, §23.6.1 | **An assembly has children, each with a `ref_kind`, a `ref` and a `quantity ≥ 1`.** `children` is REQUIRED with at least one entry — an assembly with zero children is malformed for this profile and should have been a `part`-kind artifact. Every `AssemblyChild` carries `ref_kind` (`1` pin, `2` track), a `ref` that is a `manifest_root` when pinned and a `pub_announce` id when tracked, and a `quantity ≥ 1`: a quantity of `0` is expressed by omitting the child, never by a zero count | construction: `AssemblyStructure`s with (a) `children = []`, (b) a child with `quantity = 0`, (c) a child with `ref_kind = 1` whose `ref` is a `pub_announce` id, (d) a child missing `ref_kind`, (e) a well-formed assembly with two children at quantities 1 and 4 | reject (a)–(d) → `ERR_MALFORMED_OBJECT` (0x020D), DROP_SILENT; accept (e). Coercing `quantity = 0` to `1`, or guessing `ref_kind` from the shape of `ref`, is non-conformant — the two reference modes have different revision semantics and a guess silently changes which bytes the assembly names | construction-todo |
+| DMTAP-CADASM-01 | MUST | §24.18.7, §24.18.6 | **An assembly has children, each with a `ref_kind`, a `ref` and a `quantity ≥ 1`.** `children` is REQUIRED with at least one entry — an assembly with zero children is malformed for this profile and should have been a `part`-kind artifact. Every `AssemblyChild` carries `ref_kind` (`1` pin, `2` track), a `ref` that is a `manifest_root` when pinned and a `pub_announce` id when tracked, and a `quantity ≥ 1`: a quantity of `0` is expressed by omitting the child, never by a zero count | construction: `AssemblyStructure`s with (a) `children = []`, (b) a child with `quantity = 0`, (c) a child with `ref_kind = 1` whose `ref` is a `pub_announce` id, (d) a child missing `ref_kind`, (e) a well-formed assembly with two children at quantities 1 and 4 | reject (a)–(d) → `ERR_MALFORMED_OBJECT` (0x020D), DROP_SILENT; accept (e). Coercing `quantity = 0` to `1`, or guessing `ref_kind` from the shape of `ref`, is non-conformant — the two reference modes have different revision semantics and a guess silently changes which bytes the assembly names | construction-todo |
 
 ---
 
@@ -1247,7 +1272,7 @@ authorship — and must be rendered as visibly weaker.
 
 | id | req | clause | checks | input | expect | status |
 |----|-----|--------|--------|-------|--------|--------|
-| DMTAP-VIDMIG-01 | MUST | §24.4.5, §22.5.1 | **Hints are advisory, and unrecognized hint types are ignored.** A client MUST NOT treat a blob fetched from an unlisted source differently from one fetched from a listed hint — verification is against the signed rendition root, so provenance of the *bytes* is irrelevant once they verify. And new transports are new hint types: an unrecognized type MUST be ignored, never rejected, or every new transport becomes a flag day | construction: fetch identical, correctly-verifying rendition bytes from (a) a listed hint and (b) an unlisted source, comparing the client's acceptance and any trust marking; and supply a `Hint` of an unrecognized type alongside a usable one | accept (identical treatment for (a) and (b), and the unknown hint type ignored while the usable one is used); marking (b) as less trusted, or rejecting the object because one hint type is unknown, is non-conformant | construction-todo |
+| DMTAP-VIDMIG-01 | MUST | §24.4.5, §24.4.2, §22.5.1, §24.15 VID-18 | **Hints are advisory, and unrecognized tokens are ignored, never fatal.** A client MUST NOT treat a blob fetched from an unlisted source differently from one fetched from a listed hint — verification is against the signed rendition root, so provenance of the *bytes* is irrelevant once they verify. And new transports are new hint types: an unrecognized type MUST be ignored, never rejected, or every new transport becomes a flag day. The same rule governs the `Caption.format` token (VID-18): `"vtt"`/`"srt"`/`"lrc"` are decode hints like `codec`, not an enum, so an unrecognized format MUST NOT cause rejection of the manifest or of any other track | construction: fetch identical, correctly-verifying rendition bytes from (a) a listed hint and (b) an unlisted source, comparing the client's acceptance and any trust marking; supply a `Hint` of an unrecognized type alongside a usable one; and supply a `Caption` with an unrecognized `format` token alongside a `"vtt"` track and an `"lrc"` lyric track | accept (identical treatment for (a) and (b); the unknown hint type ignored while the usable one is used; the unknown caption format skipped or handed to an external handler while the `"vtt"` and `"lrc"` tracks remain usable); marking (b) as less trusted, or rejecting the object because one hint type or caption format is unknown, is non-conformant | construction-todo |
 | DMTAP-VIDMIG-02 | MUST | §24.14, §24.8, §22.3.3 | **No laundering authorship through attestation, and history stays dual-format.** Migration is per-author and consensual: re-signing an existing record requires the author's key, which a PUB server, archive or migration tool holding only plaintext never has for a self-custodied identity — so there is no bulk operator-run rewrite. Pre-migration history stays valid in its original bytes and a reader's client MUST retain the ability to verify **both** formats for as long as pre-migration content exists. A server that re-attests old content under its own key is asserting **server reputation, not authorship**, and MUST render it with a visibly weaker badge; a UI surfacing attestation provenance MUST distinguish the two cases visibly, not only in metadata a reader has to go looking for | construction: a feed mixing author-signed records and server-attested pre-migration records; inspect whether both formats still verify and how each is rendered; variant: a server-attested record presented with the same badge as an author-signed one | accept (both formats verify and the two provenances are visibly distinct in the surface itself); rendering a server attestation identically to an author signature is a security misrepresentation and is non-conformant, as is dropping the ability to verify the pre-migration format | construction-todo |
 | DMTAP-VIDMIG-03 | MUST | §24.17, §24.8 | **A similarity relation is evidence, never truth.** The `similarity` relation type (`20`) carries a near-duplicate **claim**, and a PUB server MUST NOT auto-merge on it alone. Near-duplicate detection is a heuristic over bytes an adversary chooses; merging two authors' records on it collapses two identities into one on the strength of a guess, and the §24.8 rule that a signed tally is worth exactly the attester's reputation applies here in its sharpest form | construction: two independently-authored records with a `similarity` claim asserted between them by a third party; drive the server's indexing and inspect whether the records remain distinct objects of record | accept (both records remain distinct and independently addressable; the claim is presented with its provenance); auto-merging, deduplicating or suppressing either record on the claim alone is non-conformant | construction-todo |
 
@@ -1285,6 +1310,7 @@ table is exercised by the `PUB` family above rather than getting cases of its ow
 | DMTAP-PUBSUB-13 | MUST | §25.4.1, §25.5.1 | **Unknown PUBSUB object version/suite.** A `Subscription`/`SubscriptionRevoke` carrying a `v`/`suite` this implementation does not support MUST be rejected, never guessed — the same rule §22.3.1/§22.4.1 apply to `PubAnnounce`/`FeedHead`, extended in scope to this appendix's objects | construction: `Subscription` with `v = 1` (any value ≠ 0) | reject → `ERR_PUB_UNSUPPORTED_VERSION` (0x0901), FAIL_CLOSED_BLOCK | construction-todo |
 | DMTAP-PUBSUB-14 | MUST | §25.4.1 | **`topic` is a mandatory field (MAY be empty).** A `Subscription` CBOR map lacking key `5` is malformed — `""` (present, empty) is the only spelling of "the default feed"; absence is not a synonym for it | construction: `Subscription` with key 5 (`topic`) omitted | reject (malformed on decode) | construction-todo |
 | DMTAP-PUBSUB-15 | MUST | §25.9 | **Bounded-lifetime and cooperative-revoke disclosure (client UX, no wire bytes).** Before issuing a `Subscription` on the user's behalf, a client MUST disclose that the underlying feed is plaintext/public (unchanged from §22.9) and that a revoke is honored cooperatively — a non-cooperating or partitioned holder MAY continue hinting until the subscription's own `expires`, never indefinitely but not necessarily instantly | manual attestation (implementer/UX review — see "How to read a case" `status: manual-attestation`) | non-conformant if either disclosure is missing | manual-attestation |
+| DMTAP-PUBSUB-16 | MUST | §25.4.1; §25.5.1; §25.7.1; §25.13 C-03 | the security consequence of a body-only subscription_id: two differently-encoded copies of one Subscription (identical body, different sig bytes) MUST (a) share one subscription_id, (b) occupy exactly ONE aggregate quota slot when a holder dedupes its active set by id, and (c) both be reachable by a single SubscriptionRevoke naming that id | sign one Subscription body normally; clone it and replace ONLY the sig bytes (a mauled/differently-encoded copy, sig-only difference); assert both encodings' subscription_id are equal, that inserting both into a BTreeSet<ContentId> leaves it at size 1, and that one SubscriptionRevoke naming that id verifies successfully against BOTH encodings via verify_for | {'outcome': 'accept (same id, one quota slot, revoke matches both)', 'note': 'closes the §25.13 C-03 revocation-bypass / double-count: under the pre-fix formula (subscription_id over the complete signed object) this case fails on all three counts, because the two encodings would carry DIFFERENT ids'} | construction-todo |
 
 ---
 
@@ -1403,8 +1429,8 @@ by cases — none orphaned). Cross-check (case → vector):
 by the `dmtap-core` reference crate (see the `PUB` section above and README.md's Provenance note)
 — it is independently re-derivable by anyone with `pip install blake3 cryptography`, no Rust
 toolchain required. The `CAD` cases carry no vectors (the profile allocates no wire bytes of its
-own, §23.1); all 11 are `construction-todo` recipes over the `ArtifactMetadata`/`AssemblyStructure`
-CDDL of §23. The `VIDEO` cases (§24) are likewise `construction-todo` recipes over the
+own, §24.18); all 11 are `construction-todo` recipes over the `ArtifactMetadata`/`AssemblyStructure`
+CDDL of §24.18. The `VIDEO` cases (§24) are likewise `construction-todo` recipes over the
 `VideoManifest`/`Rendition`/`Comment`/… CDDL of §24 — with the one exception that
 `DMTAP-VIDEO-03`/`-05` (the rendition-derivation statement, §24.4.4) *do* have a signable preimage
 (DS-tag `"DMTAP-VID-v0/derivation"`) and become byte-backed KATs once a fixed-input derivation vector

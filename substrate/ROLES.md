@@ -166,20 +166,20 @@ announces — and **pin** them for durability. This is the serving side of [`FEE
 - **Self-verifying, so serving is trustless (§22.5.1).** Every object is authenticated by a signature or a
   content address it carries, so a cache **cannot forge** an object it did not receive the key to sign, and
   **cannot substitute** chunk bytes under a matching hash (BLAKE3 collision resistance) — a cache is a
-  convenience, not a trust root. Immutable content-addressed objects SHOULD be served with
-  `Cache-Control: public, immutable` and a strong `ETag` equal to the content address, and MAY be fronted
-  by any ordinary HTTP CDN that need not understand DMTAP.
+  convenience, not a trust root. The HTTP caching mechanics (immutable `Cache-Control`, an `ETag` equal to
+  the content address, plain-CDN frontability) are stated once in [`FEEDS.md § 5`](FEEDS.md) and not
+  restated here.
 - **Pinning is durability, and it costs real storage (§5.5.2).** A content address is a name, not a promise
   (§5.5.1): an object is available exactly as long as some holder serves it. Durability is bought by
   **pinning/replication**, an explicit act with a real storage cost — availability is the emergent sum of
   independent holder choices (§22.6.2).
-- **The one role that is NOT blind (§22.6.1, MUST).** Unlike relay and mailbox, which carry ciphertext,
-  cache/pin of **public** objects serves **plaintext a holder can read**, which shifts the operator's
-  moderation and liability posture. Serving public content MUST therefore be **explicit operator opt-in**
-  (`pub-1`), never automatic; each holder applies its own serve policy and MAY decline any object
-  (`ERR_PUB_NOT_SERVED`, `0x090C` — a fetcher rotates to another holder). There is **no protocol-level
-  takedown** (§22.6.2). (Caching *sealed* ciphertext chunks, §5.5, remains blind and is not subject to
-  this opt-in.)
+- **The one role that is NOT blind (§22.6.1, MUST).** Unlike relay and mailbox (which carry ciphertext),
+  cache/pin of **public** objects serves **plaintext a holder can read**. Serving public content MUST
+  therefore be **explicit operator opt-in** (`pub-1`), never automatic; a holder MAY decline any object
+  (`ERR_PUB_NOT_SERVED`, `0x090C` — a fetcher rotates to another holder). The moderation/liability posture
+  this shifts, and that there is **no protocol-level takedown**, are stated once in [`FEEDS.md § 7`](FEEDS.md)
+  and §22.6 — not re-derived here. (Caching *sealed* ciphertext chunks, §5.5, remains blind and is not
+  subject to this opt-in.)
 - **Key-addressed.** Public objects are addressed by content hash *and* attributed to a publisher `IK`
   ([`FEEDS.md`](FEEDS.md)); a cache serves by content address and a follower discovers holders by publisher
   key.

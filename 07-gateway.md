@@ -35,8 +35,10 @@ gateway ingress exists **only** for legacy clients.
 
 - **Inbound** (legacy → DMTAP): act as MX for a domain, receive SMTP, translate to a MOTE,
   attest it, and deliver into the mesh.
-- **Outbound** (DMTAP → legacy): accept a `mail` MOTE marked for a legacy address, translate to
-  RFC 5322, DKIM-sign as the sender's domain via **delegated selectors**, and send via SMTP.
+- **Outbound** (DMTAP → legacy): accept a `mail` MOTE marked for a legacy address, verify the
+  submitting identity is authorized to claim the address it is about to sign and send as
+  (§7.11.2 step 2), translate to RFC 5322, DKIM-sign as the sender's domain via **delegated
+  selectors**, and send via SMTP.
 - **Legacy client surfaces and legacy addressing** (§7.15, §7.10).
 - Carry the one irreducible operational cost: **IP reputation** (warmup, feedback loops,
   blocklist remediation, abuse handling).
@@ -143,10 +145,18 @@ crosses the bridge (§8.6, §7.8) — rather than presenting it as a standing fe
 2. Reject spam early, before DATA where possible (RBL/DNSBL, SPF/DMARC, greylisting,
    per-IP rate limits) — never accept the bulk of spam (§9).
 3. Look up recipient key K for RCPT TO (via DNS/directory §3).
-4. Wrap the RFC 5322 message into a MOTE (kind=mail), encrypt to K, and set an
+4. Construct a full `Payload` (§18.3.5) — `from` = the gateway's **own** `IK` (§7.2a; never the
+   legacy sender's, who has none), `sig` = signed by that `IK` or an IK-authorized gateway device
+   key, `headers`/`body` = the RFC 5322 bytes carried byte-exact (§7.2b) with untrusted
+   trust-boundary headers stripped first (§7.2c), `provenance` = the `GatewayAttestation` chain
+   (§7.2a, §18.3.11) — wrap it into a MOTE (kind=mail), encrypt to K, and set the
    ATTESTATION: gateway signs "received via gateway G at T from <SMTP envelope>" **with a
    domain-anchored attestation key** (§7.2a), so the recipient can verify it arrived through a
-   gateway genuinely authorized for the recipient's domain.
+   gateway genuinely authorized for the recipient's domain. A gateway-injected MOTE with no
+   `Payload`, or one whose `from` is anything other than the gateway's own `IK`, is
+   non-conformant: §18.3.5's `from`/`sig` are MUST for every MOTE, legacy-origin included, and a
+   worked example that omits `Payload` entirely (§19.7.1) is a defect in that example, not a
+   second conformant shape.
 5. Deliver into the mesh to K (§4). If K's node is unreachable, return SMTP 4xx so the
    SENDING server retries (durability punted to the legacy sender). Store nothing.
 ```
@@ -187,8 +197,32 @@ it does not serve. Therefore the domain MUST publish the gateway's **attestation
 analogous to DKIM's selector, in DNS (and MAY anchor it in KT):
 
 ```
-<sel>._dmtap-gw.def.com.  IN  TXT  "v=dmtapgw1; k=<attestation public key>"
+<sel>._dmtap-gw.def.com.  IN  TXT  "v=dmtapgw1; suite=<§1.1 suite id>; k=<attestation public key>"
 ```
+
+**The attestation key IS the gateway's own `IK` (normative).** A gateway is a DMTAP node like any
+other (§0.2.3) and holds an identity key under §1.2; the key published here is *that* `IK`, not a
+second signing key invented only for attestation. This is what makes §7.2 step 4's `Payload`
+construction well-defined: a gateway-injected inbound MOTE's `Payload.from` MUST equal this same
+`IK`, and its `sig` MUST verify under it (or under an IK-authorized gateway device key, §18.3.5) —
+there is no separate, looser `Payload` shape for gateway traffic. A recipient MUST reject an
+inbound MOTE whose `provenance` (§18.3.5 key 9) is present but whose `Payload.from` is not the
+`IK` published under the attesting domain's `_dmtap-gw` record — this is the **same** check as an
+untrusted attestation key (`ERR_GATEWAY_ATTESTATION_KEY_UNTRUSTED`, `0x0602`), because binding the
+attestation key to the gateway's `IK` makes the two comparisons one comparison: whatever wrapped
+the message is not the domain's authorized gateway, whatever `provenance` claims.
+
+**Algorithm identifier (normative).** The record's `suite=` parameter names the §1.1 algorithm
+suite `k=` is published under, using the same registry every other signed object in the protocol
+uses. A record with no `suite=`, or with a `k=` that does not match the named suite's key length,
+MUST be treated as **untrusted** (`ERR_GATEWAY_ATTESTATION_KEY_UNTRUSTED`, `0x0602`) — a verifier
+MUST NOT infer the algorithm from key length, which is exactly the ambiguity the §1.1 suite
+registry exists to remove. Because the key doubles as the gateway's `IK` (above), `suite=` MUST
+name a suite that `IK` legitimately holds, so a gateway attestation carries the same PQ-hybrid
+floor (§1.1) as every other signed object rather than a silent, unstated exception to it.
+(`GatewayAttestation`'s wire form has, until now, deliberately carried no `suite` field, inferring
+the algorithm from the published DNS key alone; it needs a matching field — a §18.3.11 change
+reported separately, alongside the `_dmtap-gw` registry entry in §21.21.)
 
 Recipient nodes **MUST** verify an inbound MOTE's attestation signature against a key published
 under the recipient's own domain (or an explicitly trusted gateway set), **MUST** reject
@@ -222,8 +256,8 @@ v1 target, and a gateway implementing only the floor conforms.
   DNS resolution, dialing, and SNI; U-labels are display forms, never wire forms.
 - **SMTPUTF8 inbound (RFC 6531).** A v0 gateway SHOULD advertise SMTPUTF8 where its
   alias/directory machinery can carry EAI local-parts. A gateway that does not advertise it MUST
-  let a conforming EAI sender fail cleanly at the sender's own MTA (RFC 6531 requires the sender
-  to bounce when the capability is absent) — it MUST NOT accept EAI envelopes it cannot carry
+  let a conforming EAI sender fail cleanly at the sender's own MTA (the sending MSA SHOULD
+  reject/bounce a non-downgradable EAI message rather than mangle it, RFC 6531 §3.2) — it MUST NOT accept EAI envelopes it cannot carry
   faithfully (never accept-then-mangle; `ERR_GATEWAY_SMTPUTF8_UNSUPPORTED`, `0x0609`).
 - **SMTPUTF8 outbound.** When a message requires SMTPUTF8 and the destination MX does not
   advertise it, the gateway MUST fail the send with a specific SMTPUTF8-unsupported error
@@ -232,6 +266,50 @@ v1 target, and a gateway implementing only the floor conforms.
   non-conformant 8-bit envelope. When the message body is 8-bit and the peer lacks 8BITMIME, the
   gateway MUST either down-convert **losslessly** (e.g. content-transfer-encoding) or fail with
   the same specificity; silent corruption is never an option.
+
+### 7.2c Authentication verdicts, header hygiene, and the byte-exactness boundary (normative)
+
+§7.11.1 step 1 requires SPF/DKIM/DMARC (and AR-Chain) evaluation before injection, but requiring
+the check and conveying its result are different things. A verdict that is computed and then
+discarded gives the recipient nothing to check the gateway's own conduct against — and, combined
+with §7.2b's byte-exactness rule and the no-annotation floor of §7.11.4, leaves an
+attacker-supplied `Authentication-Results` (or `ARC-*`) header free to ride the wrapped bytes all
+the way into `msg_digest`, where the gateway's own signature then vouches for a verdict it never
+computed.
+
+- **Convey the verdict.** The SPF/DKIM/DMARC/AR-Chain result the gateway computes at §7.11.1
+  step 1 MUST be carried inside the signed `GatewayAttestation` (§18.3.11) as an `AuthResults`
+  map — not merely acted on locally and dropped. Because it rides inside the signed attestation
+  body, a recipient can distinguish the gateway's own attested verdict from anything that arrived
+  inside the message. (`GatewayAttestation` gains a matching field for this; a §18.3.11 change
+  reported separately, since no such field exists there today.)
+- **Strip before you sign.** Before computing `msg_digest` (§18.9.11) over the wrapped RFC 5322
+  bytes, a gateway MUST remove every `Authentication-Results` header field (RFC 8601) and every
+  `ARC-Seal` / `ARC-Message-Signature` / `ARC-Authentication-Results` header field (RFC 8617 —
+  **Experimental**, not Standards Track, a status worth flagging since §7.11.1 relies on
+  `arc=pass` as a normative hard-fail-override gate — this document writes **AR-Chain** for RFC
+  8617's Authenticated Received Chain, reserving **ARC**
+  for the unrelated anti-abuse Anonymous Rate-limited Credential of §9.3, §7.11.1) that it did not
+  itself add during this transaction. RFC 8601 §5 requires exactly this of any trust-boundary MTA:
+  such a header is meaningful only relative to the boundary that added it, and an inbound gateway
+  is such a boundary. A gateway that fails to strip forwards an attacker-supplied verdict — e.g. a
+  hand-crafted `Authentication-Results: ...dkim=pass header.d=paypal.com` — into `msg_digest`
+  unchanged, where the gateway's own genuine signature over that digest then launders the forged
+  verdict as if the gateway itself had vouched for it.
+- **This is hygiene, not classification.** Removing an untrusted trust-boundary claim is not the
+  content-based judgement §7.11.4 forbids: §7.11.4 bars a gateway from deciding whether a message
+  is *wanted*; this rule bars it from relaying a forged claim about *who else already vouched for
+  it*. Declining to relay a forgeable claim is not forming a content opinion of one's own.
+- **Byte-exactness governs the body, not these headers.** §7.2b's byte-exact carriage protects
+  the message body and MIME structure the legacy sender is entitled to have relayed intact; it
+  does not extend to trust-boundary header fields the sender was never entitled to inject in the
+  first place. Stripping them before wrapping is required by this section, not forbidden by §7.2b.
+- **Client presentation.** A client MUST NOT present a message's `legacy_from` (§18.3.11) as
+  authenticated, or render it with any visual parity to a verified native sender, unless the
+  attestation's `AuthResults` records **DMARC alignment** (`dmarc=pass` with identifier alignment)
+  for that `From:` domain. Absent alignment, `legacy_from` is shown only as unauthenticated legacy
+  content — the existing "informational... display only" limit on `legacy_from` (§18.3.11), now an
+  explicit presentation MUST rather than an implied one.
 
 ## 7.3 Outbound & DKIM delegation
 
@@ -469,7 +547,14 @@ pricing model.
   gateway" is checkable against the message's own `ProvenanceRecord` (§18.8.1, §7.8), not taken on
   trust. Conversely, a message the client shows as **pure-mesh** MUST NOT appear on any operator's
   usage claim, because no operator was there to observe it. This is the user's evidence against a
-  third-party operator, not the operator's accounting mechanism (§12.7).
+  third-party operator, not the operator's accounting mechanism (§12.7). **This audit is
+  one-directional, and disclosed as such (§7.10.4 integrity residual).** It lets a user confirm
+  that a claimed operation corresponds to a real, attested message; it does **not**, and cannot,
+  let a user *disconfirm* a message the gateway itself fabricated — a gateway that authors and
+  attests its own inbound legacy mail produces a `ProvenanceRecord` indistinguishable from a
+  genuine one, because attestation proves origin-through-this-gateway, never non-fabrication. A
+  user's audit is evidence against a claim of usage the gateway never performed; it is not
+  evidence of the gateway's honesty about content.
 
 ## 7.10 Native ↔ legacy address mapping (a swappable gateway alias, normative)
 
@@ -584,6 +669,17 @@ domain to the recipient, and a legacy MTA sees the mail in the clear. The **nati
 gateway** (a pure-mesh message is provably end-to-end, §7.8.1(b)), and every gateway-touched message is
 **marked** so the user sees which mail crossed the bridge (`ProvenanceRecord`, §8.6). DMTAP states this
 honestly rather than implying the bridge inherits mesh privacy.
+
+**Integrity residual (disclosed).** The confidentiality residual above is not the only one: a
+gateway that sees the legacy leg in the clear can also **alter it**. Inbound, the gateway is the
+party that authors the RFC 5322 bytes wrapped into the MOTE and computes `msg_digest`
+(§18.9.11) over exactly those bytes — nothing about attestation prevents a gateway from
+fabricating a message wholesale and attesting to its own fabrication, because the attestation
+proves only "this gateway asserts this arrived through it," never "this content originated
+exogenously and reached the gateway unaltered." Outbound, the gateway is the party that
+translates the MOTE to RFC 5322 and DKIM-signs the result, so it can alter the text before
+signing. A `ProvenanceRecord` marks a message as gateway-touched; it does not, and structurally
+cannot, prove the gateway's honesty about *what* it bridged — only *that* it bridged.
 
 ### 7.10.5 Aliases the gateway can and cannot mint — vanity local-parts (normative)
 
@@ -717,14 +813,35 @@ strangers' inboxes. Therefore anti-abuse enforcement is a **MUST in both directi
 
 Before it injects anything into the mesh (§7.2), a gateway MUST:
 
-1. Apply **legacy sender authentication** — **SPF, DKIM, and DMARC** — and reject on hard fail
-   pre-`DATA` where possible (§7.2 step 2 → SMTP `550 5.7.1`, §21.9), alongside the standard
-   RBL/DNSBL + greylisting hygiene.
-2. Carry the legacy origin through the **cold-sender gate** (§9.2): an injected MOTE from a legacy
-   stranger is a **cold contact** and MUST be subject to the recipient's §9 challenge policy exactly
-   as a native cold sender is. The gateway MUST NOT inject legacy mail with the standing of an
-   established contact, and MUST NOT strip or forge the recipient-facing challenge state; mail it
-   cannot qualify defers to the requests area (§9.2), never the inbox.
+1. Apply **legacy sender authentication** — **SPF, DKIM, and DMARC**, evaluating **AR-Chain**
+   (RFC 8617's Authenticated Received Chain — this document writes "AR-Chain" throughout §7,
+   reserving **ARC** for the unrelated anti-abuse Anonymous Rate-limited Credential of §9.3; the
+   acronym collision between SMTP's RFC 8617 and DMTAP's own token has caused real implementer
+   confusion and is disambiguated here rather than left implicit) **before** applying the
+   hard-fail rule below. A message that fails SPF/DKIM/DMARC at this hop but carries a valid
+   AR-Chain (`arc=pass`) — the ordinary signature of a mailing-list or forwarding intermediary
+   that legitimately rewrote the envelope or footer — MUST NOT be hard-rejected on that basis
+   alone: record `arc=pass` in the attestation's `AuthResults` (§7.2c) and continue to step 2
+   rather than `550`-ing it. `arc=pass` MUST NOT be promoted to, or displayed as, `dmarc=pass`: an
+   AR-Chain pass is evidence an **earlier** hop authenticated the message, never that *this* hop's
+   own DMARC evaluation succeeded, and conflating the two would let a forwarding relationship
+   launder alignment it never had. Absent a valid AR-Chain, reject on hard fail pre-`DATA` where
+   possible (§7.2 step 2 → SMTP `550 5.7.1`, §21.9), alongside the standard RBL/DNSBL + greylisting
+   hygiene.
+2. Set `legacy_from` (§18.3.11) — **MUST**, not optional, for the recipient-domain attestation
+   entry — to the authenticated legacy sender address evaluated in step 1, and carry the legacy
+   origin through the **cold-sender gate** (§9.2): an injected MOTE from a legacy stranger is a
+   **cold contact** and MUST be subject to the recipient's §9 challenge policy exactly as a native
+   cold sender is. Gating on `Payload.from` alone is insufficient here: every gateway-injected
+   MOTE carries the **gateway's own** `IK` as `Payload.from` (§7.2a), so gating on `Payload.from`
+   alone would let one accepted legacy correspondent silently extend established-contact standing
+   to every other stranger routed through the *same* gateway. The recipient's per-sender policy
+   (§9.2) MUST therefore also be evaluated against the DMARC-aligned `legacy_from` identifier, in
+   addition to `Payload.from` — a per-legacy-sender key that §9.2's `Policy`/`ContactRef` model
+   does not yet accept alongside `IK` (a §9.2 change reported separately). The gateway MUST NOT
+   inject legacy mail with the standing of an established contact, and MUST NOT strip or forge the
+   recipient-facing challenge state; mail it cannot qualify defers to the requests area (§9.2),
+   never the inbox.
 
 A gateway MUST NOT emit an inbound MOTE that bypasses either check. This is what stops it from
 laundering legacy spam into the accountable mesh.
@@ -741,7 +858,28 @@ Before it relays a mesh MOTE to a legacy address (§7.3), a gateway MUST:
    signed*, **not** *who may relay* — anyone can sign a MOTE — so signature-validity is necessary but
    **not sufficient** to authorize egress. This is the open-relay-prevention floor whose absence
    killed SMTP's open relays (§7.7).
-2. Enforce **per-sender rate limits and volume caps** on legacy egress (§9.6 per-identity
+2. **Verify the submitter may claim the address it is about to sign and send as.** Authenticating
+   *who is sending* (step 1) and authorizing *which address they may send as* are different
+   facts, and the gateway MUST check both before it DKIM-signs and relays. The authenticated
+   submitter MUST be authorized for the RFC 5322 `From:` address (and the SMTP envelope
+   `MAIL FROM`) the outbound message carries, established by **one** of:
+   - resolving the `From:`/`MAIL FROM` domain per §3.3 to an `IK` **equal to the submitter's own
+     `IK`** — the ordinary case, where the sender already holds the `name@domain` binding it is
+     sending as; or
+   - an explicit **per-address grant** naming that address for that `IK`, recorded in the
+     operator's `GatewayAuthz` (§12.2 — a new grant type there; out of scope for this document to
+     define further, see the report accompanying this change).
+
+   A submitter that clears step 1 (authenticated to *this gateway*) but clears neither bullet for
+   *this address* MUST be refused, fail-closed, with `ERR_GATEWAY_SENDER_ADDRESS_UNAUTHORIZED`
+   (proposed `0x060A`, pending §21 registration). **A delegated DKIM selector (§7.3) authorizes the
+   *gateway* to sign for a domain; it never authorizes any *submitter* to claim any address within
+   that domain.** These are different facts about different parties: a check that the gateway
+   itself holds a delegation for the domain (§7.3, §19.7.2 precondition 2) tests only the first,
+   never the second. Conflating them is what would let any identity registered at a gateway send
+   fully DMARC-aligned mail as any other address the gateway's served domains publish; this step
+   is what closes that gap.
+3. Enforce **per-sender rate limits and volume caps** on legacy egress (§9.6 per-identity
    accountability applied as a throttle), so a single authenticated-but-compromised sender cannot
    turn the gateway into a blaster. Exceeding the cap is refused/deferred under the operator's egress
    policy.
@@ -753,6 +891,38 @@ the gates fail closed, and *which* signals gate them (SPF/DKIM/DMARC + cold-send
 authenticated-sender + rate/volume outbound). The **specific values** — DMARC override handling, RBL
 choice, challenge thresholds, egress rates, volume caps, and any pricing — are **operator policy and
 out of scope** (§7.13). A gateway MUST implement the floor; it chooses the numbers.
+
+### 7.11.4 The gateway authorizes; it never classifies (normative)
+
+The gates of §7.11 are all **authorization** questions — *is this sender who they claim to be, and
+are they permitted to send this much?* — and every one of them is answered from **sender identity
+and rate**, never from message content:
+
+- **A gateway MUST NOT classify content.** It MUST NOT run content-based spam scoring, Bayesian or
+  machine-learned filters, keyword/URL reputation, attachment-content heuristics, or any other
+  "is this message wanted?" judgement, and MUST NOT drop, quarantine, re-rank, or annotate a
+  message on such a basis. Its permitted inputs are exactly: SPF/DKIM/DMARC validation results,
+  the sending IP's standing (RBL/DNSBL, greylisting), the authenticated sender identity, the
+  cold-sender state (§9.2), and rate/volume counters (§7.11.1, §7.11.2).
+- **Classification is the recipient's, on the recipient's device, against the recipient's own
+  corpus** (§9.11, §0.7). "Wanted" is a property of a relationship, not of a string, and only the
+  recipient holds both sides of the relationship.
+- **A gateway MUST NOT be required to decrypt for anti-abuse purposes**, and MUST NOT present its
+  authorization checks as a spam filter to users.
+
+**Why this is a structural rule and not a preference.** A gateway that classifies content becomes
+**permanent by construction**. Classification improves with corpus size, so it centralizes; it is
+never "finished," so it never self-extinguishes the way an adapter does (§7.1c); and it makes every
+user's mail depend on a judgement only the operator can make, which is exactly the power the rest
+of this document is arranged to prevent anyone from holding. The measured evidence that this is how
+mail centralization actually happens — a second, independently-growing centralized tier made of
+anti-abuse vendors — is set out in §9.11, together with the observation that **native DMTAP mail
+needs no filter at all**: §9.1's authenticated-by-default model means there is no anonymous
+injection to filter.
+
+Legacy mail is different, and honestly so: it *is* anonymously injectable, which is why §7.11.1's
+authentication gates exist at all. But the gate is "prove who you are and stay within your rate,"
+and what remains after that is the recipient's to judge.
 
 ## 7.12 Optional key-authenticated gateway registration (capability-negotiated)
 
@@ -812,8 +982,9 @@ naming providers: the **interoperable mechanism and the security floor are in-sp
 
 **In scope (normative — every conformant gateway MUST honor these, or interop/security breaks):**
 
-- the **authorization *mechanism*** — the authenticated-sender requirement and the OPTIONAL key-auth
-  handshake (§7.11.2, §7.12);
+- the **authorization *mechanism*** — the authenticated-sender requirement, the per-address claim
+  binding that keeps an authenticated sender from claiming an address it was never granted
+  (§7.11.2 step 2), and the OPTIONAL key-auth handshake (§7.12);
 - the **address mapping** — native↔legacy aliasing and its two encodings (§7.10);
 - **provenance** — the §7.2a attestation, the §7.8 `ProvenanceRecord`, and the verifiable
   pure-mesh-vs-gateway-touched distinction;
@@ -832,38 +1003,6 @@ The dividing rule is identical to §3.11's for names and §12.3's inviolable met
 independent implementations must agree on to interoperate securely is in-spec; what an operator may set
 unilaterally without breaking any other party is out of scope.** A gateway that changes its prices or
 caps stays conformant; a gateway that skips the §7.11 floor or the §7.12 handshake shape does not.
-
-### 7.11.4 The gateway authorizes; it never classifies (normative)
-
-The gates of §7.11 are all **authorization** questions — *is this sender who they claim to be, and
-are they permitted to send this much?* — and every one of them is answered from **sender identity
-and rate**, never from message content:
-
-- **A gateway MUST NOT classify content.** It MUST NOT run content-based spam scoring, Bayesian or
-  machine-learned filters, keyword/URL reputation, attachment-content heuristics, or any other
-  "is this message wanted?" judgement, and MUST NOT drop, quarantine, re-rank, or annotate a
-  message on such a basis. Its permitted inputs are exactly: SPF/DKIM/DMARC validation results,
-  the sending IP's standing (RBL/DNSBL, greylisting), the authenticated sender identity, the
-  cold-sender state (§9.2), and rate/volume counters (§7.11.1, §7.11.2).
-- **Classification is the recipient's, on the recipient's device, against the recipient's own
-  corpus** (§9.11, §0.7). "Wanted" is a property of a relationship, not of a string, and only the
-  recipient holds both sides of the relationship.
-- **A gateway MUST NOT be required to decrypt for anti-abuse purposes**, and MUST NOT present its
-  authorization checks as a spam filter to users.
-
-**Why this is a structural rule and not a preference.** A gateway that classifies content becomes
-**permanent by construction**. Classification improves with corpus size, so it centralizes; it is
-never "finished," so it never self-extinguishes the way an adapter does (§7.1c); and it makes every
-user's mail depend on a judgement only the operator can make, which is exactly the power the rest
-of this document is arranged to prevent anyone from holding. The measured evidence that this is how
-mail centralization actually happens — a second, independently-growing centralized tier made of
-anti-abuse vendors — is set out in §9.11, together with the observation that **native DMTAP mail
-needs no filter at all**: §9.1's authenticated-by-default model means there is no anonymous
-injection to filter.
-
-Legacy mail is different, and honestly so: it *is* anonymously injectable, which is why §7.11.1's
-authentication gates exist at all. But the gate is "prove who you are and stay within your rate,"
-and what remains after that is the recipient's to judge.
 
 ## 7.14 What a third-party gateway operator may condition (informative)
 
@@ -989,3 +1128,23 @@ exist to onboard clients that cannot yet speak JMAP + the mesh, and they **fade 
 adoption grows**. A node with only native (JMAP) clients needs no gateway at all. Legacy client
 support is **not required for node conformance**; it is a RECOMMENDED **gateway** capability for
 adoption (§10).
+
+## 7.16 Beyond SMTP: the legacy-adapter pattern generalizes (normative pointer)
+
+Everything above is specific to legacy **mail** — it is what the gateway role (§0.2.3) is, and
+that stays exactly true: unqualified "gateway" names the SMTP/mail adapter role and nothing else
+(§0's glossary), the scarce-resource requirement of §7.1a remains the **only** thing in DMTAP
+gating an operator class, and no line above is altered by what follows.
+
+A DMTAP user's correspondents are not only on legacy email, though: some are reachable only by
+SMS, WhatsApp, Telegram, a Discord guild, or a Slack workspace. **[`26-legacy-adapters.md`](26-legacy-adapters.md)**
+specifies how the *pattern* this section establishes for mail — a pluggable, optional bridge to a
+network DMTAP does not control, with an honest accounting of who can be reached, who sees the
+plaintext, who pays what, and what survives if the bridge disappears — generalizes to those other
+rails. It introduces **adapter** as the general term for any such bridge (of which the SMTP/mail
+bridge specified above is one, the in-tree and mandatory-pattern-setting one, §26.1), reuses
+**node mode** / **gateway mode** as deployment-mode labels by analogy to this section's own
+self-host/third-party-operator split (§7.1a, §7.15.4, §12.1) without creating a second sense of the
+word "gateway," and is entirely **additive**: every other legacy rail it specifies is optional,
+out-of-tree, and off by default, so a node with only a mail gateway (or no gateway at all) is
+unaffected by its existence.

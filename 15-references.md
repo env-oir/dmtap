@@ -110,7 +110,7 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **draft-connolly-cfrg-xwing-kem** (`-10`, Independent Submission stream — **not CFRG-adopted**; "no formal standing in the IETF standards process") | X-Wing hybrid KEM | PQ HPKE KEM combiner (§1.1, §1.3); FIPS 203 standardizes **no** combiner and defers to SP 800-227 |
 | **draft-ietf-mls-pq-ciphersuites / -combiner** | PQ-MLS | PQ migration for the messaging layer (§5) |
 | **draft-kohbrok-mls-dmls** | Decentralized MLS | ongoing work on MLS over a leaderless mesh (§5.1) |
-| **draft-yun-privacypass-arc** | Anonymous Rate-Limited Credentials | the ARC token profile (§9.3) |
+| **draft-ietf-privacypass-arc-protocol** (Privacy Pass WG-adopted 2026, Standards Track; formerly the individual `draft-yun-privacypass-arc`) | Anonymous Rate-Limited Credentials | the ARC token profile (§9.3) |
 | **Vatandas, Gennaro, Ithurburn & Krawczyk** (ACNS 2020) | On the Cryptographic Deniability of the Signal Protocol | the honest bound on X3DH offline vs online/interactive deniability (§5.2.1(e)) |
 | **Unger & Goldberg** (PETS 2015/2018) | Deniable Authenticated Key Exchange for secure messaging | deniability model precedent for the 1:1 mode (§5.2.1) |
 | **Android Key Attestation / Apple Secure Enclave / TPM 2.0 / FIDO** | hardware keystores + key attestation | non-exportable device keys and the `DeviceCert` attestation hook (§1.2a) |

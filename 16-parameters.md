@@ -22,7 +22,7 @@ above and for ordering hints.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Key-name length | 8 words (80 bits) | §3.9.1; 12 words (128 bits) for adversary-proof mode |
+| Key-name length | 8 words (80 bits) | §3.9.6; 12 words (**120** bits) in adversary-proof mode (§16.2.1). At 1024 words the list carries **10 bits per word**, so 12 words is 120 bits, not the 128 an earlier draft of this row asserted — 128 is not reachable at a whole number of words |
 | Key-name wordlist size | 1024 | language-agnostic; +1 checksum word |
 | KT signed-tree-head poll | ≤ 6 h | client re-checks its own entry (self-monitoring) |
 | KT gossip interval (v1) | ≤ 1 h | STH gossip for equivocation detection (§3.5.2(a)) |
@@ -34,6 +34,41 @@ above and for ordering hints.
 | DHT lookup redundancy (K) | 20 | store at K closest; S/Kademlia disjoint paths ≥ 3 |
 | Location seq-number | monotonic u64 | rollback defense; reject older-or-equal |
 | Max names per Identity (soft) | 32 | recommended cap on `Identity.names` aliases (§3.9.4, §3.11.3) to bound Identity size; tunable by policy, not a security gate |
+
+### 16.2.1 Adversary-proof mode (key-name rendering) — normative
+
+Three sections cite a 12-word key-name "for the adversary-proof mode" (§3.9.6,
+`substrate/IDENTITY.md` §5, and the table above). This subsection is what they cite; it was a
+dangling forward reference until it was written down, which is its own small lesson about
+parameters that exist only as a column note.
+
+**Adversary-proof mode is the 12-word (120-bit) rendering of the §18.9.17 key-name digest**, over
+the same wordlist and folded checksum as the 8-word form (§3.9.6, §3.4.1). It changes nothing but
+the truncation length: the derivation, the anchor-key input and the checksum construction are
+identical, and the truncation takes **leading** bits, so a 12-word name and an 8-word name of the
+same identity **share their first eight data words** and either can be checked against the other by
+prefix. Their trailing **checksum** words differ — the folded checksum is computed over the rendered
+payload, so a longer payload yields a different check word. A renderer MUST NOT compare the
+checksum words of two different-length forms and conclude they name different keys.
+
+**When it is REQUIRED.** A renderer MUST use the 12-word form whenever either condition holds:
+
+1. **The key-name is the only verification the parties will perform** — no safety-number
+   comparison (§3.4.1), no KT-audited resolution (§3.5), no out-of-band key transfer. The 8-word
+   form's ≈ 2⁴⁰ chosen-collision margin (§3.9.6) is a *confirmation* margin: it is sound when it
+   confirms a key obtained by some other means and unsound when it *is* the means.
+2. **The rendering outlives the session that produced it** — anything printed, engraved, etched
+   into a business card, published on a web page, carved into a monument, or otherwise fixed in a
+   medium the identity holder cannot revise. An attacker grinding a chosen collision against a
+   published name has unbounded time and a fixed target, which is the exact shape 2⁴⁰ does not
+   survive.
+
+**Elsewhere it is a SHOULD-offer.** A client SHOULD make the 12-word form available on request in
+any context where a user is comparing key-names by eye or voice, and MUST label which form is
+shown, because a truncated comparison of a longer name against a shorter one is a silent downgrade
+to the shorter one's margin. A client MUST NOT present the 8-word form as adversary-proof, and
+MUST NOT treat either form as a discriminator (§3.9.6) — mode selection changes the margin, never
+the rule that identities are discriminated by key.
 
 ## 16.3 Mixnet & privacy
 
@@ -134,11 +169,12 @@ above; inline/push/pull governs durability, mixnet/bulk governs metadata privacy
 | `0x02` | Ed25519+ML-DSA-65 | X-Wing (X25519+ML-KEM-768) | ChaCha20-Poly1305 | BLAKE3-256 | **v0 REQUIRED originating suite** (§1.1) |
 | `0x03` | Ed25519+ML-DSA-65 | X-Wing (X25519+ML-KEM-768) | AES-256-GCM | BLAKE3-256 | AEAD-diverse emergency target (RESERVED, §1.1, §21.15) |
 | `0x04` | Ed25519+SLH-DSA-128s | X-Wing (X25519+ML-KEM-768) | ChaCha20-Poly1305 | BLAKE3-256 | signature-diverse emergency target; the intended **anchor** profile (RESERVED, §1.1, §1.2.0) |
+| `0x05` | Ed25519+ML-DSA-65 | X-Wing (X25519+ML-KEM-768) | ChaCha20-Poly1305 | **SHA3-256** | hash-diverse emergency target (RESERVED, §1.1, §21.15); digests travel under multihash prefix `0x16` (§18.1.5) |
 
 **Suite-governed lengths that other sections' arithmetic depends on** (§18.2 is authoritative):
-`sig-val` = 3 373 B and `ik-pub`/`sig-pub` = 1 984 B under `0x02`/`0x03`; `sig-val` = **7 920 B**
+`sig-val` = 3 373 B and `ik-pub`/`sig-pub` = 1 984 B under `0x02`/`0x03`/`0x05`; `sig-val` = **7 920 B**
 (Ed25519 64 ‖ SLH-DSA-128s **7 856**, FIPS 205 Table 2) and `ik-pub` = **64 B** (32 ‖ 32) under
-`0x04`; HPKE encapsulated key = 1 120 B (X-Wing) under all three. These are what set the bucket
+`0x04`; HPKE encapsulated key = 1 120 B (X-Wing) under all four PQ suites. These are what set the bucket
 ladder floor (§16.3, §4.4.1).
 
 **X-Wing's standards status (honest limit, §1.3).** X-Wing is an **Independent Submission**
@@ -207,7 +243,7 @@ point, not on standing.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Encoded-alias local-part max | 64 octets | RFC 5321 local-part limit; a longer encoded `localpart.nativedomain` alias is rejected (`0x0606`, §7.10.2) |
-| Gateway-alias full-path max | 254 octets | RFC 5321 path limit for the whole `alias@gateway.domain` (§7.10.2) |
+| Gateway-alias full-path max | 254 octets | RFC 5321 §4.5.3.1.3's 256-octet forward-/reverse-path limit, less the two `<`/`>` bracket octets that DMTAP's bracket-free `alias@gateway.domain` form never carries, for the whole address (§7.10.2) |
 | Random-alias mapping TTL | indefinite (user-controlled) | a `GatewayAliasMap` row persists until the user burns/expires it; a gateway MAY set an unused-alias reap TTL by policy (§7.10.2, §18.3.12) |
 
 All numeric values here are v0 defaults; a future protocol version MAY revise them, and

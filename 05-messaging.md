@@ -128,7 +128,9 @@ applied the losing fork **roll back to the last common epoch** and re-apply from
 Commit; application messages committed only on the abandoned fork are re-submitted by their
 senders (sender retry, §2.6). This manual reconciliation is the v0 stopgap; **Decentralized MLS
 (`draft-kohbrok-mls-dmls`) is the eventual leaderless fix** that removes the single-orderer fork
-surface entirely.
+surface entirely — though as of this writing it is an **expired, individual (non-WG-adopted)
+Internet-Draft** (rev-03, 2025-10), a materially weaker standing than the WG-adopted MLS drafts
+(`draft-ietf-mls-combiner`, `draft-ietf-mls-pq-ciphersuites`) cited elsewhere, and v0 depends on none of it.
 
 **Metadata exposure (honest, §6.6 item 7).** The committer necessarily sees **all handshake
 traffic for its group** — an explicit exception to the "no single node sees both ends" framing.
@@ -188,6 +190,18 @@ distinct, lighter ordering path for **n = 2** and reserves the committer/quorum 
   is **per-epoch/per-Commit**, which is coarser than the Signal Double Ratchet's
   per-message healing — using MLS for 1:1 (§5.1) is a deliberate *simplicity-vs-optimality*
   trade, not a strict improvement over Double Ratchet.
+- **Pre-session MOTEs have no forward secrecy at all (disclosed).** The FS above starts only
+  once a session's first epoch exists (§5.3 Add/Welcome, or an External Commit). A MOTE sent
+  before that — the 1:1/first-contact path — is **HPKE-sealed directly to the recipient's
+  identity/KeyPackage key**, with `Envelope.epoch` absent (§2.2): a single HPKE seal, not a
+  ratchet. There is no epoch to have advanced past and no key-deletion schedule protecting it, so
+  compromise of that recipient key at **any later time** exposes the message — this is not a
+  degraded or partial form of forward secrecy, it is the property **not yet applying**. The
+  optional deniable 1:1 mode (§5.2.1(a)) is currently the **only** pre-session option that
+  supplies forward secrecy from its first message, because its Double Ratchet does not wait on an
+  MLS epoch; a sender who needs FS before a session exists and does not want deniability has no
+  other option in this specification today. See §6.9 SP-6 for the full falsifiable claim and its
+  residual.
 - **Deniability — the default path is non-repudiable; an optional deniable 1:1 mode is
   specified.** MLS is **signature-based and therefore non-repudiable**: every LeafNode and every
   FramedContent (handshake *and* application messages) is signed with the member's signature key,
@@ -446,7 +460,22 @@ MLS; DMTAP chooses MLS everywhere, so it is not used.)
 ## 5.4 Message kinds in context
 
 - `mail` / `chat` — the same MOTE; differ by default tier (§4.6) and client rendering.
-- `reaction` / `edit` / `redact` — reference a prior MOTE by `id` via `refs`.
+- `reaction` / `edit` / `redact` — reference a prior MOTE by `id` via `refs`. **`edit`
+  (`0x03`) and `redact` (`0x04`) are same-author-only (normative, §2.7 step 9).** A recipient
+  applies either only if the incoming MOTE's `Payload.from` equals the `Payload.from` of
+  **every** `refs`-named MOTE **as the recipient itself stored it**; a cross-author edit/redact
+  is rejected fail-closed (`ERR_EDIT_REDACT_AUTHOR_MISMATCH`, §21) and is never surfaced as
+  the referenced author's own retraction or revision. This closes a gap an adversarial audit
+  found here: as written, `edit`/`redact` carried no authorization rule at all, so — combined
+  with the durable, cluster-wide, unresurrectable remove-wins semantics of §5.6.4 — any
+  correspondent, in a 1:1 or a group, could permanently delete or silently rewrite another
+  party's message in the *recipient's own view* with a validly signed MOTE of their own,
+  defeating SP-2 (§6.9) at the display layer even though each object's own signature still
+  verified. Group moderation removal is a **distinct kind**, rendered to members as an
+  operator/moderator action and never as a relaxed `edit`/`redact`; `reaction` makes no
+  authorship claim about the message it reacts to and is exempt from this gate. This brings the
+  messaging path to parity with the public-profile lineage rule (§24.7), which already held
+  `supersedes` to "strictly *same-identity* history."
 - `group_event` — MLS handshake messages (add/remove/update/commit).
 - `receipt` / `presence` — opt-in, ephemeral, off by default (metadata-sensitive, §6).
 
@@ -732,6 +761,19 @@ converge **byte-identically**:
   `deleted` field at all) has no HLC on that field and therefore **never** outranks a set death
   certificate. A "deleted" object is thus one whose `deleted` flag is set (durable path) or whose
   add-tags are all tombstoned (benign path), and the two never race to the object's advantage.
+
+  **Durability is not authorization (normative cross-reference).** Everything above governs
+  **merge order** once a `redact`/`expires`/`sensitive` removal has already been accepted — it
+  says nothing about who was allowed to originate that removal. A `redact` (and an `edit`'s
+  supersede) reaches this CRDT layer at all only if it first passes the **same-author gate**
+  of §2.7 step 9 (§5.4): a recipient applies it only when the incoming MOTE's `Payload.from`
+  equals the `Payload.from` of the object it targets, **as this device stored it**; otherwise it
+  is rejected fail-closed before any `deleted` flag is ever set. Composing this section's
+  durable, cluster-wide, unresurrectable remove-wins guarantee with **no** check on who could
+  trigger it was exactly the hole an adversarial audit found — any correspondent's own
+  validly-signed MOTE could permanently delete or rewrite another party's message in the
+  recipient's own view. The death-certificate mechanism above is unchanged and still necessary
+  for correctness once a removal is legitimate; the fix is **upstream** of it, at admission.
 
 All ops ride **inside the MLS cluster channel** (encrypted + authenticated to the cluster); each op
 names its origin `device_id`, and a receiver MUST confirm that device is a **non-revoked member**

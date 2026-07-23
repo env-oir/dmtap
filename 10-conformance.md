@@ -76,11 +76,11 @@ The **conformance test suite** is the *operational definition* of compatibility.
 means "passes the suite," not "resembles the reference." This is the primary defense against
 fragmentation. The suite lives in `conformance/` as three coupled artifacts:
 
-- **`conformance/SUITE.md`** — the normative test-case catalog: 352 numbered cases
+- **`conformance/SUITE.md`** — the normative test-case catalog: 358 numbered cases
   (`DMTAP-<category>-<NN>`) grouped by the levels above, each pinning its spec clause, input,
   expected result (accept / reject + the §21 error code), and MUST/SHOULD.
 - **`conformance/suite.json`** — the machine-readable mirror of those cases, so a runner in **any
-  language** can drive them. It mirrors all 352 (SUITE.md and suite.json are in sync — the wave-2
+  language** can drive them. It mirrors all 358 (SUITE.md and suite.json are in sync — the wave-2
   deniable-1:1 and KT-v1-hardening families, the `PROFILE` display-data cases, the optional
   `PUSH` wake-signaling cases, the `FILE` durability cases, the wave-3 device-cluster `SYNC`,
   `ALIAS`, and gateway-alias `GWALIAS` families, the pluggable-resolver `RESOLVE` family, the
@@ -106,7 +106,7 @@ fragmentation. The suite lives in `conformance/` as three coupled artifacts:
   wired to a case) and `pub_vectors.json` holds 15 vectors for the §22 DMTAP-PUB profile (all 15
   driven by `PUB` cases). DMTAP-PUBSUB (§25) generates no new vectors of its own (§10.3 below).
 
-62 cases are byte-runnable today (56 vector-backed against `vectors.json`/`pub_vectors.json` +
+58 cases are byte-runnable today (52 vector-backed against `vectors.json`/`pub_vectors.json` +
 6 self-contained canonical-CBOR reject cases); 17 further cases are verified by implementer or
 deployment attestation, having **no wire bytes to recompute at all** — an in-product disclosure
 (§22.7 publish consent, §4.4.10a's Bootstrap degradation notice, §25.9's bounded-lifetime /
@@ -120,13 +120,13 @@ display-data guards, the optional `PUSH` wake-signaling guards, the wave-6 anti-
 (`MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`), the gateway families
 (`GWOPS`/`GWSMTP`/`GWATT`/`GWNAME`/`GWFLOOR`/`GWLEG`), the profile-level `CAD`/`VIDEO` checklists,
 and the DMTAP-PUBSUB guards (`PUBSUB`, §25) — see `conformance/README.md`). The partition is exact:
-62 + 19 + 271 = 352. An implementation conforms at a level iff it passes every `MUST` case of that
+58 + 19 + 281 = 358. An implementation conforms at a level iff it passes every `MUST` case of that
 level and of every level it composes.
 
 **On the coverage figure.** `make coverage` reports that **100%** of `IMPL` MUSTs sit in a section
 some case cites. That is a **floor and a section-level measure**: a section counts as covered if
 *any* case cites it, not if every MUST in it is exercised; it counts cases that **exist**, not
-cases that **pass** (62 of 352 are byte-runnable today, and no implementation has yet been run
+cases that **pass** (58 of 358 are byte-runnable today, and no implementation has yet been run
 against the suite); and it is measured against a **curated** denominator whose classification is a
 judgement, auditable in `conformance/scope.json` and re-checkable by `make lint` (check C10, which
 fails the build if a MUST-bearing section is left unclassified). The uncurated figure over every
@@ -231,6 +231,9 @@ available.
 | **Suite high-water-mark ratchet** | §1.3, §2.7 step 8 | inbound `Envelope.suite` **below** the pinned contact's high-water-mark | reject to requests + security warning, `0x020F`; the mark ratchets **up** only, lowered solely by an `IK`-authorized retirement (§1.5) |
 | **Hybrid suite: no intra-suite strip** | §1.3, §16.7 | a hybrid-suite object (`0x02`) whose PQ signature component is missing/fails while only the classical component validates, presented to a verifier that **supports** the hybrid suite | reject as incomplete/downgraded hybrid, `0x0210`; a hybrid verifier MUST require **every** component signature (AND-composition) and MUST use the X-Wing KEM combiner — single-component acceptance is for a genuinely legacy verifier only, at that component's lower assurance |
 | **Hybrid components are non-separable** | §1.3, §18.1.6 | a hybrid `sig-val` whose components were signed over the single-algorithm preimage rather than the suite-bound composite representative `M'`, or a component lifted out of a `0x02` object and presented as an `0x01` signature | verification fails: the two forms of the representative are distinct preimages, so a stripped or promoted component simply does not verify. An implementation that signs `M' = DS-tag ‖ 0x00 ‖ body` under a hybrid suite is non-conformant (§18.1.6) |
+| **Hash prefix does not select — the suite does** | §18.1.5, §18.1.4 | a `hash` whose §18.1.5 multihash prefix disagrees with the content-hash the object's `suite` selects | reject, `0x0127` — MUST NOT verify under the algorithm the prefix names and MUST NOT try both. The prefix is self-description for suite-less objects and a redundancy check elsewhere; leaving it as an independent selector puts a downgrade channel **inside** the agility mechanism |
+| **Pre-hashed preimages are algorithm-labelled** | §18.1.6, §18.9.2 | a signature computed over a **bare** digest rather than its `prefix ‖ digest` multihash form | non-conformant signer; a verifier MUST NOT accept a signature that verifies only against the unprefixed representative, `0x0127`. A bare 32-byte digest names no algorithm, so a dual-algorithm verifier would otherwise get **min**(BLAKE3, SHA3) during exactly the migration that was supposed to deliver **max** |
+| **Composite suites sign the suite byte** | §18.1.6, §18.9 preamble | a hybrid-suite signature computed over `DS-tag ‖ 0x00 ‖ body` with no `u8(suite)` | verification fails — the representatives are distinct preimages. Every §18.9 preimage is the `body`; `0x02` (the v0 REQUIRED originating suite) takes `M' = DS-tag ‖ 0x00 ‖ u8(suite) ‖ body` |
 | Capability-announce anti-rollback | §10.2 | `caps_version` older-than-or-equal-to the last accepted from that peer | reject the announcement, retain the higher set, `0x030A` |
 | Signed-object extension gating | §10.2, §18.1.2 | an unknown integer key in a **signed** object | decoder fails closed; a reserved `≥ 64` field is sent **only** toward a peer that advertised support |
 

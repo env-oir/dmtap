@@ -85,6 +85,7 @@ the signature algorithm, the KEM/PKE, the AEAD, and the content-hash for that ob
 | `0x02` | Ed25519 + ML-DSA-65 | X-Wing (X25519 + ML-KEM-768) | ChaCha20-Poly1305 | BLAKE3-256 | **v0 REQUIRED originating suite** (§1.1) |
 | `0x03` | Ed25519 + ML-DSA-65 | X-Wing (X25519 + ML-KEM-768) | **AES-256-GCM** | BLAKE3-256 | RESERVED (AEAD-diverse emergency target, §16.7, §21.15) |
 | `0x04` | Ed25519 + SLH-DSA-128s | X-Wing (X25519 + ML-KEM-768) | ChaCha20-Poly1305 | BLAKE3-256 | RESERVED; the intended **anchor** profile (§1.2.0, §16.7) |
+| `0x05` | Ed25519 + ML-DSA-65 | X-Wing (X25519 + ML-KEM-768) | ChaCha20-Poly1305 | **SHA3-256** | RESERVED (hash-diverse emergency target, §1.1, §16.7, §21.15) |
 
 **Normative status and implementation status are different axes — do not conflate them
 (normative).** The Status column above is the **normative** one: what a conformant node MUST
@@ -108,7 +109,9 @@ The honest separation:
 
 `0x03` shares `0x02`'s byte layout exactly — every suite-governed length is identical (§18.2) —
 differing **only** in the AEAD selector (AES-256-GCM in place of ChaCha20-Poly1305; the AEAD
-content key remains 32 B).
+content key remains 32 B). `0x05` likewise shares `0x02`'s byte layout exactly, differing **only**
+in the content-hash selector (SHA3-256 in place of BLAKE3-256; the digest remains 32 B, and travels
+under multihash prefix `0x16` rather than `0x1e`, §18.1.5).
 
 A decoder MUST reject an object whose `suite` it does not implement (fail closed, §1.1); it MUST
 NOT guess. The `suite` value governs the **length and structure** of every `ik-pub`, `sig-val`,
@@ -140,15 +143,42 @@ one byte):
 
 | Prefix byte | Algorithm | Digest length | Status |
 |------------:|-----------|--------------:|--------|
-| `0x1e` | BLAKE3-256 | 32 B | v0 REQUIRED (default) |
-| `0x12` | SHA2-256 | 32 B | RESERVED (compliance migration) |
-| `0x16` | SHA3-256 | 32 B | RESERVED |
+| `0x1e` | BLAKE3-256 | 32 B | v0 REQUIRED (default) — the hash of suites `0x01`–`0x04` (§18.1.4) |
+| `0x12` | SHA2-256 | 32 B | RESERVED (compliance migration) — no suite selects it in v0 |
+| `0x16` | SHA3-256 | 32 B | RESERVED — the hash of suite `0x05` (§1.1, §18.1.4) |
 
 Thus a v0 `hash` is exactly **33 bytes**: `0x1e ‖ BLAKE3-256(preimage)`. The prefix lets an
 implementation migrate the digest algorithm (e.g. to SHA-256 where FIPS compliance requires it,
 §2.2) **without changing the address format**. A verifier MUST reject a `hash` whose prefix byte
 it does not implement, and MUST reject a digest whose length does not match the prefix's fixed
 length.
+
+**The suite is authoritative; the prefix is never an independent selector (normative).** §18.1.4
+makes the `suite` select the content-hash *as part of a set*, and this subsection gives every
+`hash` its own algorithm byte. Read alone, each is complete — and together they leave the
+algorithm of a given 33-byte field **doubly determined**, with no rule saying which determination
+wins. That is not merely an interoperability gap (two conformant implementations reaching
+different verdicts on the same bytes); it is a **downgrade channel inside the agility mechanism**,
+because whoever writes the prefix would otherwise choose which hash an object's integrity rests
+on, independently of the suite the parties negotiated. The precedence is therefore fixed:
+
+- Where the containing object carries a `suite` (§18.1.4), **the suite decides.** Every `hash`
+  inside that object MUST carry the prefix byte of that suite's hash, and a verifier MUST reject
+  the object if any prefix disagrees (`ERR_HASH_ALG_MISMATCH`, `0x0127`, §21.3) — it MUST NOT
+  verify the digest under the algorithm the prefix names, and MUST NOT "try both".
+- Where the object carries **no** `suite` hook (§18.1.4's index names them), the prefix is the
+  object's **self-description** and does select the algorithm — this is the case the multihash
+  form exists for, and the reason it is carried at all.
+- Everywhere else the prefix is a **redundancy check**, not a choice: it makes a mis-parsed or
+  cross-suite field fail loudly instead of being silently reinterpreted.
+
+The one exception is a field this specification **explicitly designates** as an external
+reference — a `hash` naming an object produced under a different suite, or by a system outside
+DMTAP, where the containing object's suite says nothing about how the referenced bytes were
+addressed. Such a field MUST be marked as such where it is defined, and its prefix selects; no
+v0 field currently claims the exception, and a future one that does MUST state why the suite
+cannot govern it. Absent that explicit designation, a prefix that disagrees with the suite is a
+rejection, never a selection.
 
 BLAKE3 is used in its **default (unkeyed) hashing mode with 256-bit (32-byte) output**. The
 `derive_key` and `keyed_hash` modes are NOT used for content addresses. Where BLAKE3 is used as a
@@ -172,7 +202,7 @@ type can never be replayed as a signature for another. A verifier MUST reconstru
 selected by `suite`.
 
 **Hybrid suites sign a combined message representative (normative).** For a hybrid suite
-(`0x02`/`0x03`/`0x04`) a `sig-val` is the **concatenation** of the component signatures
+(`0x02`/`0x03`/`0x04`/`0x05`) a `sig-val` is the **concatenation** of the component signatures
 (e.g. `Ed25519_sig ‖ ML-DSA-65_sig`) and BOTH component signatures MUST verify (AND-composition,
 §1.3). The two components do **not** sign the object preimage independently: following the IETF
 LAMPS composite PQ/T construction, each signs one **composite message representative**
@@ -191,6 +221,30 @@ a component verified against the other form. `Identity.sig` additionally carries
 suite in `suites` (§18.4.1) — each computed under **its own** suite's representative, which is why
 a legacy verifier's single-suite validation and a hybrid verifier's AND-validation can coexist on
 one object without either being a downgrade of the other.
+
+**A signature over a digest MUST label the digest (normative).** Nearly every preimage in §18.9 is
+computed over the object's `body`. A few are computed over a **pre-hashed representative** instead —
+a fixed-length digest standing in for a variable-length body, so the signer hashes once and the
+signature covers a constant-size message (§18.9.2 is the v0 example). A bare digest is
+**byte-indistinguishable across hash algorithms**: 32 bytes of BLAKE3-256 output and 32 bytes of
+SHA3-256 output are the same field with nothing to tell them apart. A verifier that implements
+both — precisely the situation a hash migration to suite `0x05` (§1.1) creates, and the whole
+point of reserving it — would then accept a signature that is valid under *either*, and the
+security of the signed representative collapses to **min**(BLAKE3, SHA3) at exactly the moment the
+migration was supposed to deliver **max**. The rule is therefore general and applies wherever the
+pattern occurs:
+
+> Where a signature is computed over a **digest** rather than over the body, that digest MUST
+> appear in the preimage in its §18.1.5 **multihash form** (`prefix ‖ digest`), never as a bare
+> digest. A verifier MUST reconstruct the prefixed form and **MUST NOT** accept a signature that
+> verifies only against an unprefixed representative.
+
+§18.9.1 already does this correctly: it feeds `id_bytes`, the full `Envelope.id` byte string with
+its `0x1e` prefix, not the raw 32-byte digest. §18.9.2 is amended to match. A preimage that omits
+the prefix is non-conformant, and a prefix that disagrees with the object's `suite` is a rejection
+under §18.1.5's precedence rule (`ERR_HASH_ALG_MISMATCH`, `0x0127`, §21.3), never a second thing to
+try. The rule binds every future preimage as well: a new pre-hashed construction in this section
+inherits it without needing to restate it.
 
 ### 18.1.7 CDDL prelude (shared productions)
 
@@ -217,6 +271,28 @@ peer-id = bytes                        ; libp2p PeerId = multihash(pubkey)
 maddr   = tstr                         ; multiaddr, textual form (e.g. "/ip6/…/quic-v1")
 ```
 
+**Integer-domain governance (normative).** `u8`/`u16`/`u32`/`u64`/`ts` above are not merely
+comments on a shared alias — each names a **domain**, and a decoder MUST admit a field declared
+against one of them into exactly that domain **at the decode boundary**: reject a value that is
+**negative**, that **exceeds the declared width**, or that is **non-finite**, before the value
+ever reaches a comparison, an ordering check, or arithmetic. §18.2 states this MUST for
+suite-governed **byte-string** lengths; this is its counterpart for **integer** domains, and the
+omission was accidental, not a narrower scope — nothing about a `u64` field makes out-of-domain
+admission a smaller hazard than an out-of-length byte string.
+
+This binds with particular force on every monotonic counter reachable from the network —
+`Identity.version` (§1.3), `LocationRecord.seq` (§4.2), `caps_version` (§10.2),
+`GroupState.version` (§5.8.2), `FeedHead.seq` (§22.4.2) — because an anti-rollback rule is a claim
+about a **total order**, and a value that is well-formed to one engine and unrepresentable to
+another makes an order-dependent rule return two different answers while both engines believe
+they are conformant: a bare admit-then-compare implementation in a language with signed or
+arbitrary-precision integers accepts a negative or oversized counter a strictly-`u64` engine
+cannot represent at all, and a language with IEEE-754 `NaN` turns a failed decode into a value
+against which every `<`/`>` comparison is silently false rather than an error. None of the five
+sections above states this rule locally; each MUST be read together with this one. The same
+requirement governs any **textual rendering** of such a counter (`substrate/SYNC.md` §3, for the
+HLC's fixed-width string form).
+
 ---
 
 ## 18.2 Length & type governance by suite (normative)
@@ -241,7 +317,15 @@ only in the AEAD selector (AES-256-GCM), so no separate column is needed.
 from `0x02` in exactly the two signature rows: `ik-pub` = **64 B** (Ed25519 32 ‖ SLH-DSA-128s
 public key **32**) and `sig-val` = **7 920 B** (Ed25519 64 ‖ SLH-DSA-128s signature **7 856**,
 FIPS 205 Table 2, identical for the SHA2 and SHAKE instantiations). Its KEM, AEAD-key and hash
-rows are `0x02`'s. Because an `Identity` may carry an anchor suite differing from its operational
+rows are `0x02`'s.
+
+**Suite `0x05`** (the **hash-diverse** target, §1.1/§16.7) has the **identical byte layout to
+`0x02`** in every row above, including the 32 B `hash` digest — SHA3-256 and BLAKE3-256 are both
+256-bit — differing only in which function produced it and in the §18.1.5 prefix byte it travels
+under (`0x16`, not `0x1e`). A length check therefore cannot distinguish them, which is exactly why
+the prefix is mandatory and why §18.1.5 makes the suite authoritative over it.
+
+Because an `Identity` may carry an anchor suite differing from its operational
 suite (§1.2.0), a decoder MUST select the length row by **the suite of the key that made the
 signature**, not by a single per-object suite. The 7 920 B `sig-val` is why an anchor-signed
 announcement is a **top-rung** MOTE on the bucket ladder (§4.4.1).
@@ -359,7 +443,7 @@ Vouch = {
 |--------|-------|----:|------|----------|-----------------------|
 | `ArcToken` | disc | 0 | `1` | MUST | Selects ARC. |
 | | `issuer` | 1 | `bytes` | MUST | Issuer identity/key ref. An **unknown/unvetted** issuer (incl. the sender's own node) carries a rate budget of **ZERO** (§9.3.1) — treated as no token. |
-| | `token` | 2 | `bytes` | MUST | The ARC presentation, **per-origin-scoped** (`draft-yun-privacypass-arc`), giving per-recipient rate-limiting *and* cross-recipient unlinkability. Its request context MUST bind the envelope's `sender_key` (§9.2a) so a stripped presentation cannot be replayed under a different ephemeral key; a verifier MUST reject one whose context does not. |
+| | `token` | 2 | `bytes` | MUST | The ARC presentation, **per-origin-scoped** (`draft-ietf-privacypass-arc-protocol`), giving per-recipient rate-limiting *and* cross-recipient unlinkability. Its request context MUST bind the envelope's `sender_key` (§9.2a) so a stripped presentation cannot be replayed under a different ephemeral key; a verifier MUST reject one whose context does not. |
 | | `origin` | 3 | `bytes` | MUST | The recipient-origin the credential is scoped to; MUST match the verifying node's origin. |
 | | `nonce` | 4 | `bytes` | OPTIONAL | Freshness nonce within the 120 s validity window (§16.1). |
 | `PowSolution` | disc | 0 | `2` | MUST | Selects PoW (last-resort tier, §9.4). |
@@ -1553,7 +1637,7 @@ Assertion = {
 | `aud` | 5 | `tstr` | MUST | Echo; MUST match the RP. |
 | `from` | 6 | `ik-pub` | MUST | The user's **login signer**: an `IK`-authorized **device key** (or `IK` itself, §1.2) that the RP MUST verify resolves to the pinned `name → key` identity (§3.4, §13.3 step 6). This is the identity-revealing login signature; it is **NOT** the session key. The fresh per-RP session key is committed by `cnf` (key 8), not carried here; per-RP session keys (used for DPoP/GNAP thereafter) are what give cross-site unlinkability (§13.4, §13.7 limit 7), not this field. |
 | `sig` | 7 | `sig-val` | MUST | Signature by `from` over the origin-bound preimage **including `cnf`** (§18.9.8). A captured assertion cannot be replayed with an attacker-chosen session key because `cnf` is inside the signed preimage (session-hijack defense, §13.3). |
-| `cnf` | 8 | `hash` | MUST | Confirmation key = `H(session_pubkey)` (RFC 7800 style, §13.3 step 4). The client generates the per-RP, per-device session keypair **before** signing and commits it here; the RP MUST bind the session **only** to `cnf` (proof-of-possession, §13.4). Present on every native assertion, and embedded verbatim in a bridged ID Token (§13.6). |
+| `cnf` | 8 | `hash` | MUST | Confirmation key = `H(session_pubkey)`, carried in the `cnf` claim (RFC 7800) as a DPoP-style (RFC 9449 §6.1) `jkt` SHA-256 key-hash confirmation (§13.3 step 4). The client generates the per-RP, per-device session keypair **before** signing and commits it here; the RP MUST bind the session **only** to `cnf` (proof-of-possession, §13.4). Present on every native assertion, and embedded verbatim in a bridged ID Token (§13.6). |
 | `scope` | 9 | `[* tstr]` | OPTIONAL (echo) | Echo of `Challenge.scope` (§18.7.1 key 6); the **empty array `[]`** when the Challenge omits it. It is **inside the signed preimage** (§18.9.8), so the granted scope is cryptographically bound to the user's consent: the RP MUST reconstruct the preimage with exactly the scope it will grant and MUST NOT grant any scope broader than the signed value (a broader grant fails signature verification; an over-attenuated delegation surfaces as `0x0508`). Closes the OAuth-style scope-elevation where a scope the user never signed is granted on the login assertion. |
 
 ### 18.7.3 `CapabilityToken` and `CapabilityRevocation` (§13.5, §3.10.4)
@@ -1681,6 +1765,30 @@ every signature is over `DS-tag ‖ det_cbor(object∖sig)`, where:
   signature field(s) removed from the map entirely** (not set to `null`) and all other fields
   present exactly as they appear on the wire.
 
+**Every preimage below is written in its single-component form; under a composite suite the
+`suite` byte is inserted (normative, governs all of §18.9).** §18.1.6 defines two message
+representatives, and which one applies is a property of the object's `suite`, not of the
+subsection:
+
+```
+single-component (0x01) : M  = DS-tag ‖ 0x00 ‖ body
+composite (0x02/0x03/0x04/0x05) : M' = DS-tag ‖ 0x00 ‖ u8(suite) ‖ body
+```
+
+Every preimage in this section — whether spelled out field by field, as in §18.9.1, or given as
+`DS-tag ‖ det_cbor(object ∖ sig)` in the table above — is the **`body`** of those two forms. A
+composite signer MUST sign `M'`, both components over the **same** `M'`, and a verifier MUST
+reconstruct the representative matching the object's `suite` and MUST NOT accept a component that
+verifies only against the other form (§18.1.6). This is stated once here because it was previously
+implicit: §18.9.1 spelled its preimage out under the heading "Exactly:" with no `suite` byte, and
+`Envelope.suite` is not one of the concatenated fields either, so the suite was not smuggled in
+through a whole-object body. Meanwhile §18.1.6 required a `suite` byte for `0x02` — the **v0
+REQUIRED originating suite** (§1.1) — so two conformant implementations would have failed each
+other's `sender_sig` on the only suite either is allowed to originate. Nothing arbitrated, because
+every frozen vector is `0x01` (§18.1.4), where the two forms coincide. Where a subsection restates
+both forms explicitly (§18.9.1, §18.9.2) it is illustrating this rule, not creating an exception
+to it.
+
 | Object | Signed field(s) | DS-tag (ASCII, + `0x00`) | Preimage body |
 |--------|-----------------|--------------------------|---------------|
 | `Envelope` | `sender_sig` (k11) | `DMTAP-v0/envelope-sender` | §18.9.1 (concatenation, not whole-object CBOR) |
@@ -1722,20 +1830,39 @@ placed in `sig` in `suites` order. Each entry is a `sig-val` per its suite (§18
 ### 18.9.1 `Envelope.sender_sig`
 
 Per §2.2/§2.7 the ephemeral sender signature is over the concatenation
-`(id ‖ to ‖ ts ‖ kind ‖ challenge)`, **not** the whole envelope. Exactly:
+`(id ‖ to ‖ ts ‖ kind ‖ challenge)`, **not** the whole envelope. The signed **body** is exactly:
 
 ```
-preimage = "DMTAP-v0/envelope-sender" ‖ 0x00
-         ‖ id_bytes                       ; field 3, the full hash byte string (prefix ‖ digest)
-         ‖ det_cbor(to)                   ; field 4, deterministic CBOR of the DeliveryTag map
-         ‖ u64be(ts)                      ; field 6, 8 bytes big-endian
-         ‖ u8(kind)                       ; field 7, 1 byte
-         ‖ challenge_enc                  ; field 9: det_cbor(ChallengeResponse) if present,
-                                          ;          else the single byte 0xf6 (CBOR null)
-sender_sig = Sign(sk_ephemeral, preimage)
+body = id_bytes                       ; field 3, the full hash byte string (prefix ‖ digest)
+     ‖ det_cbor(to)                   ; field 4, deterministic CBOR of the DeliveryTag map
+     ‖ u64be(ts)                      ; field 6, 8 bytes big-endian
+     ‖ u8(kind)                       ; field 7, 1 byte
+     ‖ challenge_enc                  ; field 9: det_cbor(ChallengeResponse) if present,
+                                      ;          else the single byte 0xf6 (CBOR null)
 ```
 
-where `(sk_ephemeral, sender_key)` is a **fresh keypair generated for this one message** and
+and the preimage is that body under the representative selected by `Envelope.suite` (field 2),
+per §18.1.6 — **both forms spelled out, because the difference between them is the whole
+interoperability question** (§18.9 preamble):
+
+```
+suite = 0x01 (single component, LEGACY — verify only):
+  preimage = "DMTAP-v0/envelope-sender" ‖ 0x00 ‖ body
+  sender_sig = Ed25519_Sign(sk_ephemeral, preimage)                       ; 64 B
+
+suite = 0x02 / 0x03 / 0x04 / 0x05 (composite — 0x02 is what a v0 node originates, §1.1):
+  preimage = "DMTAP-v0/envelope-sender" ‖ 0x00 ‖ u8(suite) ‖ body        ; the suite byte is INSIDE
+  sender_sig = Ed25519_Sign(sk_e_classical, preimage) ‖ PQ_Sign(sk_e_pq, preimage)
+             ; PQ_Sign = ML-DSA-65 under 0x02/0x03/0x05, SLH-DSA-128s under 0x04 (§16.7)
+```
+
+Under a composite suite **both** components sign the **same** `preimage`, both MUST verify
+(AND-composition, §1.3/§18.1.6), and a verifier MUST NOT accept a component that verifies only
+against the single-component form — that is what makes the composite non-separable. The `u8(suite)`
+byte is the **only** difference between the two preimages; omitting it under `0x02` produces a
+signature no conformant implementation will accept.
+
+Here `(sk_ephemeral, sender_key)` is a **fresh keypair generated for this one message** and
 `sender_key` (field 12) is the public half. `id_bytes` is the raw byte string of `Envelope.id`
 (its CBOR head is *not* included). `to` and `challenge` are included as their deterministic CBOR
 encodings so structured tags are covered unambiguously. When `challenge` is absent, exactly one
@@ -1748,15 +1875,35 @@ proof observed on the wire could be re-attached to a forged envelope under a new
 ### 18.9.2 `Payload.sig`
 
 ```
-payload_hash = BLAKE3-256(
-                 det_cbor(Payload ∖ {2})
-               ‖ u8(kind)                    ; Envelope field 7, 1 byte big-endian
-               ‖ u64be(ts)                   ; Envelope field 6, 8 bytes big-endian
-               ‖ det_cbor(to)                ; Envelope field 4, the DeliveryTag map
-               )                             ; 32 bytes, no prefix
-preimage     = "DMTAP-v0/payload" ‖ 0x00 ‖ payload_hash
-Payload.sig  = Sign(sk_from, preimage)                         ; sk_from = IK or device key
+payload_hash = 0x1e ‖ BLAKE3-256(                ; 33 bytes — the §18.1.5 MULTIHASH form,
+                 det_cbor(Payload ∖ {2})         ; prefix INCLUDED, not a bare digest
+               ‖ u8(kind)                        ; Envelope field 7, 1 byte big-endian
+               ‖ u64be(ts)                       ; Envelope field 6, 8 bytes big-endian
+               ‖ det_cbor(to)                    ; Envelope field 4, the DeliveryTag map
+               )
+body         = payload_hash                      ; the §18.1.6 `body` for this object
+
+suite = 0x01 (single component):
+  preimage   = "DMTAP-v0/payload" ‖ 0x00 ‖ body
+  Payload.sig = Ed25519_Sign(sk_from, preimage)                     ; sk_from = IK or device key
+
+suite = 0x02 / 0x03 / 0x04 / 0x05 (composite):
+  preimage   = "DMTAP-v0/payload" ‖ 0x00 ‖ u8(suite) ‖ body
+  Payload.sig = Ed25519_Sign(sk_from_classical, preimage) ‖ PQ_Sign(sk_from_pq, preimage)
+             ; PQ_Sign = ML-DSA-65 under 0x02/0x03/0x05, SLH-DSA-128s under 0x04 (§16.7)
 ```
+
+**The digest is prefixed, and this is load-bearing (normative).** `payload_hash` carries its
+§18.1.5 algorithm prefix — `0x1e` for the BLAKE3-256 of suites `0x01`–`0x04`, `0x16` for the
+SHA3-256 of suite `0x05` — because this is one of the few preimages computed over a *digest*
+rather than over the body, and a bare 32-byte digest names no algorithm. §18.1.6's general rule
+governs: a verifier MUST reconstruct the prefixed form and MUST NOT accept a signature that
+verifies only against an unprefixed 32-byte representative, and the prefix MUST be the one the
+object's `suite` selects (§18.1.5, `ERR_HASH_ALG_MISMATCH`, `0x0127`). Earlier drafts specified
+"32 bytes, **no prefix**" here, which would have handed a dual-algorithm verifier
+min(BLAKE3, SHA3) collision resistance during exactly the transition suite `0x05` exists to make
+routine. Regenerating the frozen `mote_payload_sig` vector was the cost of the correction, and it
+was paid (`conformance/vectors/vectors.json`).
 
 `from` (key 1) is included in the hashed body, binding the signature to the claimed sender. A
 device-key signature is valid only if that device key is authorized by a current `DeviceCert`
@@ -1796,15 +1943,60 @@ Envelope.id = 0x1e ‖ BLAKE3-256( ciphertext_bytes )           ; v0 prefix 0x1e
 ```
 
 The `Identity` anchor everyone pins (the `id` referenced from DNS/KT, §3.2) is the content
-address of the fully-signed `Identity` object:
+address of the identity, computed **with `sig` (key 10) excluded** — the same signature-excluded
+body the DS-tagged `sig` itself already covers (§18.9.3, `Identity ∖ {10}`), **not** the complete
+object:
 
 ```
-Identity_id = 0x1e ‖ BLAKE3-256( det_cbor(Identity) )         ; the complete, signed object
+Identity_id = 0x1e ‖ BLAKE3-256( det_cbor(Identity ∖ {10}) )   ; key 10 (sig) EXCLUDED
 ```
 
-Other `hash` references to a whole object (`recovery`, `keypkgs.id`, `prev`, `KeyPackageRef.ref`,
-`GroupState.log_head`) are computed the same way — `prefix ‖ BLAKE3-256(det_cbor(referenced
-object))` — with no domain separation, since a content address is a pure function of the bytes.
+**Why: §1.3 forbids deriving an identifier from a signature — the same correction as
+`announce_id` (§22.3.1), applied here.** An earlier draft of this formula hashed the complete,
+signed `Identity`, `sig` included. §1.3 states the rule plainly: "no identifier, dedup key, or
+replay-cache key in this protocol is derived from a signature … An implementation MUST NOT
+introduce a construction that depends on signature uniqueness or non-malleability" — and §1.3
+also concedes hybrid AND-composition gives EUF-CMA, not SUF-CMA (malleable). Hashing `sig` into
+`Identity_id` did exactly what §1.3 forbids: two byte-distinct but both-valid signatures over the
+same `Identity ∖ {10}` body (a re-signing under the same key, a second authorized signer under
+§18.9.3's quorum rule, or a malleated hybrid component) would produce two different `Identity_id`s
+for what is semantically **one** identity version — splitting the very pin (§3.2), safety-number
+input (§3.4.1, below), and KT leaf (§18.4.9) this anchor exists to make singular. Excluding `sig`
+closes this: the id is now a pure function of the signed content, exactly as `sig` already treats
+it (§18.9.3). As with `announce_id` (§22.3.1), this is a **restoration of §1.3's invariant, not an
+exception carved out of it** — §1.3 already forbade a signature-derived identifier, and the
+sig-included formula was the violation the invariant already ruled out, not a case it left open.
+
+**Consequence, stated rather than left implicit: the id is now stable across re-signing.** Because
+`sig` is excluded, re-signing the identical `Identity ∖ {10}` body — a second authorized signature
+added under the multi-suite `sig` array (§18.4.1 key 10), or a signature refreshed with no content
+change — yields the **same** `Identity_id` with different/additional valid `sig` entries. This is
+benign and intentional, and is recorded here rather than left to be discovered by surprise.
+
+**Conformance-vector impact.** No committed vector in `conformance/vectors/vectors.json` derives
+`Identity_id` from a full `Identity` object under test (the one place `identity_id_hex` appears,
+the `kt_identity_leaf_hash` vector, takes it as an opaque input to the leaf-hash formula, not as
+something the vector itself computes from `det_cbor(Identity)`) — so, unlike `pub_announce_id`
+(§22.3.1), this correction does not invalidate a frozen vector. Any future `Identity_id` vector
+MUST be generated under the `∖ {10}` formula above.
+
+Other `hash` references to a whole **signed** object (`recovery`, `keypkgs.id`, `prev`,
+`KeyPackageRef.ref`, `GroupState.log_head`) are, as a general matter, computed over the complete
+referenced object — `prefix ‖ BLAKE3-256(det_cbor(referenced object))` — with no domain
+separation, since a content address is a pure function of the bytes. **`Envelope.id` and
+`Identity_id` above are the two exceptions carved out by this subsection**, because each is used
+as a §1.3-governed identifier (a fetch/dedup/pin address) rather than a mere reference hash;
+`Envelope.id` addresses ciphertext that carries no `sig` field at all, and `Identity_id` is
+corrected above. Whether any of the remaining referenced-object hashes are themselves used in a
+way §1.3 would also reach (each such referent does carry its own `sig` field) is not resolved by
+this correction and is flagged as a follow-up audit, not silently assumed clear.
+
+**`0x1e ‖ BLAKE3-256` above is the v0 instantiation, not the rule.** The rule is
+`suite_hash_prefix ‖ suite_hash(...)`: the hash and its prefix are both selected by the object's
+`suite` (§18.1.4), so under suite `0x05` every address in this subsection reads
+`0x16 ‖ SHA3-256(…)`. The literals are written out because `0x02` — the v0 originating suite —
+selects BLAKE3-256 and every address on the wire today carries `0x1e`. A prefix that disagrees with
+the suite is a rejection, never a selection (§18.1.5, `ERR_HASH_ALG_MISMATCH`, `0x0127`).
 
 **MLS-native referents (carve-out from the `det_cbor` rule).** Where the referent is an
 **MLS-native object** — a KeyPackage referenced by `KeyPackageRef.ref`, or the bundle referenced
@@ -1863,7 +2055,7 @@ committer only**; they do NOT substitute for the member signatures inside each M
 (`Sign(sk_issuer|voucher, DS-tag ‖ 0x00 ‖ det_cbor(object ∖ {sig}))`) with tags
 `DMTAP-v0/postage-stamp` / `DMTAP-v0/vouch`. `ArcToken` and `PowSolution` carry no DMTAP
 signature of their own — an ARC presentation is verified by the ARC protocol
-(`draft-yun-privacypass-arc`) and a PoW by recomputing the Argon2id digest over
+(`draft-ietf-privacypass-arc-protocol`) and a PoW by recomputing the Argon2id digest over
 `id ‖ recipient ‖ epoch_nonce` (§16.5).
 
 ### 18.9.8 `Assertion.sig` (auth)
@@ -2043,6 +2235,17 @@ string of `GroupState.group_id`. This is a **ranking hash, not a signature** —
 `sig-val` and proves nothing by itself; the DS-tag only ensures a rank can never collide with any
 other DMTAP preimage. Members order candidates by `rank` (lowest first) per §5.1.
 
+**Unsigned and unlabelled — disclosed, not fixed (v0).** `rank` carries neither a signature nor a
+§18.1.5 algorithm prefix, so §18.1.6's prefixed-digest rule does not reach it: it is not a
+signature over a digest, it is a bare ordering value. The consequence of the missing label is
+narrow but real — two members running **different** content-hash suites (§1.1) would compute
+different ranks over the same inputs and could elect different committers, which the group's own
+fork detection then reports as a committer fork (`0x0404`, §5.1). Because a group already agrees
+on one `GroupState.suite` (§18.1.4) before any election happens, this cannot arise inside a
+conformant group, and the correct time to bind the algorithm is a `GroupState.suite` migration,
+which is a group-wide event with a rekey attached. It is recorded here rather than left as an
+omission (the same posture as §18.9.17's).
+
 ### 18.9.17 Key-name digest (§3.9.6)
 
 The **key-name** — the zero-authority floor of the naming ladder (§3.13) — is the one hash in the
@@ -2057,20 +2260,52 @@ it is load-bearing for §3.13, §9.7a and §12.3.1.
 Pinned:
 
 ```
-keyname_digest = BLAKE3-256( ik_pub_bytes )      ; ik_pub_bytes = Identity.iks[anchor_suite]
+keyname_digest = H( u8(0x01)          ; keyname derivation VERSION byte
+                  ‖ u8(hash_prefix)   ; the §18.1.5 prefix of H itself: 0x1e for BLAKE3-256
+                  ‖ ik_pub_bytes )    ; ik_pub_bytes = Identity.iks[anchor_suite]
+
+; v0: H = BLAKE3-256, hash_prefix = 0x1e, so the input is 0x01 ‖ 0x1e ‖ ik_pub_bytes
 ```
 
+- **The hash names itself (normative — the agility hook the floor previously lacked).** The
+  key-name is the **zero-authority floor** (§3.13): it is derived, not published, so it is the one
+  identifier in the protocol that no signed object carries and no `suite` byte governs. Before this
+  correction it had **no** agility hook of any kind — no DS-tag, no multihash prefix, no suite
+  byte — which meant a hash migration (suite `0x05`, §1.1) would silently change **every key-name
+  in existence without any key rotating**. That is the worst possible shape for a naming event: the
+  signed `KeyRotation`/`MoveRecord` chain that lets correspondents follow a name change (§1.5–§1.6)
+  is driven by a *key* changing, so it would not fire at all, and the old and new key-names of the
+  same unchanged key would be indistinguishable — both 8 words, both valid, neither carrying any
+  evidence of which digest produced it. Committing the algorithm **inside the hashed input** fixes
+  this at the only place available: the input. A migration to a different `H` yields a *different*
+  and therefore **distinguishable** key-name, which a client can recognise as a derivation change
+  rather than mistake for a different identity, and the version byte leaves room for a future
+  derivation change that is not a hash change.
+- **Why a version byte as well as a prefix.** `u8(0x01)` versions the *derivation*; the prefix
+  versions the *primitive*. They are separate axes for the same reason §18.1.4 and §18.1.5 are
+  (a suite is a set; a hash is one member of it), and conflating them is how an agility hook ends
+  up unable to express the change that actually arrives.
 - **Which key: the ANCHOR.** `ik_pub_bytes` is the entry of `Identity.iks` at
   `Identity.anchor_suite` (§1.2.0), taken as **raw public-key bytes with no CBOR head, no length
   prefix and no suite byte**. The anchor is the correct input because the key-name must be as
   durable as the identity itself: operational suites are expected to migrate (§1.1), and hashing an
   operational key would change a user's zero-authority name every time they rotated one.
-- **No domain-separation tag** — deliberately, and this is the one §18.9 preimage without one. A
-  DS tag would change every key-name in existence, including the committed `keyname_*` conformance
-  vectors, for a collision class that does not arise: a key-name is never compared as raw digest
-  bytes against another DMTAP digest. It is rendered to words and compared *as words*, and content
-  addresses carry a multihash prefix (§18.1.5) that a bare 32-byte digest does not. The absence is
-  therefore recorded here as a decision rather than left as an omission.
+- **Still no domain-separation tag** — deliberately, and this remains the one §18.9 preimage
+  without one. The DS-tag collision class does not arise: a key-name is never compared as raw
+  digest bytes against another DMTAP digest; it is rendered to words and compared *as words*. The
+  algorithm-binding above is a **different** argument and does not carry over to domain separation:
+  it exists because a hash migration changes the derivation with no key-rotation event to signal
+  it, which is a live failure mode, whereas cross-preimage collision here is not. The two were
+  previously conflated — an earlier draft cited the cost of invalidating the committed `keyname_*`
+  conformance vectors as the reason for having **no** hook at all. That cost is real and has now
+  been paid once (see below); it was never a reason to leave the floor unmigratable.
+- **This change invalidates the committed `keyname_*` vectors — stated plainly.** Every
+  `keyname_encode` known-answer vector in `conformance/vectors/vectors.json` was generated under
+  the bare `BLAKE3-256(ik_pub_bytes)` derivation and is **wrong** under this one. They are removed
+  rather than silently retained, and the affected cases (`DMTAP-NAME-01`…`-05`) revert to
+  construction-todo with the recipe above until the reference core regenerates them. The
+  checksum-failure case (`DMTAP-NAME-06`) is unaffected: a mistyped word fails the folded checksum
+  regardless of which digest produced the name.
 - **Consequence, stated because §1.2.0 implies it without saying it: an anchor-suite migration
   changes every key-name.** Rotating the anchor — the emergency `0x04` pivot (§1.1) — is therefore
   a **network-wide naming event**, not merely a cryptographic one. Existing correspondents follow

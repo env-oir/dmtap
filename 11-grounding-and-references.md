@@ -29,7 +29,7 @@ existing standards**; the novelty is the composition and transport, not new cryp
 | Location record | IPNS-style signed value record | IPFS/IPNS | confirmed |
 | Naming | DNS TXT (key) + SVCB (service) | RFC 9460; cf. DKIM RFC 6376, OPENPGPKEY RFC 7929 | confirmed |
 | Key transparency | Merkle log + STH + inclusion/consistency/absence | CT RFC 6962; CONIKS; Google KT; Apple IMCKV; WhatsApp AKD | confirmed |
-| Anti-abuse tokens | Privacy Pass + **ARC** scoping | RFC 9576/9577/9578; `draft-yun-privacypass-arc` | RFCs confirmed; **ARC is an individual draft**, not a WG document |
+| Anti-abuse tokens | Privacy Pass + **ARC** scoping | RFC 9576/9577/9578; `draft-ietf-privacypass-arc-protocol` | RFCs confirmed; **ARC is now Privacy Pass WG-adopted** (Standards Track draft, formerly the individual `draft-yun-privacypass-arc`) — still a draft, not an RFC, so kept behind the token-profile seam (§9.3) |
 | PoW fallback | memory-hard hashcash | Back 1997; Argon2 | confirmed w/ caveat |
 | Recovery | VSS + SLIP-0039 + **FROST** | Feldman/Pedersen VSS; SLIP-0039; RFC 9591 (FROST) | upgraded |
 | Self-sovereign naming (opt) | name-chain (ENS-style) | Zooko's Triangle; ENS | optional |
@@ -92,6 +92,27 @@ existing standards**; the novelty is the composition and transport, not new cryp
 - **Hybrid signatures give EUF-CMA, not SUF-CMA.** No composite PQ/T variant is known to achieve
   strong unforgeability against a quantum adversary, so DMTAP treats signatures as malleable and
   derives no identifier from one (§1.3, §2.2).
+- **A hash break is not migratable, and this is the largest single exposure in the document.**
+  Every content address, every Merkle root, every `prev` link, every key-transparency leaf and
+  every signing preimage is a **BLAKE3-256** digest (§18.9). Suite `0x05` (§1.1) and the §18.1.5
+  multihash prefix make a **new** address *expressible* under a successor hash — an encoding seam,
+  not a migration path — neither **re-anchors an existing graph**. Re-anchoring means recomputing
+  every address and **re-signing** every object that names one, which requires each author's own
+  key — the spec proves this against its own hardest case in §24.14's change log: re-signing an
+  existing record needs the author's key, which no PUB server, archive or migration tool ever
+  holds for a self-custodied identity. So migration is **per-author and consensual, never a bulk
+  operator-run rewrite**, proceeds only as fast as authors act, and for keys that are lost,
+  retired, or whose holders are gone it **never completes**. There is no network-wide re-hash, and
+  there cannot be one without an authority able to re-sign other people's history, which DMTAP
+  does not have and does not want. Combined with §22.7 irrevocability — you cannot un-publish, only
+  publish a correction — every un-migrated object stays authoritative indefinitely, not merely
+  until its author gets around to re-signing it. Hash migration is therefore **forward-only**:
+  new objects move to the successor suite, old objects keep whatever assurance BLAKE3-256 still
+  has. **Content whose integrity must outlive BLAKE3-256 MUST be re-published under the successor
+  suite by its author, while that author still holds their key.** The one derived identifier with no signed object behind it — the key-name
+  (§3.9.6) — now at least commits its algorithm inside the hashed input (§18.9.17), so a migration
+  produces a distinguishable name instead of a silent replacement; that makes the event *visible*,
+  not *reversible*.
 - **The preferred cold-contact cost (VDF) is not post-quantum.** Both named constructions rest on
   a group of unknown order, which a quantum adversary computes; it is a `MAY`, memory-hard PoW is
   the MUST floor, and the exposure is future spam cost, never retroactive confidentiality
@@ -134,4 +155,4 @@ existing standards**; the novelty is the composition and transport, not new cryp
 - Martiny et al., *Improving Signal's Sealed Sender*, NDSS 2021.
 - RFCs 9180, 8032, 7748, 8949, 9420, 9750, 8620, 8621, 9460, 6376, 7929, 9576/9577/9578, 9591.
 - FIPS 203, 204, 205; `draft-connolly-cfrg-xwing-kem`; `draft-ietf-mls-pq-ciphersuites`;
-  `draft-ietf-mls-combiner`; `draft-kohbrok-mls-dmls`; `draft-yun-privacypass-arc`.
+  `draft-ietf-mls-combiner`; `draft-kohbrok-mls-dmls`; `draft-ietf-privacypass-arc-protocol`.

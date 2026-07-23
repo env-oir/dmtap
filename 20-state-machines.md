@@ -49,8 +49,13 @@ backoff/deadline of §16.1, the dedup-ack of §2.6, and the `private`-vs-`fast` 
 
 `enqueue`, `resolve_and_seal_ok`, `resolve_or_seal_blocked` (transient — DNS/DHT/KT lag, or
 fail-closed-at-first-contact per §3.3), `dispatch_ok`, `tier_unreachable` (mixnet hop failure, or
-§20.4 reaches `UNREACHABLE`), `ack_received` (includes recipient-side dedup-ack, §2.6 — the sender
-cannot and need not distinguish the two), `retry_timer_fires` [§16.1: backoff], `deadline_exceeded`
+§20.4 reaches `UNREACHABLE`), `ack_received` (an `ack` whose `ack_sig` **verified** under a key
+currently authorized for the recipient's pinned identity, §19.3.2, and whose `tier` matched the
+send — includes recipient-side dedup-ack, §2.6, since the sender cannot and need not distinguish an
+ordinary ack from a dedup-ack), `ack_invalid` (an `ack(id)` arrived but `ack_sig` failed to verify,
+verified under a key not currently authorized, or carried a mismatched `tier` — H-6: this is the
+disposition for a forged ack synthesized from the cleartext `id` by a relay/mix/buffer holder that
+never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_exceeded`
 [§16.1: retry deadline] (checked on every timer tick, in every non-terminal state), `late_ack`
 (an `ack_received` arriving after `EXPIRED` — see 20.1's fill below).
 
@@ -65,22 +70,31 @@ cannot and need not distinguish the two), `retry_timer_fires` [§16.1: backoff],
 | `SEALED` | `dispatch_ok` | `IN_FLIGHT` | Hand sealed object to mixnet (3 hops, §16.3) if `tier=private`; else invoke §20.4 reachability ladder if `tier=fast`. |
 | `SEALED` | `deadline_exceeded` | `EXPIRED` | Notify user. |
 | `IN_FLIGHT` | `ack_received` | `ACKED` | Cancel deadline timer; mark delivered. |
+| `IN_FLIGHT` | `ack_invalid` | `IN_FLIGHT` | No-op (H-6). Ignore: not delivery evidence, no state change, deadline timer and any pending backoff continue exactly as if nothing arrived. |
 | `IN_FLIGHT` | `tier_unreachable` | `RETRY` | Start backoff timer [§16.1: base 30 s, exp, cap 1 h, jittered]. |
 | `IN_FLIGHT` | `deadline_exceeded` | `EXPIRED` | Notify user. |
 | `RETRY` (`fast`) | `retry_timer_fires` | `IN_FLIGHT` | Re-dispatch the same `SEALED` object (no re-sealing; `id` is stable, §2.2). Sound **only** for `fast`: a direct/mesh resend carries no per-hop mix tag, so an identical resend is just a retransmission. |
 | `RETRY` (`private`) | `retry_timer_fires` | `SEALED` | **MUST re-onion-wrap before re-dispatch.** Re-run the sealing step: build **fresh** mixnet paths (§4.4.3), a **fresh `α`** and **current-epoch** mix keys (§4.4.4), keeping the **stable envelope `id`** (§2.2). Re-sending the *identical* Sphinx bytes is **forbidden** for `private`: every honest first hop drops the copy as a per-hop-tag replay (`ERR_MIX_REPLAY_DETECTED`, `0x030E`, §4.4.6), so an unmodified `private` resend can **never** deliver under any packet loss until `EXPIRED`. Re-onion-wrapping produces distinct per-hop tags, so the retry is a genuine fresh delivery attempt. |
 | `RETRY` | `ack_received` | `ACKED` | A duplicate in-flight copy was delivered before the retry fired; cancel timer. |
+| `RETRY` | `ack_invalid` | `RETRY` | No-op (H-6), same disposition as `IN_FLIGHT`'s: ignored, backoff timer unaffected. |
 | `RETRY` | `deadline_exceeded` | `EXPIRED` | Notify user. |
 | `ACKED` | `ack_received` | `ACKED` | No-op (idempotent; further acks for the same `id` are ignored). |
+| `ACKED` | `ack_invalid` | `ACKED` | No-op — already terminal; an invalid ack cannot un-acknowledge a delivered MOTE. |
 | `EXPIRED` | `late_ack` | `EXPIRED` | **[fill]** §4.7/§2.6 do not address an ack arriving after the sender has already given up (e.g. peer-buffer drain, §14.5, delivers late). Sender MUST treat this idempotently: surface a "delivered late" correction, MUST NOT re-send, MUST NOT re-open the deadline. State remains `EXPIRED` (the *protocol* outcome doesn't reverse; only the user-facing status corrects). |
 
 ### Entry/exit actions
 
 - **Entry `QUEUED`:** allocate retry-deadline timer at `now + 72h` [§16.1].
-- **Entry `IN_FLIGHT`:** record `tier` used, for later mismatch diagnostics; **[gap]** §2.6/§4.7 do
-  not specify the transport carriage of `ack(id)` itself — whether it is a MOTE, a mixnet
-  single-use-reply mechanism, or a lower-level transport ack is unspecified in §2/§4. This
-  machine treats `ack_received` as an abstract event regardless of its wire realization.
+- **Entry `IN_FLIGHT`:** record `tier` used — now load-bearing, not merely diagnostic: this
+  machine's own `tier` field is the record `ack_received` is checked against (§19.3.2), and an
+  ack that arrives at a different tier is `ack_invalid`, not `ack_received` (H-6). **[gap,
+  narrowed]** §2.6/§4.7 still do not specify the exact wire **carriage** of `ack(id)` — whether it
+  rides as a MOTE, a mixnet single-use-reply mechanism, or a lower-level transport ack remains an
+  implementation choice (§19.3.2). What is **no longer** an open gap is *whether* an `ack` is
+  authenticated at all: `ack_sig` is MUST (§2.6, §19.3.2), and this machine's `ack_received` event
+  is now defined to fire only once that signature — and the `tier` match — verify; an unsigned,
+  wrongly-signed, unauthorized-key, or tier-mismatched arrival is the distinct `ack_invalid` event
+  above, not a variant realization of `ack_received`.
 - **Exit `RETRY`:** cancel backoff timer.
 - **Entry `EXPIRED`/`ACKED`:** these are terminal for the *sending* queue slot; the queue entry MAY
   be garbage-collected after a client-defined UI grace period (out of protocol scope).
@@ -103,16 +117,19 @@ stateDiagram-v2
   SEALED --> IN_FLIGHT : dispatch_ok
   SEALED --> EXPIRED : deadline_exceeded
   IN_FLIGHT --> ACKED : ack_received
+  IN_FLIGHT --> IN_FLIGHT : ack_invalid (ignored, H-6)
   IN_FLIGHT --> RETRY : tier_unreachable
   IN_FLIGHT --> EXPIRED : deadline_exceeded
   RETRY --> IN_FLIGHT : retry_timer_fires (fast: same bytes)
   RETRY --> SEALED : retry_timer_fires (private: MUST re-onion-wrap, §4.4.6)
+  RETRY --> RETRY : ack_invalid (ignored, H-6)
   EXPIRED --> EXPIRED : late_ack (ignored, [fill])
   ACKED --> [*]
 ```
 
-*ACKED is reachable only from IN_FLIGHT via `ack_received`; the terminal `EXPIRED` absorbs a
-late ack rather than resurrecting the send.*
+*ACKED is reachable only from IN_FLIGHT (or RETRY) via a **verified** `ack_received` — never via
+`ack_invalid`, which is a self-loop no-op at every non-terminal state (H-6). The terminal `EXPIRED`
+absorbs a late ack rather than resurrecting the send.*
 
 ---
 
@@ -130,6 +147,7 @@ Formalizes the §2.7 ordered validation pipeline as a state machine, with the dr
 | `VERSION_OK` | `v`/`suite` accepted (§2.7 step 1). |
 | `ADDR_OK` | `id` matches content address of `ciphertext` (§2.7 step 2). |
 | `SIG_OK` | `sender_sig` over `(id‖to‖ts‖kind‖challenge)` verified (§2.7 step 3). |
+| `FRESH_OK` | `ts` passed the freshness/replay bound — neither too far ahead (clock skew) nor too far behind (durable seen-id horizon) (§2.7 step 3a, H-7). |
 | `RESOLVED` | `to` resolves to this node or a group it belongs to (§2.7 step 4). |
 | `PRE_DECRYPT` | Sender classified `known` (fast path), or cold sender passed the abuse gate — ready to decrypt (§2.7 steps 5–7). |
 | `COLD_GATE` | Cold/unknown sender; §9 challenge under evaluation (§2.7 step 6). |
@@ -143,7 +161,8 @@ Formalizes the §2.7 ordered validation pipeline as a state machine, with the dr
 ### Events
 
 `check_version` {`ok`/`fail`}, `verify_address` {`ok`/`fail`}, `check_duplicate` {`duplicate`/
-`not_duplicate`}, `verify_sender_sig` {`ok`/`fail`}, `resolve_to` {`ok`/`fail`}, `classify_sender`
+`not_duplicate`}, `verify_sender_sig` {`ok`/`fail`}, `check_freshness` {`ok`/`fail_future_skew`/
+`fail_past_stale`} (§2.7 step 3a, H-7), `resolve_to` {`ok`/`fail`}, `classify_sender`
 {`known`/`cold`}, `evaluate_challenge` {`valid_and_sufficient`/`absent_or_below_threshold`/
 `invalid_or_forged`}, `decrypt` {`ok`/`fail`}, `verify_payload` {`ok`/`fail`/
 `revealed_from_blocked`}, `apply_and_store`, `ack`.
@@ -159,8 +178,11 @@ Formalizes the §2.7 ordered validation pipeline as a state machine, with the dr
 | `ADDR_OK` | `check_duplicate` = duplicate | `ACKED` | Dedup: already hold `id` (§2.6). Ack immediately, do not reprocess. **[fill]** §2.7's ordered list does not state whether the duplicate check precedes or follows `verify_sender_sig`; this machine checks duplicate first, consistent with the "cheapest-and-anonymous-first" ordering principle stated in §2.7's own preamble. |
 | `ADDR_OK` | `check_duplicate` = not_duplicate, `verify_sender_sig` = ok | `SIG_OK` | — |
 | `ADDR_OK` | `verify_sender_sig` = fail | `DROPPED` | (§2.7 step 3). No ack. |
-| `SIG_OK` | `resolve_to` = ok | `RESOLVED` | — |
-| `SIG_OK` | `resolve_to` = fail | `DROPPED` | `to` does not resolve here (§2.7 step 4). No ack. |
+| `SIG_OK` | `check_freshness` = ok | `FRESH_OK` | `ts` within [receiver_clock, receiver_clock + skew tolerance] ahead and within the durable seen-id horizon behind (§2.7 step 3a, H-7). |
+| `SIG_OK` | `check_freshness` = fail_future_skew | `DROPPED` | `ts` more than the clock-skew tolerance (§16.1: ±120 s) ahead of this node's clock (`ERR_TIMESTAMP_OUT_OF_SKEW`, `0x020C` — previously registered but, until this fix, never wired into this pipeline). No ack; MAY be lenient toward known contacts (§21). |
+| `SIG_OK` | `check_freshness` = fail_past_stale | `DROPPED` | `ts` older than the durable seen-id horizon (§16.10) — a captured, validly-signed MOTE replayed after aging out of this node's dedup cache (§2.6), presented with every other check otherwise passing. No ack; MUST NOT be relaxed for known contacts — leniency here is exactly the replay window this step closes (H-7, `ERR_TS_TOO_STALE` = `0x0213` §21, distinct from `0x020C`). |
+| `FRESH_OK` | `resolve_to` = ok | `RESOLVED` | — |
+| `FRESH_OK` | `resolve_to` = fail | `DROPPED` | `to` does not resolve here (§2.7 step 4). No ack. |
 | `RESOLVED` | `classify_sender` = known | `PRE_DECRYPT` | Fast path: skip abuse gate (§2.7 "known contacts MAY skip step 6"). |
 | `RESOLVED` | `classify_sender` = cold | `COLD_GATE` | — |
 | `COLD_GATE` | `evaluate_challenge` = valid_and_sufficient | `PRE_DECRYPT` | Passed §9 gate; proceeds identically to a known contact from here. |
@@ -184,14 +206,17 @@ Formalizes the §2.7 ordered validation pipeline as a state machine, with the dr
   affordance (§2.7a — MUST NOT surface as a normal message).
 - **Entry `PAYLOAD_OK`:** on first contact, this is the TOFU-pin moment feeding §20.3's `PINNED`
   state for this sender's identity key.
+- **Entry `FRESH_OK`:** none beyond the check itself — freshness is a pass/fail gate, not a
+  timer-bearing state (§2.7 step 3a, H-7).
 
 ### Timeouts
 
 | Timer | Value | Cite |
 |---|---|---|
 | Requests-area retention | 30 days | §16.5 |
-| Clock-skew tolerance (bounds acceptable `ts`) | ±120 s | §16.1 |
-| Replay cache retention (covers dedup window) | ≥ 300 s | §16.1 |
+| Clock-skew tolerance (bounds acceptable `ts`, future direction) | ±120 s | §16.1 |
+| Freshness past-bound / durable seen-id horizon (bounds acceptable `ts`, past direction — H-7, §2.7 step 3a) | ≥ max(72 h retry, 20 d offline-buffer) = 20 days | §16.10 |
+| Replay cache retention (covers dedup window) | ≥ 300 s — **inconsistent with the 20-day figure directly above for what is conceptually one cache; reconciliation into a single cited parameter is owed to §16, not made here** | §16.1 |
 
 ### Diagram
 
@@ -205,8 +230,10 @@ stateDiagram-v2
   ADDR_OK --> ACKED : duplicate
   ADDR_OK --> DROPPED : verify_sender_sig fail
   ADDR_OK --> SIG_OK : not_duplicate + sig ok
-  SIG_OK --> DROPPED : resolve_to fail
-  SIG_OK --> RESOLVED : ok
+  SIG_OK --> DROPPED : check_freshness fail_future_skew / fail_past_stale
+  SIG_OK --> FRESH_OK : check_freshness ok
+  FRESH_OK --> DROPPED : resolve_to fail
+  FRESH_OK --> RESOLVED : ok
   RESOLVED --> PRE_DECRYPT : known sender
   RESOLVED --> COLD_GATE : cold sender
   COLD_GATE --> DROPPED : invalid_or_forged

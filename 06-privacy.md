@@ -55,17 +55,29 @@ parameters in **§16.3**; this subsection is the summary, §4.4 is the buildable
 Email's asynchrony is the enabling property: minutes of latency are acceptable for the
 `private` tier, and higher latency yields stronger anonymity.
 
-## 6.4 Why we avoid PIR (honest framing)
+## 6.4 Push delivery vs. PIR — what this design choice actually buys, and what it does not
 
 PIR (Pung, Talek) exists to hide **which record a client reads from an untrusted shared
 mailbox that holds everyone's mail** — a leak that only exists *because* those systems use a
-polled central store to support offline recipients. DMTAP makes a different **design choice**:
-the recipient runs an **always-on node that receives by push** through the mixnet, so there
-is no untrusted shared store being queried and thus no read-access-pattern to hide. We
-therefore avoid PIR's *problem* (and its large cost) — this is a genuine architectural
-difference, not a trick. (Note: Loopix itself *does* use provider store-and-poll to serve
-offline clients; DMTAP's always-on-push is a deliberate divergence, not an inherent property
-of mixnets.)
+polled central store to support offline recipients. DMTAP makes a different **design choice**
+for the case it can: **an always-on recipient node receives by push** through the mixnet, so
+for *that* node there is no untrusted shared store being queried and thus no read-access-pattern
+to hide for its live traffic. This is a genuine architectural difference for the always-on case,
+not a trick. (Note: Loopix itself *does* use provider store-and-poll to serve offline clients;
+DMTAP's always-on-push is a deliberate divergence, not an inherent property of mixnets.)
+
+**This is not the whole picture, and an earlier revision of this section let it read as though it
+were.** Push-through-the-mixnet is only a description of what happens while a recipient node is
+actually online and receiving. A recipient that is not always reachable — a phone, a laptop,
+anything that sleeps, closes, or loses connectivity, which is the **common** case, not the
+exception — is served instead by the buffer role (§14.5): a peer or relay holds sealed
+ciphertext, and the recipient's device **polls it on return**. A polled shared store that a
+third party can observe is *exactly* the untrusted-store-access-pattern problem PIR was built to
+solve, restated for a mailbox instead of a database. DMTAP does not make that problem disappear
+by choosing push for the online case; it simply does not arise **for that traffic**. The
+buffered/offline case is a separate, disclosed exposure, stated honestly at §6.6 item 17 rather
+than folded into this section's "no untrusted shared store" claim, which held only for the
+always-on path this paragraph actually describes.
 
 **But push delivery is not "recipient anonymity, solved."** Three residual exposures remain.
 The requirements in items 1–2 below are **normative and owned here** (this clause, not the
@@ -85,10 +97,16 @@ honest-limits prose of §6.6, is their home; §6.6 and §6.9 point back to it):
    not solved; the bounding mechanisms (entry guards, operator diversity, cover rates) are
    normative in §4.4.5 and §4.4.8.
 
-**Offline buffering:** if a node is down, a peer/relay holds sealed ciphertext, retrieved on
-return via an **unlinkable dead-drop token over the mixnet** (the buffer sees an anonymous
-pickup, not "user X"). Cheaper than PIR and sufficient for v0; full PIR remains an option for
-hostile-buffer scenarios.
+**Offline buffering — the honest state, not the comfortable one.** If a node is down, a peer/relay
+holds sealed ciphertext (§14.5) for later pickup. **A prior revision of this paragraph described
+that pickup as happening "via an unlinkable dead-drop token over the mixnet."** That phrase
+appeared nowhere else in this specification — no object, no derivation, no verifier, no state
+machine — and made a stronger claim than anything actually specified. It is removed. What is
+actually specified is a **polled, content-blind shared buffer** (§14.5): the recipient's device
+retrieves by its per-recipient delivery tag when it returns online, and the buffer holder (or
+anyone observing it) sees that tag polled, at that time, moving that much ciphertext. §6.6 item 17
+states this residual in full; DMTAP neither runs PIR against the buffer nor specifies a blinded
+retrieval ceremony that would remove it — this is the priced-in cost of not paying for either.
 
 ## 6.5 Privacy tiers (and where each product sits)
 
@@ -300,6 +318,44 @@ hostile-buffer scenarios.
     practical mitigation is the one §3.13.5 already recommends for its own reasons: out-of-band
     introduction is the primary first-contact path, and it carries the key rather than only its
     digest.
+17. **Offline/buffered recipients are served by the polled shared store PIR exists to remove —
+    and DMTAP does not remove it.** §6.4's push-delivery argument holds only for an **always-on**
+    recipient node. Any recipient that is not continuously reachable — a phone, a laptop, anything
+    that sleeps or loses connectivity, which is the **common** case, not the exception — is served
+    instead by the **content-blind relay-mailbox / peer buffer** of §14.5: ciphertext is held there
+    for the offline-buffer TTL (§16.6) and **retrieved by the recipient polling it on return**.
+    This is, precisely, the untrusted-shared-store exposure PIR was designed to remove, restated
+    for a mailbox instead of a database: a party able to observe the buffer learns **which
+    per-recipient delivery tag was polled, when, and how much ciphertext moved** — arrival timing
+    and volume — every time a buffered device comes back online. Content stays sealed (the buffer
+    is content-blind, §14.5) but the **access pattern** is exactly what PIR exists to hide, and
+    DMTAP does not hide it: it neither runs PIR against the buffer nor specifies an unlinkable
+    retrieval ceremony that would. An earlier revision of §6.4 described retrieval as happening
+    "via an unlinkable dead-drop token over the mixnet" — a phrase defined nowhere in this
+    specification (no object, no derivation, no state machine) — and that claim is withdrawn as
+    false comfort, not merely unspecified. Closing this residual for real is a materially larger
+    undertaking than the always-on push path this specification actually builds: either running
+    PIR against the buffer (the cost §6.4 declines to pay) or fully specifying a blinded dead-drop
+    protocol — its own unlinkable-pickup credential, a defined wire object, and a retrieval state
+    machine, none of which exist today. Neither is done here. §14.5 owns the buffer mechanism and
+    MUST NOT describe retrieval as anonymous or unlinkable until one of these is actually
+    specified; until then, a buffered/offline recipient's arrival-timing and volume metadata is a
+    disclosed gap in the metadata-privacy guarantee (§6.1), not a covered case of it.
+18. **A vouch (§9.7) discloses three identities in cleartext to buy the strongest cold-contact
+    standing in the protocol — a structural exception, not a bug.** Every other cold-contact
+    mechanism (ARC, PoW, postage, §9.3–§9.5) is evaluated on the sealed envelope without revealing
+    who anyone is. A `Vouch` (§18.3.3) cannot follow that pattern: it *is* the voucher's, the
+    subject's (the sender's), and the recipient's identity keys plus a signed introduction, and
+    §9.2a requires it to ride the cleartext envelope so the recipient's gate can check it before
+    decryption (§2.7 step 6). Every exit mix and any on-path observer of that hop reads all three
+    identities on any first-contact MOTE that presents one. This is not the theft/replay hole
+    §9.2a and §2.7 step 8(b2) close (a different, narrower defect, since fixed) — it is what the
+    mechanism discloses exactly as designed, exactly when the sender presenting it most needed
+    protection. §9.1 principle 4 and §9.7's own honest-limit clause state this precisely; §6.9
+    SP-11 and SP-5 state its effect on those two claims. Closing it requires restructuring §2.7
+    around a decrypt-then-gate path for the vouch case, or replacing the vouch with a blinded
+    ARC-style presentation; this specification discloses the exposure rather than choosing between
+    those fixes.
 
 DMTAP states these boundaries in-product. Honest, disclosed limits beat a false "perfectly
 anonymous."
@@ -456,32 +512,67 @@ reach**: strong against a global *passive* adversary, *bounded* (not defeated) a
   mechanism-model simulation corroborating this shape (chance-floor convergence, 20%-loss detection,
   ≈ *f*² collusion, hops-≠-collusion-defense) is reported — with its honest caveats — in §6.10.
 
-**SP-5 — Recipient unlinkability (blinded delivery tags).**
-- *Claim:* An observer cannot link successive `private`-tier deliveries to the same recipient *by
-  the routing tag*, nor tie that tag to the recipient's persistent identity key.
+**SP-5 — Recipient unlinkability (blinded delivery tags) — scoped to established contact.**
+- *Claim:* For an **established contact** (steady-state delivery, `to = BlindedTag`), an observer
+  cannot link successive `private`-tier deliveries to the same recipient *by the routing tag*, nor
+  tie that tag to the recipient's persistent identity key. **This claim does not extend to a
+  first-contact/cold delivery**, which is a distinct case addressed in the residual below, not a
+  weaker instance of this one.
 - *Holds by:* blinded delivery tag `BT = HKDF(shared_secret, epoch_day)`, recognized by the
   recipient but unlinkable across time and across observers (§2.2a); network/human identity
   decoupling and recipient-side cover (§6.4).
-- *Against:* a global passive adversary / final mix, for the *tag-linkage* property.
+- *Against:* a global passive adversary / final mix, for the *tag-linkage* property, on the
+  established-contact path only.
 - *Residual (stated, not overclaimed):* blinding removes the persistent-key linkage in the envelope;
   it does **not** hide *that a packet was delivered to a particular always-on node* — a stable
   network presence is itself a fingerprint (§6.4 item 1, §2.2a). Recipient-side cover (§4.4.5) blurs
   receipt *timing* but does not erase last-hop observability. Implementations MUST NOT present
   blinded tags as full recipient anonymity (§2.2a). This is a *reduction*, not a solved property.
+  **On the cold/first-contact path, DMTAP makes no recipient-unlinkability claim at all, and the
+  gap is total, not partial:** a cold envelope's `to` is `KeyTag` — the recipient's own identity
+  key, in cleartext, by construction (§2.2a) — and the anti-abuse `challenge` it carries
+  independently names the recipient in cleartext too: `ArcToken.origin` (MUST match the verifying
+  node's origin), `PostageStamp.audience`, and `PowSolution`'s recipient-bound epoch scope
+  (`id ‖ recipient ‖ nonce(epoch)`, §9.2a, §9.4) each identify the recipient to whichever exit mix
+  and on-path observer see the unwrapped envelope. These fields are redundant with the already-
+  disclosed `KeyTag` on the cold path today, but they mean that blinding `to` alone would not, by
+  itself, buy cold-path recipient unlinkability even if a future revision found a way to avoid the
+  `KeyTag` requirement — the challenge fields would still leak the recipient independently. A
+  `Vouch` (§9.7) additionally leaks the *sender's* and the voucher's identity on the same cold
+  message; that is §6.6 item 18 and §6.9 SP-11's residual, not this claim's.
 
-**SP-6 — Forward secrecy & post-compromise security.**
-- *Claim:* Compromise of a party's current keys does not expose its past messages (FS), and after a
-  Commit/epoch advance an evicted key cannot decrypt future messages (PCS).
+**SP-6 — Forward secrecy & post-compromise security — scoped to an established session.**
+- *Claim:* Once an MLS session (group or 2-party) exists, compromise of a party's current keys
+  does not expose its past messages (FS), and after a Commit/epoch advance an evicted key cannot
+  decrypt future messages (PCS). **This claim applies only from the point a session's first epoch
+  exists.** It does not apply, and is not weakened-but-still-partially-true for, a MOTE sent before
+  one does — that case is a distinct, disclosed gap stated in the residual below, not a bounded
+  degradation of this claim.
 - *Holds by:* MLS TreeKEM epoch advancement (§5.1, §5.2); mix-key epoch rotation + deletion at
   `valid_until` gives the mixnet FS against later node seizure (§4.4.4); per-file keys for at-rest
   blobs (§6.7); the optional deniable mode adds *per-message* FS/PCS via the Double Ratchet
   (§5.2.1(b)).
 - *Against:* an adversary that later seizes a device or mix (FS), and a bounded-duration endpoint
-  compromise that is subsequently revoked (PCS).
+  compromise that is subsequently revoked (PCS) — for traffic carried inside an established
+  session.
 - *Residual:* MLS PCS is **per-epoch/per-Commit**, coarser than Double-Ratchet per-message healing —
   a deliberate simplicity trade, not a strict improvement (§5.2); persistent files cannot ratchet
   (§6.7); deniable-mode PCS needs *bidirectional* traffic — a send-only channel retains only FS
   (§5.2.1(b)); PCS heals only *after* the evict/rotate flow runs (§6.7).
+  **The default 1:1/first-contact path has no forward secrecy at all, stated plainly.** A
+  first-contact (or otherwise pre-session) MOTE is HPKE-sealed directly to the recipient's
+  identity/KeyPackage key, with `Envelope.epoch` absent (§2.2) — a single HPKE seal, not a
+  ratchet. Compromise of that recipient key at **any later time** exposes that message; there is
+  no epoch to have advanced past and no key deletion schedule that protects it. This is not a
+  weaker version of the residuals above; it is the **entire claim not yet applying**, for exactly
+  the messages a cold or new contact sends before any Commit/Welcome establishes a first epoch
+  (§5.3). The optional deniable 1:1 mode (SP-7) is the one path that supplies per-message FS/PCS
+  from its first message, because its Double Ratchet does not wait on an MLS epoch; a sender who
+  needs FS before a session exists and does not want deniability has no other option in this
+  specification today. (An earlier revision carried an undefined `fs_ratchet` field that could be
+  misread as filling this gap; it supplied no derivation, no verifier, and no semantics anywhere
+  in the corpus, and has been removed — see §2.4's note — rather than left to imply a mechanism
+  that was never specified.)
 
 **SP-7 — Deniability / repudiation (optional 1:1 mode).**
 - *Claim:* In the opt-in deniable 1:1 mode, neither party — nor a third party — can produce a
@@ -542,19 +633,35 @@ reach**: strong against a global *passive* adversary, *bounded* (not defeated) a
   loss (§1.4 "bottom turtle"). Recovery restores the **key**, not prior **content**, absent a
   surviving cluster device or an encrypted backup (§1.4 backup/restore).
 
-**SP-11 — Anti-abuse without deanonymization.**
-- *Claim:* A recipient can rate-limit and block cold senders **without learning who they are** and
-  **without linking a sender across recipients**.
-- *Holds by:* ARC anonymous, per-origin-scoped, rate-limited tokens (§9.3), PoW fallback (§9.4), and
-  postage (§9.5), all evaluated on the sealed envelope **before decryption** (§2.7 step 6), each
-  bound to the ephemeral `sender_key` to defeat proof theft/replay (§9.2a); the anonymity-preserved
-  principle (§9.1 item 4).
-- *Against:* a recipient (and its operator) attempting to deanonymize or cross-link senders.
+**SP-11 — Anti-abuse without deanonymization — scoped to ARC, PoW, and postage; the vouch is
+excluded, not covered.**
+- *Claim:* A recipient can rate-limit and block a cold sender presenting an **ARC token, PoW
+  solution, or postage stamp** (§9.3–§9.5) **without learning who they are** and **without linking
+  a sender across recipients**. **This claim does not extend to the vouch (§9.7).** Presenting a
+  vouch is a deliberate, disclosed exception, not a weaker instance of the same guarantee: it
+  reveals the sender's, the voucher's, and the recipient's identity keys in cleartext to the
+  mixnet's exit hop and any on-path observer of that hop (§9.2a, §18.3.3) — the opposite of what
+  this claim states for the other three mechanisms. An implementation MUST NOT read this claim as
+  covering vouch-based cold contact.
+- *Holds by (for ARC/PoW/postage):* ARC anonymous, per-origin-scoped, rate-limited tokens (§9.3),
+  PoW fallback (§9.4), and postage (§9.5), all evaluated on the sealed envelope **before
+  decryption** (§2.7 step 6), each bound to the ephemeral `sender_key` to defeat proof theft/replay
+  (§9.2a); the anonymity-preserved principle (§9.1 item 4), which these three mechanisms satisfy
+  without exception.
+- *Against:* a recipient (and its operator) attempting to deanonymize or cross-link a sender using
+  ARC, PoW, or postage.
 - *Residual:* repeat abuse is bounded at the **issuer** layer, not the recipient layer —
   recipient-side cross-recipient linking is deliberately unavailable and not claimed (§9.3.2); an
   unvetted/self-issued token carries a **zero** budget (§9.3.1); a hidden-membership list's committer
   holds a disclosed per-delivery vouch-trust power (§9.9). Mix-layer flooding is bounded only by
   content-blind controls (per-connection/operator rate limits + attested operator diversity, §9.8).
+  **The vouch's exposure is not a residual of this claim — it is a carve-out from it.** §9.1
+  principle 4 states the exception normatively; §9.7's honest-limit clause and §6.6 item 18 state
+  the mechanism and its consequence in full: every exit mix and on-path observer of the final hop
+  reads the voucher's, subject's, and recipient's identity keys on any first-contact MOTE
+  presenting a vouch. Implementations MUST disclose this to a sender before offering vouch as a
+  cold-contact option (§9.7) and MUST NOT market or default to vouch as though it carried the same
+  anonymity property as ARC, PoW, or postage.
 
 ### 6.9.1 The map, in one table
 
@@ -564,13 +671,13 @@ reach**: strong against a global *passive* adversary, *bounded* (not defeated) a
 | SP-2 | Content authenticity / integrity | §2.7 step 8, §2.2, §18.9 | passive **+ active** | binding = KT profile SP-9 / §6.6 item 6; deniable = MAC not sig §5.2.1(c) |
 | SP-3 | Sender anonymity vs global **passive** | §2.2, §4.4.5–6, §6.3, §3.7 | global passive (headline) | reduction not elimination §6.2, §6.4, §6.6 item 5, §4.4.11–12 |
 | SP-4 | Sender anonymity vs global **active** | §4.4.6–§4.4.10 | global active | Trilemma floor §6.6 item 1; sub-threshold drop §16.3 |
-| SP-5 | Recipient unlinkability (blinded tags) | §2.2a, §6.4 | passive / final mix | last-hop observability remains §6.4 item 1, §2.2a |
-| SP-6 | Forward secrecy + PCS | §5.2, §4.4.4, §6.7, §5.2.1(b) | later seizure / revoked compromise | per-epoch coarser §5.2; send-only = FS only §5.2.1(b) |
+| SP-5 | Recipient unlinkability (blinded tags) — **established contact only** | §2.2a, §6.4 | passive / final mix | last-hop observability remains §6.4 item 1, §2.2a; **cold path: no claim at all** — `to`=`KeyTag` + challenge fields (`origin`/`audience`/`epoch_nonce`) leak recipient §6.6 item 18 |
+| SP-6 | Forward secrecy + PCS — **established session only** | §5.2, §4.4.4, §6.7, §5.2.1(b) | later seizure / revoked compromise | per-epoch coarser §5.2; send-only = FS only §5.2.1(b); **pre-session HPKE MOTEs: no FS at all**, `epoch` absent, `fs_ratchet` removed as undefined |
 | SP-7 | Deniability / repudiation (1:1 opt-in) | §5.2.1 | cryptographic-transcript judge | default non-repudiable §5.2; not endpoint §6.6 item 3; X3DH online bound §5.2.1(e) |
 | SP-8 | Downgrade resistance | §1.3, §4.4.9, §10.2, §10.1 | active DoS / MITM | weakest-link §6.6 item 5 (full set §10.7) |
 | SP-9 | KT / equivocation detection | §3.5.2 (v1) / §3.5.1 (v0) | malicious KT log | **v0 not equivocation-proof §6.6 item 6** |
 | SP-10 | Recoverability from compromise | §1.4, §1.5, §6.7, §13.4 | loss / partial compromise | `IK`+quorum takeover; content needs backup §1.4 |
-| SP-11 | Anti-abuse without deanonymization | §9.3–§9.5, §2.7 step 6, §9.2a | deanonymizing recipient/operator | issuer-layer only §9.3.2; committer vouch §9.9 |
+| SP-11 | Anti-abuse without deanonymization — **ARC/PoW/postage only; vouch excluded** | §9.3–§9.5, §2.7 step 6, §9.2a | deanonymizing recipient/operator | issuer-layer only §9.3.2; committer vouch-trust power §9.9; **vouch (§9.7) discloses sender+voucher+recipient in cleartext — a carve-out, not a residual — §6.6 item 18, §9.1 item 4** |
 
 An implementation or a formal model that exhibits a counterexample to any SP-*n* **claim line
 above** — without invoking its stated residual — has found a spec-level defect, and it MUST be

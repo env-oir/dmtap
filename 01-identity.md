@@ -25,12 +25,13 @@ change is authenticated and every unauthorized change is *detectable*.
 Every signed/encrypted object carries a `suite` identifier. Implementations MUST reject
 unknown suites (fail closed), never guess.
 
-| `suite` | Sign | KEM / PKE | AEAD | Status |
-|--------:|------|-----------|------|--------|
-| `0x01`  | Ed25519 | X25519 (HPKE) | ChaCha20-Poly1305 | LEGACY — accept, never originate |
-| `0x02`  | Ed25519 + ML-DSA-65 | X25519 + ML-KEM-768 (hybrid) | ChaCha20-Poly1305 | **v0 REQUIRED** (PQ-hybrid) |
-| `0x03`  | Ed25519 + ML-DSA-65 | X25519 + ML-KEM-768 (hybrid) | AES-256-GCM | RESERVED (AEAD-diverse emergency target) |
-| `0x04`  | Ed25519 + SLH-DSA-128s | X25519 + ML-KEM-768 (hybrid) | ChaCha20-Poly1305 | RESERVED (signature-diverse emergency target) |
+| `suite` | Sign | KEM / PKE | AEAD | Hash | Status |
+|--------:|------|-----------|------|------|--------|
+| `0x01`  | Ed25519 | X25519 (HPKE) | ChaCha20-Poly1305 | BLAKE3-256 | LEGACY — accept, never originate |
+| `0x02`  | Ed25519 + ML-DSA-65 | X25519 + ML-KEM-768 (hybrid) | ChaCha20-Poly1305 | BLAKE3-256 | **v0 REQUIRED** (PQ-hybrid) |
+| `0x03`  | Ed25519 + ML-DSA-65 | X25519 + ML-KEM-768 (hybrid) | AES-256-GCM | BLAKE3-256 | RESERVED (AEAD-diverse emergency target) |
+| `0x04`  | Ed25519 + SLH-DSA-128s | X25519 + ML-KEM-768 (hybrid) | ChaCha20-Poly1305 | BLAKE3-256 | RESERVED (signature-diverse emergency target) |
+| `0x05`  | Ed25519 + ML-DSA-65 | X25519 + ML-KEM-768 (hybrid) | ChaCha20-Poly1305 | **SHA3-256** | RESERVED (hash-diverse emergency target) |
 
 **PQ-hybrid is the v0 baseline, not a migration target (normative).** Suite `0x02` is what a
 conformant v0 implementation **MUST** originate. Suite `0x01` is retained **only** so an
@@ -51,8 +52,8 @@ suite is current. Downgrade is prevented by pinning (§3) and by the transparenc
 history.
 
 **Primitive-family diversity, not merely primitive agility (normative).** Agility that can only
-move *within* one mathematical family is not agility. Suites `0x02` and `0x03` share **ML-DSA**
-(lattice) signatures and **ML-KEM** (lattice) key establishment, so a structural break in the
+move *within* one mathematical family is not agility. Suites `0x02`, `0x03` and `0x05` share
+**ML-DSA** (lattice) signatures and **ML-KEM** (lattice) key establishment, so a structural break in the
 lattice assumptions underlying both — a single family, however well-studied — would be
 network-wide on the same day, exactly the failure mode the AEAD-diversity rule below exists to
 prevent. Suite `0x04` is therefore reserved in advance as a standing **signature-diverse**
@@ -80,6 +81,27 @@ Reserving the code point now, rather than allocating one under incident pressure
 AEAD-break response into a routine capability negotiation (§10.2) instead of an emergency
 protocol revision. Suite `0x03` is registered RESERVED in §21.15; a global kill-switch is
 deliberately *not* provided (the honest limit of §12.8.5).
+
+**Hash agility needs a family-diverse target too (normative).** Suites `0x01`–`0x04` all carry
+**BLAKE3-256**, and the hash is the primitive the rest of the protocol rests on most heavily:
+every content address (§18.9.4), every Merkle root (§18.9.5), every `prev` link, every
+key-transparency leaf (§3.5) and every pre-hashed signing preimage (§18.1.6) is a BLAKE3-256
+digest. BLAKE3 inherits its compression function from BLAKE2, which derives its round function
+from **ChaCha** — one ARX design lineage, shared with the AEAD of three of those four suites.
+By the rule stated above, that is a monoculture, and the largest one in the document. Suite
+`0x05` is therefore **reserved in advance** as a standing **hash-diverse** target: it keeps
+`0x02`'s signature, KEM and AEAD unchanged and moves **only** the hash, to **SHA3-256** — a
+Keccak **sponge** construction with a different permutation, a different mode and a different
+provenance, sharing no design lineage with the BLAKE line, so a structural break in that lineage
+does not carry over. The §18.1.5 multihash registry already reserves the prefix (`0x16`) such a
+digest would travel under; suite `0x05` is what makes it *selectable* rather than merely
+*expressible*, which is the distinction §18.1.5 alone cannot make. Reserving the code point now,
+rather than allocating one under incident pressure, is what turns a hash break into a routine
+capability negotiation (§10.2) instead of an emergency protocol revision — the same discipline,
+and for the same reason, as suites `0x03` and `0x04`. Suite `0x05` is registered RESERVED in
+§21.15. What the reservation **cannot** buy is the migration of content that already exists: a
+new suite re-anchors nothing already published, and that limit is stated plainly, as a limit, in
+§11.3.
 
 ## 1.2 Keys and the identity hierarchy
 
@@ -298,7 +320,9 @@ so an identity can hold classical and PQ keys simultaneously during migration. R
     level, never as full hybrid strength.
 
     **The two components are NOT independent signatures over the same message (normative).**
-    Following the IETF LAMPS composite PQ/T signature construction, both components of a hybrid
+    Following the IETF LAMPS composite PQ/T signature construction (`draft-ietf-lamps-pq-composite-sigs`
+    — WG-adopted, Standards-Track and submitted to the IESG, a stronger standing than X-Wing's
+    below, in the same honest-disclosure symmetry), both components of a hybrid
     `sig-val` sign a single **domain-separated combined message representative** that binds the
     composite algorithm identifier — in DMTAP, the `suite` byte — alongside the object's own
     DS-tag (§18.1.6). A bare "sign the same preimage twice and concatenate" construction is

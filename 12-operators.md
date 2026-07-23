@@ -126,8 +126,11 @@ protocol makes impossible to sell, and each entry has a structural reason, not m
 **The one thing outside this list** is legacy SMTP egress and ingress (§7.1a) — the only function
 requiring a resource that cannot be self-provisioned — together with the two conveniences that ride
 on it (a vanity local-part in someone else's domain, and legacy-client service, §7.14). That is the
-entire chargeable surface of DMTAP, and it is exactly co-extensive with the one operator class the
-architecture admits (§0.5).
+entire chargeable surface of **the in-tree SMTP/mail gateway**, and it is exactly co-extensive with
+the one operator class the architecture admits (§0.5). It is not the entire chargeable surface of
+DMTAP: the Legacy Adapters extension (§26) generalizes the gateway pattern to other legacy rails
+and adds a second, smaller, **credential-gated rather than resource-gated** category of legitimate
+charge — see §26.10 for that surface.
 
 ### 12.3.2 Conformance
 
@@ -242,8 +245,8 @@ something goes wrong." This subsection is DMTAP's RFC-style **Security / Operati
 Considerations**: coordinated disclosure, incident-response runbooks, key-ceremony guidance, the
 audit gate, deprecation, and operator lifecycle. It is normative where it says MUST/SHOULD and
 otherwise guidance. Two repository-root companion documents restate the human-facing parts for
-discoverability: **[`SECURITY.md`](../SECURITY.md)** (how to report a vulnerability) and
-**[`GOVERNANCE.md`](../GOVERNANCE.md)** (who decides, and the audit gate). Where they and this
+discoverability: **[`SECURITY.md`](SECURITY.md)** (how to report a vulnerability) and
+**[`GOVERNANCE.md`](GOVERNANCE.md)** (who decides, and the audit gate). Where they and this
 section overlap, this section governs (§10.4).
 
 ### 12.8.1 Coordinated vulnerability disclosure (CVD)

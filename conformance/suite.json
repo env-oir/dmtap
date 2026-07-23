@@ -538,9 +538,10 @@
       "req": "MUST",
       "clause": [
         "\u00a718.9.2",
+        "\u00a718.1.6",
         "\u00a72.7 step 8"
       ],
-      "checks": "Payload.sig over DS || BLAKE3-256(det_cbor(Payload minus sig)) under the IK",
+      "checks": "Payload.sig over DS || 0x1e || BLAKE3-256(det_cbor(Payload minus sig) || u8(kind) || u64be(ts) || det_cbor(to)) under the IK \u2014 the digest carries its \u00a718.1.5 multihash prefix, never a bare 32 B representative",
       "operation": "ed25519_sign",
       "vector": "mote_payload_sig",
       "expect": {
@@ -551,6 +552,46 @@
         ]
       },
       "status": "vectored"
+    },
+    {
+      "id": "DMTAP-PRE-04",
+      "level": "Core",
+      "category": "PRE",
+      "req": "MUST",
+      "clause": [
+        "\u00a718.1.6",
+        "\u00a718.9.1",
+        "\u00a718.9"
+      ],
+      "checks": "composite suites sign the suite byte: under 0x02 sender_sig is over M' = DS || 0x00 || u8(0x02) || body, both components over the same M'; a component that verifies only against the single-component form DS || 0x00 || body MUST be rejected",
+      "operation": "mote_validate",
+      "construction": "build the DMTAP-PRE-01 envelope with suite = 0x02; sign the composite representative with Ed25519 || ML-DSA-65; present (a) the correct M' signature and (b) one computed without the u8(suite) byte",
+      "expect": {
+        "outcome": "reject",
+        "note": "(a) accepts; (b) rejects \u2014 verification fails against the reconstructed M'"
+      },
+      "status": "construction-todo"
+    },
+    {
+      "id": "DMTAP-PRE-05",
+      "level": "Core",
+      "category": "PRE",
+      "req": "MUST",
+      "clause": [
+        "\u00a718.1.6",
+        "\u00a718.9.2"
+      ],
+      "checks": "a pre-hashed preimage MUST be algorithm-labelled: a Payload.sig computed over the bare 32-byte digest rather than 0x1e || digest MUST NOT verify",
+      "operation": "ed25519_verify",
+      "construction": "recompute the DMTAP-PRE-03 preimage without the 0x1e prefix and sign it under the same IK seed (0x11*32)",
+      "reuses_vector": "mote_payload_sig",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0127",
+        "error_name": "ERR_HASH_ALG_MISMATCH",
+        "action": "FAIL_CLOSED_BLOCK"
+      },
+      "status": "construction-todo"
     },
     {
       "id": "DMTAP-NAME-01",
@@ -564,12 +605,13 @@
       ],
       "checks": "deterministic 8-word key-name (+ checksum verifies), all-zero key",
       "operation": "keyname_encode",
-      "vector": "keyname_zero_key",
       "expect": {
         "outcome": "match",
         "field": "name"
       },
-      "status": "vectored"
+      "status": "construction-todo",
+      "construction": "keyname_digest = BLAKE3-256(0x01 || 0x1e || pubkey) with pubkey = 00*32; take the leading 80 bits; render 8 words + folded checksum word over the curated ~1024-word list (\u00a73.4.1)",
+      "withdrawn_vector_note": "\u00a718.9.17 now binds the hash algorithm inside the key-name preimage, which changes every key-name; the committed keyname_* known answers were generated under the old bare-digest derivation and are withdrawn (vectors.json, withdrawn_vectors)"
     },
     {
       "id": "DMTAP-NAME-02",
@@ -582,12 +624,13 @@
       ],
       "checks": "key-name of all-0x01 key",
       "operation": "keyname_encode",
-      "vector": "keyname_key_ones",
       "expect": {
         "outcome": "match",
         "field": "name"
       },
-      "status": "vectored"
+      "status": "construction-todo",
+      "construction": "as DMTAP-NAME-01 with pubkey = 01*32",
+      "withdrawn_vector_note": "\u00a718.9.17 now binds the hash algorithm inside the key-name preimage, which changes every key-name; the committed keyname_* known answers were generated under the old bare-digest derivation and are withdrawn (vectors.json, withdrawn_vectors)"
     },
     {
       "id": "DMTAP-NAME-03",
@@ -600,12 +643,13 @@
       ],
       "checks": "key-name of all-0x02 key",
       "operation": "keyname_encode",
-      "vector": "keyname_key_twos",
       "expect": {
         "outcome": "match",
         "field": "name"
       },
-      "status": "vectored"
+      "status": "construction-todo",
+      "construction": "as DMTAP-NAME-01 with pubkey = 02*32",
+      "withdrawn_vector_note": "\u00a718.9.17 now binds the hash algorithm inside the key-name preimage, which changes every key-name; the committed keyname_* known answers were generated under the old bare-digest derivation and are withdrawn (vectors.json, withdrawn_vectors)"
     },
     {
       "id": "DMTAP-NAME-04",
@@ -618,12 +662,13 @@
       ],
       "checks": "key-name of a real Ed25519 public key",
       "operation": "keyname_encode",
-      "vector": "keyname_real_pubkey",
       "expect": {
         "outcome": "match",
         "field": "name"
       },
-      "status": "vectored"
+      "status": "construction-todo",
+      "construction": "as DMTAP-NAME-01 with pubkey = d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737 (Ed25519 public key of seed 0x11*32)",
+      "withdrawn_vector_note": "\u00a718.9.17 now binds the hash algorithm inside the key-name preimage, which changes every key-name; the committed keyname_* known answers were generated under the old bare-digest derivation and are withdrawn (vectors.json, withdrawn_vectors)"
     },
     {
       "id": "DMTAP-NAME-05",
@@ -634,17 +679,15 @@
         "\u00a73.9.6",
         "\u00a718.9.17"
       ],
-      "checks": "distinct keys yield distinct names (keyname_key_ones != keyname_key_twos)",
+      "checks": "distinct keys yield distinct names (NAME-02 != NAME-03)",
       "operation": "keyname_distinct",
-      "vector": [
-        "keyname_key_ones",
-        "keyname_key_twos"
-      ],
       "expect": {
         "outcome": "accept",
         "note": "the two names MUST differ"
       },
-      "status": "vectored"
+      "status": "construction-todo",
+      "construction": "derive both names per DMTAP-NAME-02 / DMTAP-NAME-03 and compare",
+      "withdrawn_vector_note": "\u00a718.9.17 now binds the hash algorithm inside the key-name preimage, which changes every key-name; the committed keyname_* known answers were generated under the old bare-digest derivation and are withdrawn (vectors.json, withdrawn_vectors)"
     },
     {
       "id": "DMTAP-NAME-06",
@@ -773,9 +816,9 @@
         "\u00a71.1",
         "\u00a718.1.4"
       ],
-      "checks": "unknown suite 0x05 rejected",
+      "checks": "unknown suite 0x06 rejected on decode (never guess) \u2014 the lowest unallocated Standards-Action point now that 0x01-0x05 are registered; this case tested 0x05 until \u00a71.1 reserved it as the hash-diverse target",
       "operation": "suite_decode",
-      "vector": "suite_reject_0x05",
+      "vector": "suite_reject_0x06",
       "expect": {
         "outcome": "reject",
         "error_code": "0x0101",
@@ -880,6 +923,46 @@
         "envelope_context_code": "0x0201"
       },
       "status": "vectored"
+    },
+    {
+      "id": "DMTAP-SUITE-12",
+      "level": "Core",
+      "category": "SUITE",
+      "req": "MUST",
+      "clause": [
+        "\u00a71.1",
+        "\u00a718.1.4",
+        "\u00a716.7"
+      ],
+      "checks": "registered-but-reserved suite 0x05 (the hash-diverse SHA3-256 target) DECODES as a known id; registered and implemented are different questions",
+      "operation": "suite_decode",
+      "vector": "suite_accept_0x05",
+      "expect": {
+        "outcome": "accept",
+        "note": "decode succeeds; any USE under 0x05 still fails closed (unimplemented)"
+      },
+      "status": "vectored"
+    },
+    {
+      "id": "DMTAP-SUITE-13",
+      "level": "Core",
+      "category": "SUITE",
+      "req": "MUST",
+      "clause": [
+        "\u00a718.1.5",
+        "\u00a718.1.4"
+      ],
+      "checks": "the suite is authoritative over the multihash prefix: a hash field whose \u00a718.1.5 prefix is not the one the object's suite selects MUST be rejected \u2014 the prefix is never an independent selector",
+      "operation": "mote_validate",
+      "construction": "take any suite-bearing object with a hash field and rewrite the prefix byte from 0x1e (BLAKE3-256, the hash of 0x01-0x04) to 0x16 (SHA3-256, the hash of 0x05), leaving the digest bytes and the suite unchanged",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0127",
+        "error_name": "ERR_HASH_ALG_MISMATCH",
+        "action": "FAIL_CLOSED_BLOCK",
+        "note": "MUST NOT verify under SHA3-256 and MUST NOT try both"
+      },
+      "status": "construction-todo"
     },
     {
       "id": "DMTAP-VAL-01",
@@ -3481,6 +3564,27 @@
         "outcome": "non-conformant if any of the three sub-requirements is missing"
       },
       "status": "manual-attestation"
+    },
+    {
+      "id": "DMTAP-PUB-22",
+      "level": "Core",
+      "category": "PUB",
+      "req": "MUST",
+      "clause": [
+        "\u00a722.3.3",
+        "\u00a71.1"
+      ],
+      "checks": "public-object origination floor: a PubAnnounce at a known but below-floor suite MUST be rejected unless a pinned Identity the verifier already holds establishes that it predates that suite's retirement; the floor defaults to the \u00a71.1 originating floor (0x02), never to 'anything registered'",
+      "operation": "pub_announce_verify",
+      "construction": "a well-formed PubAnnounce at suite = 0x01 whose sig and DeviceCert chain both verify, supersedes pointing at a genuine announce, presented to a verifier at the default floor with no pinned Identity for pub",
+      "expect": {
+        "outcome": "reject",
+        "error_code": "0x0914",
+        "error_name": "ERR_PUB_SUITE_BELOW_FLOOR",
+        "action": "FAIL_CLOSED_BLOCK",
+        "note": "steps 2-5 of \u00a722.3.3 all pass, which is the point; a verifier configured to a lower floor MUST surface the reduced assurance"
+      },
+      "status": "construction-todo"
     },
     {
       "id": "DMTAP-CAD-01",
@@ -6610,15 +6714,15 @@
       "clause": [
         "\u00a725.4.1"
       ],
-      "checks": "Subscription content address (subscription_id = 0x1e\u2016BLAKE3-256(det_cbor(Subscription))) and signing preimage (signer over \"DMTAP-PUB-v0/subscription\"\u20160x00\u2016det_cbor(Subscription \u2216 {10}))",
+      "checks": "Subscription content address (subscription_id = 0x1e\u2016BLAKE3-256(\"DMTAP-PUB-v0/subscription-id\"\u20160x00\u2016det_cbor(Subscription \u2216 {10}))) and signing preimage (signer over \"DMTAP-PUB-v0/subscription\"\u20160x00\u2016det_cbor(Subscription \u2216 {10})). subscription_id derives from the BODY ONLY \u2014 an earlier revision of this case (and of the reference) hashed the complete signed object, which \u00a725.13 C-03 states is the defect itself, not a conformant reading (\u00a71.3: no identifier may be derived from a signature).",
       "operation": "pub_subscription_signing_preimage",
-      "construction": "build a well-formed Subscription, compute subscription_id and the signing preimage per the stated formulas, then flip one bit of sig and re-verify",
+      "construction": "build a well-formed Subscription, compute subscription_id and the signing preimage per the stated formulas, flip one bit of sig and re-verify (sig invalid, subscription_id UNCHANGED because sig is excluded from its preimage)",
       "expect": {
-        "outcome": "match (subscription_id) / reject (flipped-bit sig)",
+        "outcome": "match (subscription_id, both before and after the flip) / reject (flipped-bit sig verification)",
         "error_code": "0x090E",
         "error_name": "ERR_PUB_SUBSCRIPTION_SIG_INVALID",
         "action": "FAIL_CLOSED_BLOCK",
-        "note": "unmodified object: recomputed subscription_id matches and sig verifies; flipped-bit variant: sig fails"
+        "note": "unmodified object: recomputed subscription_id matches and sig verifies; flipped-bit variant: sig fails verify() (0x090E) but subscription_id is IDENTICAL to the unmodified object's \u2014 the body did not change. See DMTAP-PUBSUB-16 for the dedup/revoke consequence of this."
       },
       "status": "construction-todo"
     },
@@ -6894,10 +6998,34 @@
         "outcome": "non-conformant if either sub-requirement is missing"
       },
       "status": "manual-attestation"
+    },
+    {
+      "id": "DMTAP-PUBSUB-16",
+      "level": "Core",
+      "category": "PUBSUB",
+      "req": "MUST",
+      "optional_capability": "pubsub-1",
+      "clause": [
+        "\u00a725.4.1",
+        "\u00a725.5.1",
+        "\u00a725.7.1",
+        "\u00a725.13 C-03"
+      ],
+      "checks": "the security consequence of a body-only subscription_id: two differently-encoded copies of one Subscription (identical body, different sig bytes) MUST (a) share one subscription_id, (b) occupy exactly ONE aggregate quota slot when a holder dedupes its active set by id, and (c) both be reachable by a single SubscriptionRevoke naming that id",
+      "operation": "pub_subscription_id_dedup_and_revoke",
+      "construction": "sign one Subscription body normally; clone it and replace ONLY the sig bytes (a mauled/differently-encoded copy, sig-only difference); assert both encodings' subscription_id are equal, that inserting both into a BTreeSet<ContentId> leaves it at size 1, and that one SubscriptionRevoke naming that id verifies successfully against BOTH encodings via verify_for",
+      "expect": {
+        "outcome": "accept (same id, one quota slot, revoke matches both)",
+        "note": "closes the \u00a725.13 C-03 revocation-bypass / double-count: under the pre-fix formula (subscription_id over the complete signed object) this case fails on all three counts, because the two encodings would carry DIFFERENT ids"
+      },
+      "status": "construction-todo"
     }
   ],
   "pub_vectors_file": "vectors/pub_vectors.json",
   "pub_vectors_count": 15,
   "pub_referenced_vectors_count": 15,
-  "pub_vectors_count_note": "pub_vectors.json is a SEPARATE file from vectors.json, generated by vectors/gen_pub_vectors.py (this repo), not by the dmtap-core reference crate (which does not yet implement the DMTAP-PUB extension, \u00a722, ROADMAP.md). All 15 of its vectors are referenced by PUB cases below (several PUB cases reference more than one pub_vectors.json entry)."
+  "pub_vectors_count_note": "pub_vectors.json is a SEPARATE file from vectors.json, generated by vectors/gen_pub_vectors.py (this repo), not by the dmtap-core reference crate (which does not yet implement the DMTAP-PUB extension, \u00a722, ROADMAP.md). All 15 of its vectors are referenced by PUB cases below (several PUB cases reference more than one pub_vectors.json entry).",
+  "pubsub_vectors_file": "vectors/pubsub_vectors.json",
+  "pubsub_vectors_count": 2,
+  "pubsub_vectors_note": "vectors/pubsub_vectors.json is a SEPARATE, independently-generated (gen_pubsub_vectors.py; BLAKE3 + Ed25519, fixed seeds, no dmtap-core dependency) byte-exact check that Subscription.subscription_id() is computed over the body only (sig excluded) under the DMTAP-PUB-v0/subscription-id hash DS-tag (\u00a725.4.1, \u00a725.13 C-03): two vectors with an IDENTICAL Subscription body and DIFFERENT sig bytes must both recompute to the SAME committed subscription_id. Cross-referenced by the conformance-runner (operation pubsub_subscription_id) and gates the runner's exit code exactly like a core vector, not merely reported."
 }

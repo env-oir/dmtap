@@ -381,10 +381,40 @@ naive all-or-nothing scheme would deliver a 32-cell MOTE with probability only `
 a **full** re-onion-wrap (§20.1) on any single lost cell. DMTAP therefore REQUIRES **per-cell
 reliability** so a multi-cell MOTE tolerates partial loss:
 
-- The recipient maintains a **bounded partial-reassembly cache** keyed by envelope `id`, holding
-  received cells until the MOTE is complete or a **reassembly timeout** (§16.3) elapses; on timeout
-  the partial set is discarded (a bounded cache — an adversary cannot pin memory with endless
-  half-MOTEs).
+- The recipient maintains a **bounded partial-reassembly cache**, keyed by the cell's **`msg_id`**
+  (the `SphinxFragmentHeader` field, §18.5.4) — **not** the envelope `id`, and this correction is
+  itself normative: the envelope's content-addressed `id` is the BLAKE3-256 digest of the fully
+  **reassembled** `ciphertext` (§2.2), so it does not exist and cannot be computed until
+  reassembly completes — a cache keyed by it is unimplementable as an earlier revision of this
+  subsection stated it. §18.5.4 already keys its own description of the cache by `msg_id`; this
+  text now agrees with it. The cache holds received cells until the MOTE is complete or a
+  **reassembly timeout** (§16.3) elapses; on timeout the partial set is discarded.
+- **Cache is capped, per delivering connection (normative).** A node MUST bound, **per delivering
+  connection/relay** (mirroring the per-connection PoW-verification budget of §9.4 and the
+  per-connection mix-admission budget of §9.8): (a) the number of **distinct concurrently-open
+  `msg_id` reassembly slots** it will hold cells for from that connection, and (b) the
+  **aggregate bytes** buffered across them (both pinned in §16.3). A cell that would open a new
+  slot beyond either cap is dropped **without allocating a slot** — the sender's own retry
+  recovers it (§4.7) — which is what bounds the cheaper variant of the attack below: flooding many
+  distinct `msg_id`s at `frag_count = 32` to pin reassembly memory now costs the recipient no more
+  than a fixed, small, per-connection ceiling, not unbounded slots.
+- **Reassembly failure feeds active-attack detection, not only a silent drop (normative).** A
+  colliding `frag_index` within one `msg_id`, an out-of-range `frag_index`/`frag_count`, a
+  cross-`msg_id` mixing, or a timeout with an incomplete set are each still dropped per-cell
+  (`ERR_MIX_PACKET_MALFORMED`, `0x0307`, §19.3.1) — but an adversary who **injects** an extra
+  colliding-index cell rather than dropping one is invisible to §4.4.7's loop-return-fraction
+  detector, which is built to catch *suppression*, not *insertion*: the attacker adds a cell,
+  reassembly yields corrupt bytes, the corrupt result drops silently, and nothing about that path
+  looks like a dropped loop. A node MUST therefore additionally maintain a **sliding-window
+  reassembly-failure counter** (collisions, out-of-range indices, cross-`msg_id` mixing, and
+  cap-exceeded rejections — tracked separately from ordinary uncompleted-reassembly timeouts, which
+  are consistent with benign loss) and feed an anomalous rate on it into the **same**
+  `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`) inference and response as §4.4.7's loop-return check
+  (rotate away from the implicated path + `HALT_ALERT` + fail-closed for `private`, never silent
+  continuation) — this is a second, independent input to that inference, not a new one, covering
+  the *insertion* half of active-path tampering the loop-return check alone cannot see. **The
+  anomaly threshold and counting window are new §16.3 parameters, reported to the §16 owner
+  alongside the two cache caps above; not fixed in this text.**
 - Recovery of missing cells uses **one of** (sender's choice, capability-negotiated §10.2): **(i)
   per-cell SURB-ARQ** — the recipient returns, over a sender-supplied Single-Use Reply Block, a
   compact **still-missing-cell bitmap** for `id`, and the sender **re-onion-wraps and re-dispatches
@@ -695,6 +725,13 @@ mechanism that converts drop/delay/flooding attacks from **undetectable** to
   honest nodes whose loops then fail to return **detect** the flush (above). Cover admission is
   **rate-bounded per node** (§9.8) so cover itself cannot be turned into the flood. Loops thus both
   **raise the cost** of and **expose** flooding.
+- **A second, independent input: reassembly-failure anomaly rate (MUST, §4.4.1).** The loop-return
+  check above is built to catch *suppression* (drop/delay); it does not fire when a hostile exit
+  mix instead **injects** an extra, colliding-`frag_index` cell into a multi-cell MOTE, corrupting
+  reassembly without dropping a single loop. The **sliding-window reassembly-failure counter**
+  (§4.4.1's cache-cap rule) feeds the identical `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`)
+  inference and the same rotate + `HALT_ALERT` + fail-closed response as an anomalous loop-return
+  fraction — this is the detector's *insertion*-side counterpart, not a separate mechanism.
 
 ### 4.4.8 Entry guards, operator diversity & mix Sybil resistance (normative)
 

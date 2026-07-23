@@ -75,7 +75,63 @@ same bytes.** Two rules make this hold across independent implementations:
 2. **Total order on every tie.** The tiebreak for any "latest wins" decision is the **Hybrid Logical
    Clock** total order (§3), and where two ops carry the *identical* HLC the tiebreak descends to the
    **encoded-CBOR value bytes** (larger byte string wins) — so even "same HLC, different value" converges
-   byte-identically. No merge ever depends on wall-clock accuracy or on arrival order.
+   byte-identically. No merge ever depends on wall-clock accuracy or on arrival order. **"Larger" is pure
+   bytewise (lexicographic) comparison of the two encoded byte strings — never a length-first comparison**
+   (some canonical-CBOR profiles sort *map keys* by length-then-bytes; this is a value tiebreak, not a
+   map-key sort, and the two orders disagree on real inputs — e.g. the one-byte string `0x42` compares
+   **greater than** the two-byte string `0x41 0x41` under bytewise comparison, first byte deciding, but
+   **less than** it under a length-first rule, since the shorter string would sort first regardless of
+   content). Concretely: compare byte-by-byte from the start; the first differing byte decides; if one
+   string is a strict prefix of the other, the **shorter** (the prefix) is the lesser of the two, so the
+   longer wins only via that prefix case, never via length alone. Every place this document says a byte
+   string is "larger" (here, §4.4, §6.1.2's table) means exactly this comparison.
+
+### 2.3 The recurring defect class: a maximum is not a completeness cut (normative framing)
+
+Fourteen entries in §14 correct instances of **one** defect that has never, until now, been named as a
+single thing — which is exactly why it kept recurring under fourteen different disguises. Naming it here
+is not tidiness: every future correction to this document MUST be checked against it before being accepted
+as fixed, because a patch that repairs one instance without recognizing the class reliably leaves the next
+instance in place.
+
+**The defect.** Several fields in this document answer the question *"has this replica seen everything up
+to some point?"* — a **pull** predicate deciding what to ship, a **snapshot's** `covers` deciding what a
+fast-joiner may assume it has, a **stability cut** deciding what is safe to garbage-collect, an
+**admission** check deciding whether an author was a member *at* some point. Each of these needs a
+**completeness watermark**: a value `w` such that the replica genuinely holds *every* relevant item at or
+below `w`, with **no gaps**. What this document repeatedly reached for instead — because it is cheaper to
+compute and looks like the same thing — is a **maximum**: the greatest value the replica has ever seen or
+applied, tracked with no memory of whether anything *below* it is missing. A maximum and a completeness
+watermark **coincide only when delivery has no gaps**, and this document's own model explicitly permits
+gaps (§4.6 flags "partition, sparse backfill, snapshot fast-join, range-Merkle drill-down that has not yet
+completed" as ordinary, non-error conditions). Wherever a maximum is used *as if* it were a watermark, a
+gap below it becomes **permanently invisible**: nothing downstream ever again asks for the missing item,
+because the maximum already reads as "caught up." The failure is silent by construction — every signature
+verifies, every merge is a correct join, and the replicas agree on a `root` that is quietly missing
+something all of them are unaware of.
+
+**Where this has already been found, under fourteen different names.** C-01 was this defect in the
+PN-counter merge (a per-author `max` of derived totals, standing in for the true per-op completeness the
+join needed). C-05/C-07 were this defect in the truncation floor (a bare HLC point compared against a
+per-author vector as though the two answered the same question). C-12/C-13 were this defect in retention
+(a list of what to keep, drawn from what the *maximum* observable-state schema (§6.1.1) projects, rather
+than from what completeness actually requires). None of the corresponding entries said so at the time,
+which is why the fifteenth instance (§14 C-15 onward, below) had to be found by inspection rather than by
+checking a rule that already existed.
+
+**The standing rule.** Anywhere this document (or a future correction to it) uses a single "latest" or
+"maximum" value to decide what a peer may safely assume it already has — for a pull, a `covers` vector, a
+stability cut, an admission decision, or anything not yet invented — the author MUST ask: *can this value
+be reached while a gap remains below it?* If yes, the field is a maximum, not a watermark, and any code
+path that treats it as "I have everything up to here" is this defect. The fix is never to forbid gaps
+(this document explicitly wants to tolerate them, per §2.2 and §4.6) — it is to give the watermark a name
+distinct from the maximum, so the two cannot be silently conflated. §5.1 does this for the version vector
+(`contiguous_below` vs. `max_applied`, §14 C-15); §6.2 does it for the stability cut (the same
+`contiguous_below` value, minimized across authors and then across replicas, §14 C-22); §8 does it for
+admission (deciding against the membership history strictly below an op's own HLC, never against
+whatever the replica happens to hold at receipt, §14 C-20). A reader auditing a *new* correction to this
+document should treat "does the fix introduce, or repair, a maximum standing in for a watermark" as a
+checklist item, not a fresh question each time.
 
 ---
 
@@ -99,10 +155,38 @@ Hlc = {
   (`remote.wall == wall` and `remote.counter >= counter`), advance `wall`/`counter` past it, so a future
   local tick always sorts after every op already seen. This makes a backwards or fast wall clock unable
   to mint a stale-ordering timestamp.
-- **Skew bound (fail-closed).** An op whose `wall` is more than the profile skew window (§16-class value,
-  default **±120 s**, from §5.6 `HLC_SKEW_MS`) from the receiver's clock is rejected
-  (`ERR_SYNC_HLC_SKEW`, `0x0A05`). This bounds how far a malicious author can push ordering into the
-  future or past.
+- **Skew bound (fail-closed, one-sided — corrected, §14 C-17).** An op whose `wall` is **more than the
+  profile skew window** (§16-class value, default **120 s**, from §5.6 `HLC_SKEW_MS`) **ahead of** the
+  receiver's clock is rejected (`ERR_SYNC_HLC_SKEW`, `0x0A05`). This is deliberately **one-sided**: it
+  bounds how far a malicious or misconfigured author can push ordering **into the future** — the tiebreak
+  budget an author would otherwise spend to win every LWW race, and the only direction a fabricated `wall`
+  can attack (§3's total order and §16.10). **A past-dated `wall`, however old, is never grounds for
+  rejection on skew grounds alone.** The grounding this bound is drawn from (§5.6.4: "MUST NOT be accepted
+  more than the clock-skew tolerance ahead of the receiver's clock") is itself one-sided, and a
+  two-sided reading — rejecting an op whose `wall` is far in the **past** — directly contradicts §2.2's
+  "no merge ever depends on wall-clock accuracy or on arrival order": an ordinary terminal that was offline
+  for longer than the skew window, then reconnects and pushes the ops it minted while offline, produces
+  exactly such a past-dated `wall` on every one of them, and a two-sided check would refuse the entire
+  backlog of legitimate offline edits this document otherwise goes out of its way to support (§1, §11
+  item 1). A deployment wanting to bound how *stale* an op may be accepted (a distinct, policy-level
+  concern — data retention, not clock forgery) MUST implement it as a separate, disclosed check, never by
+  widening this one.
+- **Counter overflow is a spill, not a wrap (fail-safe, MUST — corrected, §14 C-25).** Both `Tick` (local
+  mint, above) and `Observe` (remote fold, above) MUST treat `counter` reaching its `u32` maximum
+  (`0xFFFFFFFF`) as an overflow: the **next** increment MUST instead advance `wall` by one and reset
+  `counter` to `0` — the same branch the ordinary `now > wall` case already takes. This holds whether the
+  overflow is produced by a **local** tick or by `Observe` folding a **remote** HLC forward: a remote op
+  carrying `counter = 0xFFFFFFFF` MUST cause the receiver's own next tick to land at `(wall+1, 0)`, never
+  at `(wall, 0)`. The latter is a **wrap**, not a spill, and it sorts **before** the very op that caused
+  it in the §3 total order — retroactively inverting causal order (an LWW tie-break, a §4.8 replay
+  position, a version-vector advancement) for as long as any op minted at the wrapped position survives.
+  Because `Observe` folds a peer's counter forward **unconditionally**, this is **remotely triggerable** —
+  any peer, accidentally or by deliberately probing for an ordering-inversion attack, can send
+  `counter = 0xFFFFFFFF` — and MUST NOT be left to each implementation's integer-overflow behaviour: an
+  engine whose counter silently wraps is non-conformant. (The Grounding note below states the same spill
+  for the non-normative *string* encoding as a SHOULD; this bullet is the binding rule for the normative
+  CBOR form itself, and is a MUST for exactly the reason the string-form note is only a SHOULD there but
+  not here — this is the wire type every implementation actually verifies signatures and orders against.)
 
 > **Grounding.** The flowstock reference encodes the HLC as a lexically-sortable string
 > `"{ms:013d}-{counter:04x}-{author}"`; the §5.6 reference encodes it as an integer-keyed CBOR map.
@@ -368,6 +452,42 @@ this sub-token is how a node makes its own half of that statement checkable inst
 | `6` | `seq-insert` | RGA sequence | `target`, `value`=atom, `ref`=left origin, `hlc`=element id |
 | `7` | `seq-remove` | RGA sequence | `target`, `ref`=element to tombstone |
 | `8` | `tree-move` | movable tree | `target`=node, `ref`=new parent, `field`=ordering key, `hlc` |
+| `9` | `counter-aggregate` | PN-counter (compacted, §4.6) | `target`, `field`, `subject`=the summarized author, `value`=`[P_cut,N_cut]`, `hlc`=the cut point |
+
+`SyncOp` gains one field, used only by `kind 9`:
+
+```cddl
+SyncOp gains:
+? 9 => ik-pub,   ; subject   (kind 9 only) the author whose below-cut deltas this aggregate summarizes
+```
+
+### 4.2.1 Unknown `kind` (normative — §14 C-28)
+
+No rule previously stated what a replica does with a `SyncOp` whose `kind` is not one of the values above
+— the exact §14 C-08 shape (a value outside the currently-understood range) with no vector or sub-token to
+manage it, so a mixed deployment's behaviour on an unrecognized `kind` was unspecified rather than merely
+undesirable.
+
+- **The rule.** A `SyncOp` whose `kind` is not a value in the table above (currently `1`–`9`) **MUST** be
+  rejected as `ERR_SYNC_OP_INVALID` (`0x0A03`) at the point it would be applied. It MUST NOT be silently
+  ignored, MUST NOT be applied on a best-effort guess at its shape, and MUST NOT be merely relayed onward
+  without being counted as rejected locally — a relay's job is bytes (§5.2's transitive-relay property),
+  never CRDT semantics, and anything reaching the apply layer with an unrecognized `kind` is refused there,
+  uniformly, by every conformant engine.
+- **This is still a divergence hazard, and a disclosed one.** A uniform rejection rule does not make a
+  mixed deployment safe by itself: an engine on an older profile of this document that does not yet
+  recognize `kind 9` (or a future `kind 10`) refuses an op a newer engine accepts and applies, and the two
+  replicas' observable states differ with an error raised on only one side — precisely the §4.1.2
+  divergence-by-rejection shape C-08 named, not a new one.
+- **The missing handle, closed the same way C-08's was (§4.1.2).** A node whose engine's apply layer
+  recognizes `kind` values through some maximum MAY advertise that fact as an additional `sync-1`
+  sub-token, `sync-1/kind-max-N` (e.g. `sync-1/kind-max-9`), governed by **exactly** the §4.1.2 rules:
+  carried in the capability token and/or `GET /sync/vector`'s `profiles` member; **MUST NOT** be used to
+  refuse, downgrade, or gate a peer that does not advertise it (absence means "unknown," never "kind ≤
+  8 only"); and its **one** conformant use is a producer deciding whether it is yet safe to mint an op of a
+  newly-added `kind`. This gives the same "unactionable advice" gap C-13(b) closed for `ext-value`
+  profiles an equivalent handle for `kind`, rather than leaving a second axis of profile drift with no way
+  to ask a peer about it.
 
 ### 4.3 OR-Set — add-wins observed-remove (grounded in §5.6)
 
@@ -395,10 +515,18 @@ For deletions that must **not** be silently resurrected by a concurrent benign e
 expiries, policy removals), the death dimension **dominates** the OR-Set.
 
 - **State.** Per object: an LWW register over `DeathState ∈ {Live, Deleted(class)}`, where
-  `Deleted > Live` in the state order and `class ∈ {redact, expires, sensitive}` (an ordered enum).
+  `Deleted > Live` in the state order and `class ∈ {redact, expires, sensitive}`.
 - **`death` (kind 4)** writes `Deleted(class)` (field = the class token) or `Live` (field = `"live"`).
   **Winner = greater HLC; at an exact HLC tie, greater `DeathState` wins ⇒ `Deleted` beats `Live`
   (remove-wins, fail-safe toward deletion).**
+- **`class` carries no semantic order (clarification — §14 C-29).** "An ordered enum" in earlier text
+  described only the `Live < Deleted` relation above, not an ordering *among* classes — no rule anywhere
+  ranks `redact` against `expires` against `sensitive`, and none is needed for the domination rule, which
+  cares only whether the state is `Deleted` at all. The one place a class order could matter — an **exact
+  HLC tie** between two `Deleted` certificates of *different* classes for the same object — is resolved
+  the same way any other exact tie is: the §2.2 general tiebreak, applied here to the encoded `field`
+  (§4.1) since `death` carries its class there rather than in `value`. No class-comparison table exists or
+  is required; `class` is a token the D3 invariant is indifferent to.
 - **Domination (the D3 invariant).** An object is observably present iff **`!deaths.is_deleted(target)`
   AND the OR-Set says present.** A bare `set-add` never writes the death dimension, so it can **never**
   outrank a death certificate — even with a numerically greater wall clock. Only an explicit `Live`
@@ -421,6 +549,16 @@ No §5.6 analogue exists; specified here for products that count (inventory on-h
   advances `P[author]` by `d` and a negative delta `−d` advances `N[author]` by `d`. An author may only
   advance its **own** entry (a signed op from author `a` MUST NOT mutate `D[b]`/`P[b]`/`N[b]`), enforced
   by the op signature — `ERR_SYNC_COUNTER_FOREIGN` (`0x0A06`) otherwise.
+  - **Note on `0x0A06`'s reachability.** A `kind 5` op's target entry is `D[hlc.author]` — literally the
+    signing author, with no separate field naming a different subject — so a validly-signed,
+    wire-well-formed `kind 5` op can never legally reference another author's entry: `0x0A06` guards a
+    case the wire format cannot express through §4.1's ordinary signature path, not a gap left open in
+    it. It remains specified for an implementation whose internal representation tracks a delta's owner
+    via a field distinct from the verified signer (e.g. threading `author` separately from the
+    `COSE_Sign1` check as a refactor convenience) — such an implementation MUST assert the two are equal
+    before applying and MUST use this code if they are not. `SYNC-PN-02`'s own note that its construction
+    is "declarative… not spec-given" is this fact surfacing in the conformance suite; §10's table entry
+    is correct as written and this bullet is why.
 - **Value.** `Σ_a P[a] − Σ_a N[a]` — equivalently, `Σ_a Σ_{(id,d) ∈ D[a]} d`.
 - **Merge (normative — `SYNC-PN-01`).** Per author, the **union of the `op-id`-keyed delta sets**:
   `(D₁ ⊔ D₂)[a] = D₁[a] ∪ D₂[a]`. Because an `op-id` is the content address of the whole `SyncOp`
@@ -453,9 +591,52 @@ No §5.6 analogue exists; specified here for products that count (inventory on-h
   deltas, which is exactly the completeness condition under which the `max` reading is sound; a replica
   MAY therefore fold all of an author's below-cut deltas into a single retained entry — an aggregate
   `(P_cut[a], N_cut[a])` pair keyed by the cut HLC — and join those aggregates by **max** while joining
-  the above-cut deltas by union. Aggregates at *different* cuts join by max soundly because each is a
-  prefix sum of the same op order. Compaction thus never changes the observable total (§6.2), and no
-  replica may fold a delta it cannot prove is below the cut (fail-closed: no cut ⇒ no folding).
+  the above-cut deltas by union. Compaction never changes the observable total (§6.2), and no replica may
+  fold a delta it cannot prove is below the cut (fail-closed: no cut ⇒ no folding).
+  - **Merging an aggregate correctly (normative — corrects a double-count, §14 C-23).** "Join aggregates
+    by max, join above-cut deltas by union" is underspecified in exactly the way that matters: **above
+    which side's cut?** If each side unions the loose deltas *it* considers above *its own* cut, a delta
+    that is above one side's (lower) cut but at-or-below the *other* side's (higher, winning) cut is
+    already folded into the winning aggregate **and** re-added as a loose entry — counted twice.
+    **Worked example.** Author `a` produces exactly two deltas ever, `h1: +12` and `h2: +3` (true
+    total `P[a] = 15`). Side X compacted only through `h1` (`aggregate_X = 12` at cut `h1`) and still
+    holds `h2`'s `+3` as a loose entry (it is, from X's own point of view, "above X's cut"). Side Y
+    compacted through `h2` (`aggregate_Y = 15` at cut `h2`, no loose entries — `h2` is *at* Y's cut, not
+    above it). Merging X and Y by the naive rule: `max(12, 15) = 15` (correct so far, Y's aggregate
+    already **is** the true total) **unioned with** X's loose `{h2: +3}` (since X still calls it "above
+    its cut") **= 18** — three more than the true `15`, because `h2`'s `+3` is now counted once inside
+    Y's aggregate and once again as X's loose entry.
+  - **The correct procedure**, per author `a`, for any merge that involves at least one aggregate:
+    1. Let `C = max` of every cut a side attributes to `a` (the cut of the **winning**, highest-cut
+       aggregate among the sides being merged); adopt *that* aggregate as `(P_cut[a], N_cut[a])`. This is
+       the `max`-of-aggregates step, sound because aggregates are prefix sums and a higher cut's
+       aggregate strictly dominates a lower one's.
+    2. **Discard, from every side's loose `(op-id, delta)` entries for `a`, any entry whose `hlc ≤ C`** —
+       these are exactly what the winning aggregate at step 1 already accounts for. This is the step the
+       earlier text omitted, and the worked example is what omitting it costs.
+    3. Union the **surviving** (`hlc > C`) loose entries across sides, keyed by `op-id`, as in the
+       ordinary (non-aggregate) merge.
+    4. `P[a] = P_cut[a] + Σ{ d : (id,d) ∈ union, d ≥ 0 }`, `N[a]` symmetric. Re-running the worked example
+       with this procedure: `C = h2`; X's loose `{h2: +3}` has `hlc ≤ C` and is discarded; the union is
+       empty; total `= 15`. Correct.
+    5. This remains a join: step 1's `max` is idempotent/associative/commutative over cuts, step 2's
+       filter is a pure function of the winning `C` (not of merge order), and step 3 is the ordinary
+       union — so the composed procedure is still commutative, associative, and idempotent regardless of
+       merge grouping (§4.6's own associativity requirement, above).
+  - **An aggregate is not a `SyncOp` as this document otherwise defines one, and §6.2 licensed shipping
+    it in a `SnapshotBody` without saying what it would look like on the wire (gap closed, §14 C-23).**
+    `(P_cut[a], N_cut[a])` has no `kind`, no per-op signature, and names an author (`a`) distinct from
+    whoever computed it — it cannot be serialized as a member of `SnapshotBody = [ * (COSE_Sign1(SyncOp)
+    / SyncFrame) ]` (§6.1.2) as originally described. **`kind 9`, `counter-aggregate`** (§4.2) is the
+    signed form: `target`, `field` name the counter as usual; **`subject`** (the new envelope field,
+    §4.2) names the summarized author `a`; `value = [P_cut, N_cut]` (an `ext-value` array of two
+    non-negative integers, §4.1); `hlc` is the cut point, whose **`author` is the compacting replica
+    doing the folding — not `subject`.** This is a deliberate, disclosed asymmetry: every other kind's
+    signer *is* the party whose state the op changes, and its signature is therefore proof the change is
+    authentic; a `counter-aggregate`'s signer only **attests** to a summary of a *different* party's
+    history. §11 records the resulting honest limit. The op is otherwise ordinary: admitted-author and
+    signature checks (§8/§9) apply to its signer as for any op, and it is subject to §4.2.1's unknown-kind
+    handling on an engine that predates it.
 
 > **Alternative for immutable ledgers.** A product whose counter is a sum of immutable facts (flowstock's
 > `stock_movements`, summed at read time) MAY instead model each movement as a `set-add` of an immutable
@@ -592,14 +773,34 @@ same three-or-four operations bind equally to a mesh stream (§4.5).
 
 ### 5.1 The version vector
 
-A **version vector** is a per-author high-water-mark of applied HLCs, over the subscribed namespaces:
+A **version vector** is a per-author watermark over the subscribed namespaces — but a replica MUST keep
+two distinct per-author values, because §4.6 blesses gapped delivery (below) and they diverge whenever a
+gap is open:
+
+- **`contiguous_below[a]`** — the greatest HLC `h` such that the replica holds **every** op author `a`
+  produced at or below `h`, with no gap. This answers "have I seen everything up to some point," and it
+  is the **only** one of the two permitted on the wire wherever this document requires a completeness
+  watermark: a `pull` vector (§5.2) and `Snapshot.covers` (§6.1).
+- **`max_applied[a]`** — the greatest HLC applied from `a` at all, gap or no gap. §4.6 explicitly blesses
+  gapped, non-prefix delivery of one author's ops ("partition, sparse backfill, snapshot fast-join,
+  range-Merkle drill-down that has not yet completed" are its own words for it), so `max_applied[a]` can
+  sit strictly above `contiguous_below[a]` while a gap remains below it — e.g. a replica that has applied
+  `A@(W,9)` but not `A@(W,1)`. It is a **display/diagnostics value only** ("how current is this replica's
+  view of `a`") and has **no wire representation** in this document; see §2.3 for why conflating the two
+  is one defect, not two.
 
 ```cddl
-VersionVector = { * ik-pub => Hlc }   ; author => the max HLC applied from that author
+VersionVector = { * ik-pub => Hlc }   ; author => contiguous_below[author]: the greatest HLC h such that
+                                       ; the replica holds every op from author at-or-below h (NO gap
+                                       ; below h). NEVER max_applied — see the two definitions above.
 ```
 
-Grounded in flowstock's `SELECT author, MAX(hlc) GROUP BY author`. A vector is not causal-delivery state;
-it is a compact summary of "what I already have," used to compute the difference to ship.
+Grounded in flowstock's `SELECT author, MAX(hlc) GROUP BY author` — sound as the grounding for
+`contiguous_below` specifically because flowstock has no gapped-delivery path, so its `MAX(hlc)` already
+**is** a contiguity watermark there; this document adds delivery modes (§4.6) where a bare maximum stops
+being one, which is why the two names exist here even though flowstock only ever needed one. A vector is
+not causal-delivery state; it is a compact summary of "what I already have, with nothing missing beneath
+it," used to compute the difference to ship — never a compact summary of "the largest thing I've seen."
 
 **Encoding (normative).** The keys are the authors' raw `ik-pub` **byte strings** — never an ordinal, an
 index, or any other stand-in — and the map is deterministic CBOR (§2.2): definite length, entries sorted
@@ -607,7 +808,17 @@ index, or any other stand-in — and the map is deterministic CBOR (§2.2): defi
 key). §2.2's "integer-keyed maps sorted by encoded key" names the common case (`SyncOp`, `Hlc`,
 `Snapshot`, COSE headers); the sorting rule is the general RFC 8949 §4.2.1 one and applies to this
 `bstr`-keyed map identically. An author absent from the vector means "I hold nothing from this author,"
-never "this author has nothing" (§7, absence is not authority).
+never "this author has nothing" (§7, absence is not authority); equivalently, an absent author's
+`contiguous_below` is the empty prefix, not "unknown."
+
+**`max_applied` has no wire form, deliberately (normative — §14 C-15).** A replica MAY track
+`max_applied` internally and surface it on a local status/diagnostics surface, but MUST NOT carry it in a
+`pull` request, a `GET /sync/vector` response's `vector` member, or `Snapshot.covers` (§6.1) — every one
+of those is a completeness watermark by contract, and giving `max_applied` any wire slot at all recreates
+the ambiguity this section exists to remove, because the next implementation under time pressure reaches
+for whichever per-author maximum it already has in memory. Where this document says "the version vector"
+anywhere past this point — the `pull` vector, `GET /sync/vector`'s `vector`, `Snapshot.covers` — it means
+`contiguous_below` and nothing else.
 
 ### 5.2 Endpoints (baseline, grounded in flowstock)
 
@@ -629,7 +840,14 @@ GET  /sync/state/<root>          → det_cbor(SnapshotBody)                     
   HLC first, up to a batch limit, every op it holds whose `hlc` exceeds the caller's vector entry for that
   op's author (or whose author is absent from the vector). (flowstock: `OpsAfter(vector, batch)`.) If the
   caller's vector is **below the responder's §6.2 truncation floor**, the responder answers `fast-join`
-  instead of `ops` — never a partial suffix (§5.2.1, a MUST).
+  instead of `ops` — never a partial suffix (§5.2.1, a MUST). **Every entry in the vector this endpoint
+  sends or reads is `contiguous_below`, never `max_applied`** (§5.1, §14 C-15): the predicate ships
+  everything *strictly greater than* the caller's entry, so an entry that is a bare maximum with a gap
+  beneath it hides that gap from this exact comparison — the op below the gap never again compares as
+  "greater than" anything the caller advertises, and it is unreachable from every peer thereafter, by any
+  number of rounds. A responder MUST NOT accept a `max_applied`-style vector as a substitute and answer
+  from it; there is no way to detect the substitution from the bytes alone, which is why §5.1 forbids
+  producing one in the first place.
 - **`GET /sync/state/<root>`** returns the `det_cbor(SnapshotBody)` (§6.1.2) — the compacted **op set**
   whose fold reproduces the observable state committed by `<root>`. It is a content-**keyed** fetch:
   immutable and cacheable/pinnable by any intermediary without trusting it, the same posture as a §22
@@ -645,10 +863,6 @@ GET  /sync/state/<root>          → det_cbor(SnapshotBody)                     
     already the trust posture of this endpoint — it carries **no** authority of its own, and bytes are
     only adopted when they reproduce the `root` of a snapshot that verified under §6.1 — and it costs
     the fetcher a discarded body, never a corrupted state.
-  - The body is **not** required to be byte-stable across producers: two replicas at the same `covers`
-    MUST agree on `root`, but MAY serialize different (equally valid) bodies that fold to it — e.g.
-    choosing different uncancelled add-tags for a present OR-Set element. Cache keys are therefore
-    correct-but-non-unique, which is sound because the fetcher validates by fold.
 - **`POST /sync/ops`** pushes a batch; the responder applies each op that is new (dedup by op content
   hash / `hlc`), verifying signature (§4.1) and CRDT validity (§4) before apply, and returns the count of
   **newly** applied ops. Apply is idempotent: a re-pushed op is a no-op (matching flowstock's
@@ -899,7 +1113,8 @@ Snapshot = {
   1 => u8,               ; v = 0
   2 => suite,
   3 => tstr,             ; ns          the namespace this snapshot covers
-  4 => VersionVector,    ; covers      the exact set of ops folded into `root` (per-author max HLC)
+  4 => VersionVector,    ; covers      per-author contiguous_below (§5.1) — NOT max_applied — of every
+                         ;             op folded into `root`
   5 => hash,             ; root        DS-tagged hash of the canonical observable state (§6.1.1)
   6 => ts,
   7 => ik-pub,           ; signer      author key; DeviceCert chains to an admitted IK (§9)
@@ -917,6 +1132,15 @@ Snapshot = {
   DS-tags, one for the state-root hash preimage and one for the signature preimage, so the two can never
   be confused. Two replicas at the same `covers` vector **MUST** compute the same `root`; a mismatch is
   `ERR_SYNC_SNAPSHOT_ROOT_MISMATCH` (`0x0A09`) and is evidence of divergence (HALT_ALERT).
+- **`covers` is `contiguous_below`, never `max_applied` (normative — §14 C-15).** A producer that folds a
+  gapped author prefix into `root` and then reports its own bare maximum HLC for that author as `covers`
+  would **launder the gap network-wide**: every replica that fast-joins from the snapshot adopts `covers`
+  as its own vector (below), and none of them ever again asks for the missing op — the pull predicate
+  (§5.2) only ships ops strictly greater than a vector entry, so the gap is now invisible to every
+  fast-joiner at once, not merely to the one replica that first opened it. `covers[a]` MUST therefore be
+  `a`'s `contiguous_below`, i.e. the producer MUST NOT include, and MUST NOT have folded into `root`, any
+  op from `a` above a gap in `a`'s own delivery — a producer holding `A@(W,9)` without `A@(W,1)` reports
+  `covers[A] = (W,0)` (or omits `A`), not `(W,9)`, until `(W,1)` arrives and closes the prefix.
 - **Fast join (the point).** A joining replica fetches a `Snapshot`, **ingests its body — a compacted set
   of ops (§6.1.2), not a state document** — sets its local vector to `covers`, and then pulls **only the
   ops after `covers`** (§5.2). It never replays the pre-snapshot history. Because `root` is recomputable,
@@ -1092,10 +1316,20 @@ advanced past them**, so no future op can depend on them:
     the root still matches at snapshot time and the two replicas diverge only at the next certificate.
     (Same shape as the LWW row of §6.1.2's table: an op genuinely above `covers` for its own author can
     still sit **below** an incumbent in the §3 cross-author total order.)
-  - at least one uncancelled `set-add` per present OR-Set element (a tag cancelled by a tombstone is
-    droppable *with* its tombstone, exactly as the first compaction bullet already says); retaining
-    *every* uncancelled add is the simpler superset and folds identically, since presence is add-wins
-    over tags;
+  - **every** uncancelled `set-add` per present OR-Set element — not merely one (corrected from "at
+    least one," §14 C-16). A tag cancelled by a tombstone is still droppable *with* its tombstone,
+    exactly as the first compaction bullet already says, but every tag that is **not** cancelled MUST
+    survive. "Retain one, it folds identically" is true only **at snapshot time**: §4.3 presence is
+    *some* uncancelled tag existing, so a body holding any single uncancelled tag reproduces the same
+    `ObservableState`, and hence the same `root`, as a body holding all of them. It stops being true one
+    op later, because a `set-remove` cancels **specific** add-tags (§4.3), not "presence" in the
+    abstract — a `set-remove` that a full replayer would apply against a tag the thinned body already
+    discarded cancels nothing there, leaving the element present in one replica's post-`covers` state and
+    absent in another's, permanently, with no signature failure and no `root` mismatch to catch it (the
+    retained-tag set is invisible in §6.1.1's projection, so `root` cannot police a violation of this
+    rule the way it polices most others). This is why the requirement is a **MUST**, not a MAY: a body
+    MUST retain every uncancelled add-tag of every present element, and no producer may substitute a
+    subset on the reasoning that the subset folds to the same `root` today;
   - the winning `tree-move` per node still in the tree;
   - every live RGA atom's `seq-insert`, **plus, transitively, the `seq-insert` of any tombstoned atom
     that is the left-origin of a retained atom — and that atom's own `seq-remove` with it.** This is the
@@ -1412,6 +1646,10 @@ and how it was found.
 | **C-12** | **§6.2's body-retention list was too narrow in two places the document already entailed.** (a) It required "the winning `death` per **deleted** object". A winning **`Live`** cell must be retained too: it is live history, not superseded history, and it is what a later *lower*-HLC certificate must lose to. Drop it and a post-`covers` `death` **below** the retained `Live` write deletes an object a full replayer keeps alive, because §4.5's comparison has nothing left to be greater than. The failure is silent by construction — §6.1.1's projection lists only *deleted* objects, so a `Live` cell and no cell project identically, the root matches at snapshot time, and the divergence surfaces only at the next certificate. (b) It required retaining a tombstoned RGA atom's **`seq-insert`** when that atom is a live atom's left-origin, but not the atom's **`seq-remove`**. The tombstone *is* that op: retain the insert without it and the fold shows the atom **live**, an extra atom appears in the `rga` section, and the recomputed root differs from `Snapshot.root`. §6.2 now states both, and adds the mechanical discharge that entails all of them — build the body, fold it, recompute `root`, and refuse the truncation unless it matches, executed while the dropped ops are still enumerable. | **NORMATIVE — a widened MUST-retain set.** A truncating replica whose retention set omits either case publishes a body that either fails its own fold-then-recompute check or corrupts every fast-joiner. A replica that never truncates is unaffected. Both cases are *entailed* by §6.1.2's existing verification rule, so this tightens the statement of an obligation rather than adding one. | The same implementation, writing §6.2's retention predicate against §6.1.2's fold check: the check rejected bodies its own reading of §6.2's list had produced. The list was the incomplete side. |
 | **C-13** | **Two gaps around what §6.2 and §4.1 leave unsaid: PN-counter retention, and a way to ask a peer its `ext-value` profile.** (a) **§6.2 never mentioned counter ops at all** — an omission that reads as permission to drop them — even though §6.1.2's own table names the `op-id`-keyed deltas as what makes §4.6 idempotent. **No counter delta is ever superseded**, so every `counter` op is retained; keeping the *total* instead is shipping the projection, which C-09 forbids for the reason that table gives (a below-`covers` op arriving later is double-counted). The single licensed reduction is §4.6's below-cut aggregate, where completeness is proven, fail-closed on no cut. (b) **C-08's mixed-deployment warning had no mechanism behind it.** It says a product SHOULD wait until every engine is updated, but the document defined no sub-token, header or field by which one replica could *ask* another which profile it runs (§4.1's `sync-1` sub-tokens cover only the frame-signing choice), so the advice could not be evaluated. New §4.1.2 freezes `sync-1/ext-value-2`, carried in the `sync-1` capability token and/or as an OPTIONAL `profiles` member (key `4`) of the `GET /sync/vector` response — and specifies it as **observational, never a gate**: absence means "unknown", never "profile 1"; a node MUST NOT refuse, downgrade, or narrow its own validation on it; its one conformant use is a *producer* deciding whether to mint nested values. That strength is deliberate on two grounds — refusing profile-1 peers would break every deployment that has no nested values at all (most of them), and ops relay transitively, so observing every direct peer still proves nothing about a replica two hops out. The signal bounds the risk; the deployment-wide statement discharges it. | **(a) NORMATIVE — a widened MUST-retain set** on the same footing as C-12. **(b) NORMATIVE but additive:** a new advertisable sub-token and one new OPTIONAL response member; no existing key or byte changes, nothing is required to advertise, and nothing may be refused for not advertising. | (a) The same implementation, which retained counter ops because the fold required it and recorded that §6.2's list did not say so. (b) The same implementation, which shipped `EXT_VALUE_PROFILE`/`sync-1/ext-value-2` as explicitly **local conventions** and said so in its own documentation rather than inventing a wire rule — the correct thing to do, and the reason the gap was legible enough to close here. |
 | **C-14** | **The empty map `{}` was outside the `ext-value` boundary as specified, and the depth ceiling was not a number.** (a) `0xa0` encodes an empty map **regardless of key type**, and the empty `{ * tstr => ext-value }` map is a legal `ext-value` — so a validator that rejects "maps whose key type it cannot confirm" (the natural shape of a validator written to reject integer-keyed maps) refuses a legal value, and refuses it *asymmetrically* across a deployment. The ambiguity is real but **vacuous**: no entries, hence nothing that could be smuggled through them. `0xa0` MUST be accepted as the empty text-keyed map; the empty array `0x80` likewise; a map with **any** entry has a determinable key type and the integer-keyed case is still rejected, recursively. `SYNC-VAL-01` gains both cases. (b) §4.1 said only that an implementation "MUST apply its **ordinary** deterministic-CBOR nesting-depth ceiling", which is not a ceiling: a per-implementation number lets one encoder mint a value a second decoder refuses — divergence by rejection again, with no error at the minting end. The ceiling is now **64** container levels, a MUST, matching the ceiling DMTAP's deterministic-CBOR decoder applies to every other object, checked **before** recursing, applying to **all** sync decoding (ops, `PullResponse`, `SnapshotBody`, `fingerprint` requests) rather than to `value` alone. §11 gains the reason it is a security rule and not only an interop one: every sync object is decoded *before* it can be verified, so the decoder runs on attacker-chosen bytes on every path, and an unbounded recursive-descent parser is a stack-exhaustion DoS reachable by any peer that can connect. | **NORMATIVE.** (a) A widening: an implementation rejecting `0xa0` is non-conformant, and no previously-valid value becomes invalid. (b) A tightening in the sense that "whatever ceiling you had" is no longer conformant if it is not 64, and a decoder with **no** bound was never conformant but could previously claim it was. | (a) The C-08 implementation, whose parser accepted `0xa0` on the reasoning above and noted that `SYNC-VAL-01` did not cover the case either way. (b) The same implementation, which found its sync CBOR parser had **no nesting bound at all** — an unbounded-recursion hazard independent of C-08, capped at 64 to match `dmtap_core::cbor`. The document's word "ordinary" was doing work no implementation could see. |
+
+| **C-15** | **§5.1's version vector conflated `max_applied` (the largest HLC ever applied from an author) with the completeness watermark a `pull` predicate and `Snapshot.covers` actually need — the general defect §2.3 now names.** §4.6 explicitly blesses gapped, non-prefix delivery of one author's ops ("partition, sparse backfill, snapshot fast-join, range-Merkle drill-down that has not yet completed" are its own words), so a replica could hold `A@(W,9)` without `A@(W,1)` and still advertise `9` under the old per-author-`max` reading. §5.2's pull predicate ships only ops **strictly greater than** the caller's vector entry, so `A`'s op at `(W,1)` became **permanently unreachable** from every peer, by any number of sync rounds — a silent lost-op, not an error. Because §6.1's `Snapshot.covers` was the same bare maximum, publishing a snapshot **laundered the gap network-wide**: every fast-joining replica adopts `covers` as its own vector and none of them ever again asks for the missing op, the signature and root checks all pass, and the replicas agree on a `root` that is quietly missing inventory. `VersionVector` is now specified as `contiguous_below[a]` only — the greatest HLC below which the replica provably holds every op from `a`, no gaps — and this is the **only** value permitted in a `pull` vector or in `Snapshot.covers` (§5.1, §5.2, §6.1); the old semantics survive as `max_applied`, an explicitly display/diagnostics-only value with **no wire representation**, so it cannot be silently substituted back in. **Alternative considered and rejected: require per-author causal (strictly contiguous) delivery, buffering out-of-prefix ops the way §4.7 already buffers RGA origins.** That would also close the gap, but it is the larger change — every delivery path (fast-join, sparse backfill, range-Merkle drill-down, §5.3) would need a reorder-buffer and an eviction policy, not just the two read sites of a vector — and it forecloses the sparse-backfill and drill-down modes §4.6 and §5.3 treat as ordinary, non-error operation; it also does not by itself fix `Snapshot.covers`, which launders the gap independent of how carefully an individual peer buffers its own delivery. Splitting the mark is the smaller change that is sufficient on its own. | **NORMATIVE — a redefinition of `VersionVector`'s semantics plus two new MUSTs.** An implementation whose `pull` vector or `Snapshot.covers` carries a bare per-author maximum computed without gap-tracking is non-conformant and can permanently strand any op that was ever delivered out of prefix order to it or to an upstream it snapshotted from; the failure is silent by construction (every signature verifies, every merge is a correct join). An implementation that has never delivered gapped — flowstock's own model, and any engine that already buffers to strict per-author causal order — already computes `contiguous_below` whenever it computes `max`, so it needs no code change, only the corrected reading of the field it already has. | Specification self-audit: reading §5.1's per-author `max` against §4.6's own gapped-delivery guarantee and §5.2's strictly-greater-than pull predicate together, per the §2.3 checklist this pass introduced — not by an implementation's test or property check. |
+
+| **C-16** | **§6.2's OR-Set body-retention rule licensed "at least one uncancelled `set-add`" per present element; §5.2 then blessed two producers choosing *different* ones as equally conformant. Both are wrong one op past snapshot time.** §4.3 presence is *some* uncancelled tag existing, so any single retained tag reproduces the same `ObservableState` and `root` **at the snapshot** — the reasoning §6.2 gave ("folds identically, since presence is add-wins over tags") is correct exactly there and nowhere else. It fails the instant a `set-remove` cancels **specific** tags (§4.3), not presence in the abstract: a replica that only ever observed the add now missing from a thinned body emits a legitimate `set-remove` citing the tag it *did* see; a full replayer (holding every tag) finds the *other* tag still uncancelled and keeps the element present, while a fast-joiner from the thinned body has no surviving tag and drops it. Worked failure: element `"widget"` added twice, tag T1 by A and T2 by B, both uncancelled at snapshot time; body **P** retains only T1, body **Q** retains only T2; both fold to the identical `ObservableState` and `root`, both pass every check. A replica that only saw A's add later sends `set-remove("widget", observed=[T1])` — conformant under §4.3. Full replayer: T1 cancelled, T2 survives ⇒ present. Fast-joiner from P: no surviving tag ⇒ absent. Fast-joiner from Q ⇒ present. Three replicas, three individually-verified op sets, two permanently different observable states, and no signature or `root` check ever flags it, because the retained-tag set is invisible in §6.1.1's projection — this is the same class §2.3 names and the same shape as C-10 (a spec-encouraged optimisation that silently deletes converged data), found here in retention rather than in primitive choice. §6.2 now requires retaining **every** uncancelled add-tag of every present element, not "at least one"; §5.2's blessing of non-unique snapshot bodies (the "MAY serialize different (equally valid) bodies … e.g. choosing different uncancelled add-tags" bullet) is deleted outright rather than reworded, since the case it was written to license is exactly the one that loses data. | **NORMATIVE — a MAY-retain tightened to a MUST-retain-every, and a removed blessing.** A truncating replica that retains only one uncancelled add-tag per present OR-Set element is now non-conformant and can silently strand or resurrect elements for a peer whose subsequent `set-remove` cites a different tag than the one it kept; the failure is undetectable by `root` comparison at the time it is introduced. An implementation that already retains every uncancelled tag (the "simpler superset" the old text offered as an equally-valid alternative) needs no change — this correction removes the cheaper, unsound option, not the sound one. | Found by adversarial specification audit — reading §6.2's retention list against §4.3's tag-specific (not presence-specific) cancellation rule and §5.2's non-uniqueness blessing together; not surfaced by an implementation or a conformance vector. |
 
 **Standing rule.** A defect between this document and a conformance vector is resolved by deciding
 **which side is right on the merits** and correcting the other **in the open** (the §10 discipline: a

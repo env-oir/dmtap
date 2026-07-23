@@ -2,7 +2,7 @@
 
 DMTAP-PUB (§22) gives an identity an append-only, signed **author feed** any node may serve, and
 any reader may pull, without trusting the server. What it does not give is a **protocol object** for
-"I follow this feed" — following is a purely client-side act (§23.7's *workshop*), and a system that
+"I follow this feed" — following is a purely client-side act (§24.18.9's *workshop*), and a system that
 wants to notify machines, not humans scrolling a client, has nowhere to plug in. This appendix
 specifies **DMTAP-PUBSUB**, an additive extension of §22 that closes that gap with four things: a
 signed, revocable **`Subscription`** object; a **topic** dimension so one identity can run several
@@ -11,9 +11,13 @@ deliver/ack/retry machinery (§2.6) instead of inventing new reliability plumbin
 application of §9.9's fan-out governance to the resulting push traffic.
 
 DMTAP-PUBSUB is **opt-in, additive, and capability-negotiated (§10.2)**, exactly as DMTAP-PUB was
-(§22). It changes **no** existing wire object — not `PubAnnounce`, not `FeedEntry`, not `FeedHead`,
-not `Envelope`, not `Payload` — bumps no `Envelope.v` and no DNS `v=` anchor, and introduces no flag
-day. Everything below rides machinery that already exists: a message kind in the reserved range
+(§22). It reassigns **no** existing key in any existing wire object — not `PubAnnounce`, not
+`FeedEntry`, not `FeedHead`, not `Envelope`, not `Payload` — bumps no `Envelope.v` and no DNS `v=`
+anchor, and introduces no flag day. It adds exactly **one** field to an existing signed object:
+`FeedHead` key `64` (`topic`, §25.3.1), taken from the `≥ 64` range §18.1.2 reserves for precisely
+this purpose and carried **only** toward peers that have advertised `pubsub-1` (§25.8), so a peer
+that has not opted in never receives a byte it would have to reject. Everything else below rides
+machinery that already exists: a message kind in the reserved range
 (§2.3, already used once by `pub_announce`), a capability token (§10.2, §21.22), a handful of new
 error codes inside the `ERR_PUB_*` block DMTAP-PUB already owns (§21.24b), and the ordinary sealed
 `Envelope`/`Payload` path (§2.4, §18.3.5) for every new MOTE kind this appendix defines. A node that
@@ -52,12 +56,13 @@ to be a cryptographic group.
    already let anyone *pull*; this appendix adds a signed, expiring, revocable `Subscription`
    (§25.4) so "who is allowed to be pushed a hint for this feed" is auditable, not implicit in a
    client's local follow-list.
-2. **Topic addressing, at zero wire cost.** One identity, one feed was §22.4's structural
-   assumption (`FeedHead.pub` *is* the feed). §25.3 adds a topic dimension entirely at the
-   **serving/locator layer** — no field is added to `FeedHead`, `FeedEntry`, or `PubAnnounce` — so an
-   identity may run several independent, comparably-scoped feeds (a release feed, a chatter feed, a
-   security-advisory feed) without any change to the objects a §22-only peer already knows how to
-   verify.
+2. **Topic addressing, at one negotiated field.** One identity, one feed was §22.4's structural
+   assumption (`FeedHead.pub` *is* the feed). §25.3 adds a topic dimension so an identity may run
+   several independent, comparably-scoped feeds (a release feed, a chatter feed, a
+   security-advisory feed). The topic lives in the **locator** *and* in the **signed head** (key
+   `64`, §25.3.1): the locator is what a request names, the signed byte is what makes the answer
+   checkable. Nothing is added to `FeedEntry` or `PubAnnounce`, and a publisher's pre-existing
+   untopiced feed keeps its bytes exactly (§25.3.3).
 3. **Push, without inventing delivery.** New entries are pushed to subscribers as **ordinary
    MOTEs** through the existing sealed `Envelope`/`Payload` path (§2.4, §18.3.5), so §2.6's
    deliver/ack/retry gives **at-least-once delivery for free**. No new retry queue, no new ack
@@ -95,38 +100,98 @@ plaintext CBOR announcement, `announce_id` the derived content address, §22.3.1
 serving** (§22.5, plain-HTTPS feed/announce/manifest/chunk endpoints, extended additively in
 §25.3.2); and the ordinary sealed **MOTE** path this appendix newly puts to use for feeds (`Envelope`
 / `Payload`, §2, §18.3). Where this document says "the feed" or "the announce" without
-qualification, it means these §22 objects unchanged — consult §22 for their exact wire grammar. This
+qualification, it means these §22 objects — consult §22 for their exact wire grammar. This
 appendix introduces **three** new object types (`Subscription`, §25.4; `SubscriptionRevoke`, §25.5;
-`FeedHint`, §25.6.2) and **zero** changes to any existing one.
+`FeedHint`, §25.6.2) and exactly **one** capability-negotiated extension field on an existing one
+(`FeedHead` key `64`, §25.3.1); no existing key changes meaning, and no object outside `FeedHead`
+changes at all.
 
 ## 25.3 Topic addressing
 
-### 25.3.1 A locator dimension, not a wire field
+### 25.3.1 A locator dimension, bound into the signed head
 
 §22.4 assumed one identity, one feed: `FeedHead.pub` names *the* feed, and `feed_head(pub)` (§22.4.4)
-is a total function of `pub` alone. Adding a `topic` field to `FeedHead`/`FeedEntry`/`PubAnnounce`
-would violate the no-core-wire-changes constraint this appendix holds itself to, and — worse — would
-give every *existing* deployed §22 verifier an unknown key to choke on the moment a
-DMTAP-PUBSUB-unaware peer tried to decode a topic-bearing signed object (§18.1.2's fail-closed
-unknown-key rule on signed objects exists precisely to make that impossible to do safely without
-capability negotiation, §10.2).
-
-DMTAP-PUBSUB instead makes topic a **serving/locator-layer** partition: an identity that wants
-several independent streams simply maintains **several independent `FeedEntry`/`FeedHead` chains**
-under the **same** `pub`, each append-only and internally identical in shape to a §22 feed, and
-distinguishes them purely by **which locator serves which chain** — never by any byte inside the
-objects themselves. Nothing in a fetched `FeedHead` or `FeedEntry` reveals which topic it belongs to;
-that fact lives only in the request that reached it. This is exactly the same move §22 itself made
-for public vs. sealed manifests one layer down — bind the distinction into *how the object is
-addressed*, never into a flag a peer could misread (§22.2.3) — applied here to *which feed* rather
-than *which manifest type*.
-
-A publisher that runs multiple topics is, mechanically, running multiple independent instances of
+is a total function of `pub` alone. DMTAP-PUBSUB widens that to `(pub, topic)`: an identity that
+wants several independent streams maintains **several independent `FeedEntry`/`FeedHead` chains**
+under the **same** `pub`, each append-only and internally identical in shape to a §22 feed. A
+publisher that runs multiple topics is, mechanically, running multiple independent instances of
 §22.4's bookkeeping — separate `seq` counters, separate `prev` chains, separate signed heads — under
 one identity key, exactly as one person may keep several separate notebooks. `signer` MAY be the
-same operational key across every topic (there is no requirement to mint a per-topic delegate); a
-publisher choosing to publish two entries to two different topics is simply choosing which chain to
-append each `FeedEntry` to, an ordinary local decision with no wire signal.
+same operational key across every topic (there is no requirement to mint a per-topic delegate).
+
+Two things are needed to make that safe, and an earlier revision of this section supplied only the
+first: a **locator** saying which chain a request is for (§25.3.2), and a **signed byte** saying
+which chain a served head belongs to.
+
+**The topic is inside the signature (normative).** A `FeedHead` served for a non-empty topic carries
+the topic label in the reserved extension key `64`:
+
+```cddl
+; FeedHead (§22.4.1) as extended by DMTAP-PUBSUB. Keys 1-8 are §22's, unchanged in
+; number, type and meaning; only key 64 is added.
+FeedHead-pubsub = {
+  1 => u8, 2 => suite, 3 => ik-pub, 4 => u64, 5 => hash, 6 => ts, 7 => ik-pub, 8 => sig-val,
+  ? 64 => tstr,        ; topic   NFC UTF-8 topic label (§25.3.4); ABSENT iff topic = ""
+}
+```
+
+Key `64` sits in the **`≥ 64` range §18.1.2 reserves** for exactly this case — a structural extension
+of a *signed* object, added by a document other than the one that defined the object, and carried
+only toward peers that advertise the paired capability token (`pubsub-1`, §25.8; §21.22's
+signed-object `≥ 64` extension-field rule). Because it is an ordinary map key it is inside
+`det_cbor(FeedHead ∖ {8})`, so `FeedHead.sig` covers it and the `DMTAP-PUB-v0/feed` preimage
+(§22.4.1) binds the topic to the head exactly as it binds `pub`, `seq` and `tip`.
+
+> The following are all **MUST**:
+>
+> 1. Key `64` is **absent** iff the head is the `topic = ""` (default/untopiced) feed; a head
+>    carrying key `64` with an empty string is malformed and MUST be rejected on decode. There is
+>    exactly one encoding of every topic, including the empty one.
+> 2. A server **MUST NOT** return a head carrying key `64` on the two-segment §22.5.1 path, and
+>    **MUST NOT** send one to a peer that has not advertised `pubsub-1` (§18.1.2, §10.2). On the
+>    HTTP surface the three-segment path (§25.3.2) *is* the request-side declaration: a client that
+>    requests it has by construction declared it understands key `64`.
+> 3. A server **MUST** include key `64`, carrying the exact NFC UTF-8 label (§25.3.4), in every
+>    `FeedHead` it serves at a three-segment locator with a non-empty topic.
+> 4. A reader **MUST** reject a `FeedHead` whose key `64` (absent ⇒ `""`) is not byte-equal to the
+>    topic it requested: `ERR_PUB_FEED_TOPIC_MISMATCH` (`0x0915`), FAIL_CLOSED_BLOCK. The check is on
+>    the verified, signed value, never on the locator alone.
+> 5. A reader **MUST NOT** admit a `FeedEntry` into the chain for a given `(pub, topic)` unless that
+>    entry is reachable by the `prev` chain from the `tip` of a `FeedHead` it has verified for that
+>    same `(pub, topic)`. `FeedEntry` gains no field: an entry's topic scoping is the transitive
+>    commitment of the signed head that names it (§22.4.1), and nothing else.
+
+**What this costs, stated plainly.** A `pub-1`-only verifier handed a topic-bearing head rejects the
+whole object fail-closed (§18.1.2). That is the *intended* behaviour and the reason the capability
+gate above is a MUST rather than a SHOULD: a topic chain silently consumed as the publisher's
+default feed is precisely the confusion key `64` exists to prevent. Topic-scoped serving is
+therefore a `pubsub-1` surface, not the `pub-1` convenience an earlier revision claimed (§25.3.2,
+§25.13 C-01).
+
+**Why leaving the topic out of every signed byte was wrong (rejected alternative, and the false
+claim it rested on).** An earlier revision of this section put the topic *only* in the locator and
+defended it by analogy to §22.2.3 — "bind the distinction into how the object is addressed, never
+into a flag a peer could misread." The analogy was false, and the difference is the whole security
+argument: §22.2.3 binds the manifest *type* into the **hash/signature preimage**, folding the DS-tag
+into every leaf and node of the Merkle tree so that a sealed root and a public root over the same
+chunk-hash list are **different values**. The type there is not asserted, it is *computed*. A
+locator is not a preimage; nothing was folded anywhere, and both consequences were real:
+
+1. **Self-inflicted equivocation.** §22.4.2 keys the anti-rollback watermark and fork detection on
+   `pub` alone. Several topics under one `pub` produce several signed heads at overlapping `seq`
+   values with different `tip`s, so an honest publisher trips `ERR_PUB_FEED_ROLLBACK` (`0x0907`) and
+   `ERR_PUB_FEED_CHAIN_BROKEN` (`0x0908`, HALT_ALERT) against itself — and worse, hands any third
+   party two genuinely-signed claims about the same `(pub, seq)`, which §22.4.2 calls transferable
+   evidence that the author equivocated.
+2. **Silent topic substitution.** A hostile holder could serve topic A's chain at topic B's locator
+   and pass **every** §22 check: valid head signature, intact `prev` chain, advancing `seq`. A
+   subscriber to `security-advisories` would see a signed, advancing, verifiable feed that simply
+   never contains the advisory — the suppression attack signed feeds exist to prevent,
+   reintroduced one layer above them.
+
+Both are closed by putting the label in the preimage, and neither is closed by any amount of care at
+the locator layer. The residual cost — a negotiated field, and a `pub-1`-only peer that cannot read
+a topic-scoped feed at all — is the honest price, and it is paid where it is visible.
 
 ### 25.3.2 Serving-layer locators (additive to §22.5)
 
@@ -148,20 +213,31 @@ GET /.well-known/dmtap-pub/feed/{pub}/topic/{topic}/head            → FeedHead
 GET /.well-known/dmtap-pub/feed/{pub}/topic/{topic}/range?from=&to= → [FeedEntry] [NEW, additive]
 ```
 
-`{topic}` is the percent-encoded (RFC 3986) UTF-8 topic label; the two-segment path (no `topic`
-segment) and the three-segment path with `{topic}` equal to the empty string percent-decode to the
-**same** feed by definition (§25.3.3) — a server MAY implement either or both, and a topic-unaware
-`pub-1` server that only ever serves the original two-segment path remains fully §22-conformant and
-needs no code change to keep doing so. The mesh binding (§22.5.2) widens analogously: a holder
-advertising `pub-1` MAY additionally serve topic-scoped feeds, discovered by whatever out-of-band
-means a topic label is shared (a `pub_announce`'s `meta` map, §22.3.1, is a natural carrier for "here
-is my topic list," but this appendix does not standardize one — that is left to a profile, exactly
-as §23/§24 layer profile-specific `meta` schemas over §22 without this document's involvement).
+`{topic}` is the percent-encoded (RFC 3986) UTF-8 topic label, subject to §25.3.4. A client **MUST**
+percent-encode the NFC UTF-8 bytes of the label; a server **MUST** percent-decode and then apply
+§25.3.4's rules to the decoded result, rejecting a non-conforming label rather than repairing it.
+The **empty topic has exactly one locator spelling** — the two-segment path: a server **MUST NOT**
+emit, and a client **MUST** reject, a three-segment path whose `{topic}` segment decodes to the empty
+string (§25.3.4 rule 5), because an empty path segment is precisely the thing an intermediary,
+proxy, or normalizing router is apt to collapse, turning one feed's locator into another's. A
+topic-unaware `pub-1` server that only ever serves the original two-segment path remains fully
+§22-conformant and needs no code change to keep doing so. The mesh binding (§22.5.2) widens
+analogously: a holder advertising **`pubsub-1`** MAY additionally serve topic-scoped feeds,
+discovered by whatever out-of-band means a topic label is shared (a `pub_announce`'s `meta` map,
+§22.3.1, is a natural carrier for "here is my topic list," but this appendix does not standardize
+one — that is left to a profile, exactly as §24's media and engineering-artifact facets layer profile-specific `meta` schemas over §22
+without this document's involvement).
 
-**No new capability is required to read a topic-scoped feed.** Fetching
-`/feed/{pub}/topic/{topic}/head` is an ordinary anonymous, content-addressed §22 pull — it needs only
-`pub-1` (§22.6.1), never `pubsub-1` (§25.8). Topics are a `pub-1`-level convenience; `Subscription` /
-`SubscriptionRevoke` / `FeedHint` are the `pubsub-1`-level capability this appendix is really about.
+**Reading a topic-scoped feed requires `pubsub-1` (normative).** A topic-scoped `FeedHead` carries
+the reserved extension key `64` (§25.3.1), and §18.1.2 permits a sender to place a `≥ 64` key in a
+*signed* object **only** toward a peer that has advertised the paired capability token. `pubsub-1`
+is that token. Concretely: a server **MUST NOT** serve a topic-scoped feed to a peer that has not
+advertised `pubsub-1` (on the HTTP surface, requesting the three-segment path is that
+advertisement — §25.3.1 rule 2), and a client that cannot decode key `64` **MUST NOT** request one.
+The reads themselves remain anonymous and content-addressed exactly as §22.5.1 specifies;
+`pubsub-1` gates *format understanding*, not identity. An earlier revision of this subsection
+asserted the opposite — "no new capability is required to read a topic-scoped feed" — which was
+true only of the unsigned-topic design §25.3.1 rejects (§25.13 C-01).
 
 ### 25.3.3 Backward compatibility (normative)
 
@@ -172,8 +248,62 @@ as §23/§24 layer profile-specific `meta` schemas over §22 without this docume
 > (§22.4.2). Topic adoption is additive per publisher, never a migration.
 
 This is the same discipline as every other extension in this document family: DMTAP-PUB changed no
-sealed-path default (§22), the CAD/Video profiles changed no §22 byte (§23, §24), and topic
-addressing changes no `FeedHead` byte and orphans no existing subscriber of the default feed.
+sealed-path default (§22), and the Published-Artifact profile changed no §22 byte (§24). Topic
+addressing changes no byte of the **default** feed — key `64` is absent from it by construction
+(§25.3.1 rule 1), so its `det_cbor` encoding, its signature preimage and its `tip` are what they
+always were — and orphans no existing subscriber of it.
+
+### 25.3.4 Topic labels (normative)
+
+A **topic label** is the Unicode string carried in `Subscription.topic` (key 5, §25.4.1),
+`FeedHint.topic` (key 2, §25.6.2), `FeedHead` key `64` (§25.3.1), and the `{topic}` locator segment
+(§25.3.2). One label, one feed — so the label needs a single, mechanically checkable spelling.
+
+> A topic label **MUST** satisfy all of the following. A producer **MUST NOT** emit a label that
+> violates any of them, and a decoder **MUST** reject the containing object rather than repair the
+> label.
+>
+> 1. **NFC only.** The label MUST be in Unicode Normalization Form C (UAX #15). A decoder that
+>    receives a label that is not already NFC MUST reject it; it **MUST NOT** normalize the label
+>    and proceed.
+> 2. **Bounded length.** The UTF-8 encoding MUST be **≤ 128 bytes**. The empty label `""` is
+>    permitted only as the default-feed label, and only where this appendix says so.
+> 3. **Forbidden code points.** The label MUST NOT contain U+0000–U+001F (C0 controls), **U+002F
+>    (`/`)**, or U+007F (DEL).
+> 4. **Comparison is byte equality.** Two labels name the same topic **iff** their NFC UTF-8
+>    encodings are byte-identical. No case folding, no width folding, no Unicode collation, no
+>    locale-dependent comparison, at any layer — locator, `Subscription`, `FeedHint`, or `FeedHead`.
+> 5. **One locator spelling for the empty topic.** The default feed is addressed by the two-segment
+>    §22.5.1 path only; the three-segment path with an empty `{topic}` segment MUST NOT be emitted
+>    and MUST be rejected (§25.3.2).
+
+**Why each rule is load-bearing.** Without rule 1, `café` in NFC and `café` in NFD are two different
+feeds that render identically in every UI a user or an operator would inspect — a subscriber can be
+moved onto a feed that *looks* like the one it asked for. Rules 1 and 4 have to be stated together:
+normalizing on decode would silently merge two chains that were signed as distinct, so the only
+consistent pairing is reject-on-decode plus byte comparison. Without rule 3, `%2F` percent-decodes
+into a path separator and a label becomes path structure — the classic locator-confusion bug, and
+one an intermediary can exploit without touching a single signed byte. Without rule 2 a label is
+unbounded and appears inside a signed head that every subscriber fetches. Without rule 5 the empty
+topic has two spellings, one of which contains an empty path segment that proxies and normalizing
+routers are entitled to collapse. These five rules did not exist in an earlier revision, which left
+the label unconstrained (§25.13 C-07).
+
+### 25.3.5 Per-feed reader state is keyed by `(pub, topic)` (normative)
+
+> A reader implementing `pubsub-1` **MUST** key every piece of §22.4.2 per-feed state — the
+> highest-accepted `seq` watermark, the retained `tip`, and the fork-detection record — by the pair
+> **`(pub, topic)`**, where `topic` is the value of `FeedHead` key `64` (absent ⇒ `""`, §25.3.1). A
+> `FeedHead` for one `(pub, topic)` **MUST NOT** be compared against, nor allowed to advance or roll
+> back, the state of any other `(pub, topic)`. `ERR_PUB_FEED_ROLLBACK` (`0x0907`) and
+> `ERR_PUB_FEED_CHAIN_BROKEN` (`0x0908`) are raised only **within** one such pair. Two heads under
+> one `pub` bearing different `topic` values are **not** equivocation: a reader **MUST NOT** treat
+> them as a fork, MUST NOT raise `0x0908`, and **MUST NOT** publish or forward them as evidence that
+> the publisher equivocated (§25.13 C-02).
+
+A `pub-1`-only reader is unaffected and needs no change: it never receives key `64` (§25.3.1 rule
+2), holds exactly one chain per `pub`, and §22.4.2 applies to it verbatim — for it, `(pub, "")` and
+`pub` are the same key by construction.
 
 ## 25.4 The `Subscription` object
 
@@ -207,27 +337,63 @@ Subscription = {
 | `suite` | 2 | `suite` | MUST | Algorithm suite for `sig`. Unknown ⇒ reject fail-closed (`0x0901`). |
 | `subscriber` | 3 | `ik-pub` | MUST | The subscriber's root identity key. This is the identity a publisher (or a delegated holder, §25.4.3) pushes future `FeedHint`s to (§25.6.2) — an ordinary mesh delivery target, exactly like any MOTE recipient (§4). |
 | `feed` | 4 | `ik-pub` | MUST | The publisher identity being subscribed to — the value that appears as `FeedHead.pub` (§22.4.1) for the feed in question. |
-| `topic` | 5 | `tstr` | MUST (MAY be empty) | The topic label (§25.3.1). `""` names the default/untopiced feed — the one a pre-DMTAP-PUBSUB §22 deployment already serves (§25.3.3). |
+| `topic` | 5 | `tstr` | MUST (MAY be empty) | The topic label (§25.3.1), which MUST satisfy §25.3.4 (NFC, ≤ 128 B, no `/` or C0/DEL) — a `Subscription` carrying a non-conforming label is malformed and MUST be rejected on decode. `""` names the default/untopiced feed — the one a pre-DMTAP-PUBSUB §22 deployment already serves (§25.3.3). |
 | `issued` | 6 | `ts` | MUST | Creation time (ms epoch, §16.1). |
 | `expires` | 7 | `ts` | MUST | Absolute expiry (ms epoch). **There is no indefinite `Subscription`** (§25.4.2) — a `Subscription` with this field absent is malformed and MUST be rejected on decode, not merely treated as non-expiring. |
-| `nonce` | 8 | `bytes` | MUST, ≥ 16 B | Source of uniqueness for `subscription_id` (§25.4.1 below), so two `Subscription`s issued by the same subscriber for the same `(feed, topic)` in the same millisecond still content-address distinctly. |
+| `nonce` | 8 | `bytes` | MUST, ≥ 16 B | Source of uniqueness for `subscription_id` (§25.4.1 below), so two `Subscription`s issued by the same subscriber for the same `(feed, topic)` in the same millisecond still identify distinctly. Because the identifier is derived from the **body** and not the signature, `nonce` is the *only* source of that distinctness — a producer MUST draw it from a CSPRNG and MUST NOT reuse one across subscriptions. |
 | `signer` | 9 | `ik-pub` | MUST | The operational (device) key that produced `sig`; MUST be authorized by `subscriber` via a `DeviceCert` (§1.2) the verifier checks exactly as §22.3.3 step 4 checks a `PubAnnounce`'s `signer` against its `pub`. `signer` MAY equal `subscriber`. |
 | `sig` | 10 | `sig-val` | MUST | Signature by `signer` over `DMTAP-PUB-v0/subscription ‖ 0x00 ‖ det_cbor(Subscription ∖ {10})` (§18.1.6 general rule). Failure is `ERR_PUB_SUBSCRIPTION_SIG_INVALID` (`0x090E`). |
 
-**Content address.** Following the `Identity`/`PubAnnounce` derived-anchor rule (§18.9.4, §22.3.1) —
-a field cannot contain its own hash — a `Subscription`'s content address is computed over the
-**complete, signed** object:
+**Identifier (normative).** A `Subscription`'s identifier is derived from its **body — the signed
+content — and never from its signature**, under a DS-tag of its own (§25.8):
 
 ```
-subscription_id = 0x1e ‖ BLAKE3-256( det_cbor(Subscription) )
+subscription_id = 0x1e ‖ BLAKE3-256( "DMTAP-PUB-v0/subscription-id" ‖ 0x00 ‖ det_cbor(Subscription ∖ {10}) )
 ```
 
-`subscription_id` is what a `SubscriptionRevoke` (§25.5) names, and what any holder recomputes and
-checks before honoring the object (`ERR_PUB_SUBSCRIPTION_SIG_INVALID`-adjacent malformation is
-caught at decode; a subscription presented under a mismatched address is simply not the object it
-claims to be and is rejected the same way a misaddressed `PubAnnounce` is, §22.3.1).
+> A holder **MUST** compute `subscription_id` over `det_cbor(Subscription ∖ {10})` under the DS-tag
+> above, and **MUST NOT** include key `10` (`sig`) in the preimage. Two `Subscription`s whose bodies
+> are byte-identical are **one subscription**, however their `sig` bytes differ: a holder **MUST**
+> treat the second arrival as a duplicate of the first — not a second subscription, not a second
+> entry against the aggregate bound (§25.7.1), and not a fresh grant of standing (§25.6.4) — and a
+> `SubscriptionRevoke` naming that id **MUST** be honored against every copy the holder retains
+> (§25.5.2), whatever signature bytes each copy carries.
 
-**Why self-signed, when it also rides inside a signed MOTE (§25.4.4).** A `Subscription` is
+`subscription_id` is what a `SubscriptionRevoke` (§25.5) names. It is a **local binding**, not a
+fetch address: a `Subscription` travels inside a sealed MOTE (kind `0x42`, §25.8) and is never
+fetched by address, so no address ever accompanies it to compare against. Whoever holds the object
+computes the id from the body it has already verified; §25.5 is the identifier's only consumer.
+
+**Why not over the complete signed object (normative rationale, and a correction).** §1.3 forbids
+it, in terms that name this construction exactly: *"no identifier, dedup key, or replay-cache key in
+this protocol is derived from a signature … An implementation MUST NOT introduce a construction that
+depends on signature uniqueness or non-malleability."* Hybrid AND-composition buys **EUF-CMA**, not
+**SUF-CMA** (§1.3), so a valid `sig` may be maulable into a *different* valid signature over the
+same body. An earlier revision of this subsection derived `subscription_id` over
+`det_cbor(Subscription)` — the complete, signed object — by analogy to `announce_id` (§22.3.1). The
+analogy did not survive the difference in what the identifier is *used for*:
+
+- **Revocation bypass (the severe one).** Revocation is keyed on the id. A holder that mauls the
+  signature of a `Subscription` it has received — or that simply retains a mauled copy handed to it
+  by another custodian (§25.4.3) — stores an object whose id is `id(S′) ≠ id(S)`. A later
+  `SubscriptionRevoke` naming `id(S)` then matches nothing that holder has, and by §25.5.1's own
+  rule an unmatched revoke is **unevaluable**, not "valid but pending". Hint service continues to
+  `expires` with the subscriber having done everything the protocol asks of it. The party best
+  placed to perform the mauling is the party revocation is aimed at.
+- **Quota and standing evasion.** The same subscription re-presented with a mauled signature
+  identified distinctly, so it counted twice against §25.7.1's aggregate bound and re-granted
+  §25.6.4 standing on replay.
+- **A dangling referent.** The old text called `subscription_id` "what any holder recomputes and
+  checks before honoring the object" and likened a mismatch to a misaddressed `PubAnnounce`. There
+  was nothing to check it against, for the reason given above: a `Subscription` is delivered, not
+  fetched.
+
+DS-tagging the preimage keeps the identifier out of every other hash space in this family (§18.1.6's
+domain-separation rule, applied to a hash rather than a signature), so a `subscription_id` can never
+collide with an `announce_id`, a `PubManifest.id`, or a `FeedEntry` address computed over related
+bytes (§25.13 C-03).
+
+**Why self-signed, when it also rides inside a signed MOTE (§25.8).** A `Subscription` is
 independently verifiable **without** the `Envelope`/`Payload` that first carried it — exactly the
 property that lets a publisher's serving holders (§22.4.3's "any node MAY serve any feed," extended
 here to "any holder the publisher delegates to may honor a subscriber list") exchange subscriber
@@ -271,10 +437,35 @@ bound the **aggregate** number of subscribers a publisher accumulates over time 
 clear the cold-sender gate thousands of times over). §25.7.1 adds the aggregate bound this
 per-message gate cannot provide.
 
-A publisher MAY delegate acceptance and hint-pushing to another holder of its feed (exactly as
-serving itself is delegable, §22.4.3) by handing that holder the self-signed `Subscription` records
-it has accepted — the holder can independently re-verify each one (§25.4.1) without trusting the
-publisher's bookkeeping, and without ever needing the publisher's private key.
+A publisher MAY delegate **acceptance and custody** of subscriber records to another holder of its
+feed (exactly as serving itself is delegable, §22.4.3) by handing that holder the self-signed
+`Subscription` records it has accepted — the holder can independently re-verify each one (§25.4.1)
+without trusting the publisher's bookkeeping, and without ever needing the publisher's private key.
+Delegated custody covers admission (the cold-sender gate above), the aggregate bound (§25.7.1),
+audit, and failover.
+
+> **Delegation does not extend to pushing hints (normative).** A delegated holder **MUST NOT**
+> originate a `FeedHint` (§25.6.2) under a `Subscription` in its custody. Every `FeedHint` **MUST**
+> be signed by a key authorized by the feed identity it names — the carrying `Payload.from`
+> (§18.9.2) equal to `FeedHint.pub`, or chained to it by an unrevoked `DeviceCert` (§1.2) — and a
+> subscriber **MUST** verify that binding before treating the hint as solicited (§25.6.4). A holder
+> that wishes to push on a publisher's behalf does so **as** that publisher, holding a key the
+> publisher's `DeviceCert` chain authorizes; there is no third identity a subscriber is obliged to
+> accept.
+
+**Why not a delegated-pusher grant (rejected alternative, and the contradiction that forced the
+choice).** An earlier revision let a publisher delegate hint-pushing, while §25.6.4 granted standing
+only to "that publisher's operational key" and §25.7.3 asserted there is "no second identity to
+launder through." The three cannot hold at once, because a delegated pusher **is** a second
+identity. Either subscribers reject its hints — delegation dead on arrival — or they accept any
+sender able to produce a matching `Subscription`, and a `Subscription` is a portable, self-contained
+artifact every custodian holds a copy of, so possession of a copy would become sufficient to push
+into every subscriber's inbox with pre-authorized standing (§25.6.4) and pre-authorized fetches
+(§25.6.2). A signed `HintDelegation` object with its own DS-tag would close the gap at the cost of a
+new signed object, a new registry allocation, and a second revocation lifecycle to keep consistent
+with the first. This appendix takes the smaller answer: hints come from the publisher, §25.7.3's
+claim becomes true rather than aspirational, and custody delegation — the part carrying the
+operational weight — is untouched (§25.13 C-06).
 
 ## 25.5 Revocation — the `SubscriptionRevoke` object
 
@@ -282,49 +473,86 @@ publisher's bookkeeping, and without ever needing the publisher's private key.
 
 ```cddl
 SubscriptionRevoke = {
-  1 => hash,       ; subscription   content address of the Subscription being revoked (§25.4.1)
-  2 => ts,         ; ts             revoke time (ms epoch)
-  3 => ik-pub,     ; signer         MUST equal the target Subscription's `subscriber`, or an authorized device thereof
-  4 => sig-val,    ; sig            signer over det_cbor(SubscriptionRevoke ∖ {4}), DS-tag DMTAP-PUB-v0/subscription-revoke
+  1 => hash,        ; subscription   subscription_id of the Subscription being revoked (§25.4.1)
+  2 => ts,          ; ts             revoke time (ms epoch)
+  3 => ik-pub,      ; signer         MUST equal the target Subscription's `subscriber`, or an authorized device thereof
+  4 => sig-val,     ; sig            signer over det_cbor(SubscriptionRevoke ∖ {4}), DS-tag DMTAP-PUB-v0/subscription-revoke
+  5 => u8,          ; v              PUBSUB object version, = 0 in v0 — governs THIS object only
+  6 => suite,       ; suite          signature suite for `sig` (§18.1.4) — governs THIS object only
+  ? 7 => DeviceCert, ; device_cert   OPTIONAL (§18.4.2): the cert chaining `signer` to the target's `subscriber`
 }
 ```
 
+Keys `1`–`4` keep the number, type and meaning they were first assigned; `v`/`suite` are appended as
+`5`/`6` rather than renumbered in, because §18.1.2 forbids reusing a key with a different meaning
+across versions of an object. A signature key that is not the last key has precedent in the core
+grammar (`DeviceCert`, §18.4.2, signs at key `8` and carries optional keys `9`/`10` after it);
+deterministic CBOR orders map keys numerically regardless, so nothing about the encoding depends on
+where `sig` sits.
+
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
-| `subscription` | 1 | `hash` | MUST | The `subscription_id` (§25.4.1) of the `Subscription` being revoked. |
+| `subscription` | 1 | `hash` | MUST | The `subscription_id` (§25.4.1) of the `Subscription` being revoked — derived from that object's **body**, so a mauled signature cannot put the target out of reach of this field (§25.4.1). |
 | `ts` | 2 | `ts` | MUST | Revocation time. |
 | `signer` | 3 | `ik-pub` | MUST | The key that produced `sig`; MUST equal the target `Subscription.subscriber` or be one of its currently-authorized devices (`DeviceCert` chain, §1.2). A revoke signed by anyone else is `ERR_PUB_SUBSCRIPTION_REVOKE_INVALID` (`0x0911`) — only the subscriber who granted a subscription may withdraw it, borrowing the same same-author discipline `supersedes` applies to announces (§22.3.4, §22.3.3 step 5). |
-| `sig` | 4 | `sig-val` | MUST | Signature by `signer` over `DMTAP-PUB-v0/subscription-revoke ‖ 0x00 ‖ det_cbor(SubscriptionRevoke ∖ {4})`. Failure is also `ERR_PUB_SUBSCRIPTION_REVOKE_INVALID` (`0x0911`). |
+| `sig` | 4 | `sig-val` | MUST | Signature by `signer` over `DMTAP-PUB-v0/subscription-revoke ‖ 0x00 ‖ det_cbor(SubscriptionRevoke ∖ {4})`, under **this object's own** `suite` (key 6) and §18.1.6's representative for it. Failure is also `ERR_PUB_SUBSCRIPTION_REVOKE_INVALID` (`0x0911`). |
+| `v` | 5 | `u8` | MUST | PUBSUB object format version of **this revoke**. MUST equal `0` in v0; any other value is rejected fail-closed (`ERR_PUB_UNSUPPORTED_VERSION`, `0x0901`). Independent of the target `Subscription`'s `v`. |
+| `suite` | 6 | `suite` | MUST | Algorithm suite for **this revoke's** `sig` (§18.1.4). Unknown ⇒ reject fail-closed (`0x0901`). It governs nothing else, and it need not equal the target `Subscription.suite`. |
+| `device_cert` | 7 | `DeviceCert` | OPTIONAL | The `DeviceCert` (§18.4.2) authorizing `signer` under the target's `subscriber`, carried inline so an offline holder can complete the §1.2 chain check without directory access. A verifier that uses it MUST check it fully — `ik` equal to the target's `subscriber`, `device_key` equal to this revoke's `signer`, `sig` valid under `ik`, unexpired, unrevoked (§1.5) — and MUST NOT treat mere presence as authorization. Its absence is not a fault: a verifier that can obtain the chain by its ordinary means proceeds normally. |
 
 Unlike `Subscription`, a `SubscriptionRevoke` needs no internal content-address derivation of its
 own — nothing ever points *at* a revoke — but it is self-signed for the identical portability reason
 (§25.4.1): a holder the publisher delegates to (§25.4.3) can honor a revoke it never saw travel
 through the original MOTE transport, by verifying the object alone.
 
-**No `v`/`suite` fields, and why that is not an omission (normative).** A `SubscriptionRevoke`
-carries neither a version nor a suite discriminator, unlike every other §22/§25 signed object. It
-does not need them: a revoke is **never evaluated on its own**. `subscription` (key 1) names a
-`subscription_id`, and a verifier cannot check that field at all without already holding the target
-`Subscription` — so the target's `v` and `suite` are necessarily in hand, and they govern the
-`sig` check. Adding independent discriminators would create a second, separately-negotiable
-algorithm choice for a signature that is only ever meaningful relative to an object that has
-already fixed one, and a mismatch between the two would be a new failure mode with no useful
-resolution.
+**A revoke carries its own `v`/`suite`, and why inheritance was wrong (normative).** An earlier
+revision omitted both and had a revoke inherit them from the target `Subscription`, reasoning that a
+revoke is never evaluated without its target, so the target's discriminators are necessarily in hand
+and a second, separately-negotiable algorithm choice would be redundant. The premise is true and is
+retained below; the conclusion did not follow, because **`signer` need not be the device that signed
+the target**. §25.5.1 admits any currently-authorized device of `subscriber`, and §18.1.6's message
+representative is **suite-dependent** — a device holding no key at the target's suite cannot produce
+the signature an inherited value demands. A subscriber whose original device was lost, retired, or
+rotated onto a different suite would then be unable to revoke at all: an unproducible revoke, for
+the one operation whose entire purpose is to work when circumstances have changed. A revoke's
+`suite` governs exactly one thing — verification of its own `sig` — and the target's choice has no
+claim on it. Unknown `v`/`suite` on a revoke is `ERR_PUB_UNSUPPORTED_VERSION` (`0x0901`),
+fail-closed, exactly as for every other object in this family (§25.13 C-04).
 
-The consequence is normative and easy to get wrong in the other direction: a verifier MUST NOT
+The retained premise is normative and easy to get wrong in the other direction: a verifier MUST NOT
 attempt to evaluate a `SubscriptionRevoke` without its target. A revoke naming a `subscription_id`
 the holder does not have is not "valid but unmatched" — it is **unevaluable**, and MUST NOT be
 recorded as an accepted revocation on the strength of its signature alone (that signature proves
 only that *someone* signed some bytes; whether that someone is the subscriber is precisely the
 check that requires the target, §25.5.1 `signer`).
 
+**Retention duty — a subscriber that loses its own state cannot revoke (normative).**
+
+> A subscriber **MUST** retain, for every `Subscription` it has issued that has neither expired nor
+> been revoked, either the exact `det_cbor(Subscription ∖ {10})` bytes or enough state to reproduce
+> them byte-for-byte, so that it can compute `subscription_id` (§25.4.1) and issue this object. A
+> client **MUST** carry that state through whatever backup, restore, and device-migration path it
+> offers (§25.9).
+
+There is no way to name a subscription except by the identifier its body derives (§25.4.1), and no
+holder accepts a revoke naming anything else (`0x0911`). A subscriber that discards the state before
+`expires` therefore has **no protocol means of revoking at all** and is left with the bounded-lifetime
+backstop alone (§25.4.2) — which is exactly why that backstop is a MUST, but it is a poor substitute
+for the operation the user actually asked for. This duty is stated because it is otherwise easy to
+miss: nothing else in this appendix places a retention obligation on the *subscriber*, and a client
+that treats its subscription list as disposable cache satisfies every other rule here while
+quietly making revocation impossible (§25.13 C-08).
+
 ### 25.5.2 Effect (normative)
 
-> Once a publisher or any delegated holder (§25.4.3) has accepted a valid `SubscriptionRevoke`
-> naming a given `subscription_id`, it **MUST NOT** push any further `FeedHint` under that
-> `Subscription`. A `Subscription` presented after its revoke has been accepted — to justify renewed
-> hint service, or handed to a *different* holder that has not yet heard the revoke — is
-> `ERR_PUB_SUBSCRIPTION_REVOKED` (`0x0910`).
+> Once a publisher — or any holder with custody of that record (§25.4.3) — has accepted a valid
+> `SubscriptionRevoke` naming a given `subscription_id`, it **MUST NOT** push any further `FeedHint`
+> under that `Subscription`, **MUST** drop the record from any subscriber list it maintains, and
+> **MUST NOT** hand that record on to another holder. A `Subscription` presented after its revoke
+> has been accepted — to justify renewed hint service, or handed to a *different* holder that has not
+> yet heard the revoke — is `ERR_PUB_SUBSCRIPTION_REVOKED` (`0x0910`). The rule binds **every copy
+> whose body hashes to the named `subscription_id`**, whatever signature bytes each copy carries
+> (§25.4.1).
 
 **Honest limit, stated plainly rather than hidden (§25.11 item 3).** Revocation is a request the
 *publisher* (or its delegated holders) must honor cooperatively — exactly the same posture §6.6 item
@@ -393,7 +621,7 @@ FeedHint = {
 | Field | Key | Type | Presence | Meaning & constraints |
 |-------|----:|------|----------|-----------------------|
 | `pub` | 1 | `ik-pub` | MUST | Which feed changed. |
-| `topic` | 2 | `tstr` | MUST (MAY be empty) | Which topic-scoped chain (§25.3) changed. |
+| `topic` | 2 | `tstr` | MUST (MAY be empty) | Which topic-scoped chain (§25.3) changed. MUST satisfy §25.3.4; a hint carrying a non-conforming label is malformed and MUST be rejected on decode, never normalized. |
 | `seq` | 3 | `u64` | MUST | The publisher's own belief about the new tip `seq`. **Advisory only** (§25.6.2 below) — never a substitute for a verified `feed_head` fetch. |
 | `tip` | 4 | `hash` | OPTIONAL | The publisher's own belief about the new `FeedHead.tip`. Advisory, same status as `seq`. |
 | `announce` | 5 | `bytes` | OPTIONAL | The complete, deterministically-encoded `PubAnnounce` (§22.3.1) at the hinted position — an inlining optimization (§25.6.3), not a trust shortcut. |
@@ -406,6 +634,11 @@ FeedHint = {
 > independently-verified `feed_head`/`feed_range` fetch (§22.4.4) — or, if `announce` is present,
 > independently verify it exactly as a pulled `PubAnnounce` (§22.3.3, §25.6.3) — before accepting any
 > change in feed state. A hint is a *reason to check*, never itself a *fact checked*.
+>
+> A subscriber **MUST NOT** perform, or schedule, any fetch on the strength of a `FeedHint` that
+> fails the standing test of §25.6.4 — including the identity binding that requires the carrying
+> `Payload.from` to be `FeedHint.pub` or a device it authorized (§25.4.3). "A reason to check" is a
+> reason granted by a subscription the subscriber itself issued, and by nothing else.
 
 This is the same non-authoritative posture `substrate/FEEDS.md` §5.4 already establishes for its
 advisory fetch-hint registry ("a client MUST NOT treat a blob fetched from an unlisted source
@@ -455,11 +688,40 @@ contact (§2.7 step 5) — no per-hint challenge is needed, because the subscrib
 this, exactly the reasoning §22.6.3 used to exempt `pub_announce` from a challenge (there, because
 announces are pulled; here, because the push was solicited).
 
-A `FeedHint` arriving with **no** matching active `Subscription` record is an ordinary unsolicited
-push and receives **exactly the disposition §2.7/§9.2 already define for a cold sender** — deferred
-to the requests area (§2.7a), rate-limited, never surfaced as a normal notification, and not acked.
-No new wire error is defined for this case; it is not a malformed object, merely one this recipient
-did not ask for, and DMTAP already has a complete answer for that.
+**Standing is scoped, and a hint outside it is discarded before any fetch (normative).**
+
+> A subscriber **MUST** discard a `FeedHint` — **without performing or scheduling any fetch it would
+> otherwise trigger** (§25.6.2) — unless **all three** of the following hold:
+>
+> 1. the subscriber itself issued a `Subscription` (§25.4) that is currently **active**: not expired
+>    (§25.4.2) and not revoked (§25.5.2);
+> 2. that `Subscription`'s `feed` equals the hint's `pub`, **and** its `topic` is byte-equal to the
+>    hint's `topic` under §25.3.4's comparison rule; and
+> 3. the carrying `Payload.from` (§18.9.2) is the identity named by `FeedHint.pub`, or a device
+>    authorized by it through an unrevoked `DeviceCert` chain (§1.2, §25.4.3).
+>
+> A hint failing (3) is an ordinary unsolicited push and takes the cold-sender disposition below. A
+> hint failing (1) or (2) **MUST** be discarded and **MUST NOT** be acted on, even where the sender
+> is an otherwise established contact and even where the hint is perfectly well-formed.
+
+**Why the fetch has to be gated, and not merely the notification (normative rationale).** §25.7's
+fan-out analysis counts only the deliveries a publisher's own node pays for. Nothing there — and
+nothing in an earlier revision of this subsection — required a hint's `(pub, topic)` to be a feed the
+recipient had actually subscribed to. A publisher with 50 000 subscribers could therefore emit hints
+naming a **third party's** `(pub, topic)`, and §25.6's own "check now" rule converted one signed act
+into 50 000 independently-verified fetches aimed at an identity that had never published to any of
+them and never accepted a subscription from any of them: **fan-in amplification**, with the
+amplification factor set by the attacker's own subscriber count and pointed outward. The
+subscriber-side rate bound of §25.7.2 does not reach it — each subscriber sees exactly one hint, well
+inside its budget, and it is the *victim*, who holds no relationship with any of them, that absorbs
+the aggregate. Matching every hint against a subscription the subscriber itself issued is what bounds
+fan-in by the *victim's own* subscriber count rather than by the attacker's (§25.13 C-05).
+
+A `FeedHint` failing test (3) — an ordinary unsolicited push — receives **exactly the disposition
+§2.7/§9.2 already define for a cold sender**: deferred to the requests area (§2.7a), rate-limited,
+never surfaced as a normal notification, and not acked. No new wire error is defined for this case;
+it is not a malformed object, merely one this recipient did not ask for, and DMTAP already has a
+complete answer for that.
 
 ### 25.6.5 Composition with Wake (§4.9) for sleeping devices
 
@@ -521,9 +783,10 @@ launder through.
 | Registry | Allocation |
 |---|---|
 | Message Kinds (§21.16) | `0x41 feed_hint` — an ordinary sealed-MOTE kind (§25.6.2), Payload-wrapped, riding the existing deliver/ack/retry path; `0x42 feed_subscribe` — an ordinary sealed-MOTE kind carrying a `Subscription` (§25.4) as `Payload.body`; `0x43 feed_unsubscribe` — an ordinary sealed-MOTE kind carrying a `SubscriptionRevoke` (§25.5) as `Payload.body`. All three Specification Required, extension range (§2.3, §21.16), continuing the block `pub_announce` (`0x40`) opened. |
-| Capability Tokens (§21.22) | `pubsub-1` — Specification Required; node/operator opt-in to originating and/or honoring `Subscription`/`SubscriptionRevoke`/`FeedHint` (§10.2). A node **MUST** advertise `pub-1` (§22.6.1) to meaningfully advertise `pubsub-1` — DMTAP-PUBSUB extends feeds and has no meaning without them. Topic-scoped serving (§25.3) needs **only** `pub-1`, never `pubsub-1` (§25.3.2). |
-| Error/Status Codes (§21.14) | Six new code points **within** the existing subsystem byte `0x09` DMTAP-PUB already owns (§21.24b): `0x090E`–`0x0913` (§25.12). This is a Specification-Required addition **within an existing subsystem**, not a new subsystem byte — this appendix extends §22's own extension rather than registering a fresh one (§21.14's lighter-weight allocation policy for `NN` within an existing `SS`). |
+| Capability Tokens (§21.22) | `pubsub-1` — Specification Required; node/operator opt-in to originating and/or honoring `Subscription`/`SubscriptionRevoke`/`FeedHint`, **and** to serving or reading a topic-scoped `FeedHead` (§10.2). A node **MUST** advertise `pub-1` (§22.6.1) to meaningfully advertise `pubsub-1` — DMTAP-PUBSUB extends feeds and has no meaning without them. Topic-scoped serving/reading (§25.3) needs `pubsub-1`, not `pub-1` alone: a topic-scoped `FeedHead` carries the reserved key `64` (§25.3.1), and §18.1.2's signed-object extension rule requires the paired capability before that key may be sent (§25.3.2; an earlier revision of this row claimed the opposite, §25.13 C-01). The **default** (`topic = ""`) feed is unaffected and remains a `pub-1`-only surface. |
+| Error/Status Codes (§21.14) | Seven new code points **within** the existing subsystem byte `0x09` DMTAP-PUB already owns (§21.24b): `0x090E`–`0x0913` and `0x0915` (§25.12). `0x0914` (`ERR_PUB_SUITE_BELOW_FLOOR`) falls between the two and is **not** one of this appendix's allocations — it is §22's own (§22.10, §21.24b) — so the DMTAP-PUBSUB block is non-contiguous by one code, not a numbering error. This is a Specification-Required addition **within an existing subsystem**, not a new subsystem byte — this appendix extends §22's own extension rather than registering a fresh one (§21.14's lighter-weight allocation policy for `NN` within an existing `SS`). |
 | Signature DS-tags (§18.9 convention) | `DMTAP-PUB-v0/subscription` (`Subscription.sig` preimage, §25.4.1), `DMTAP-PUB-v0/subscription-revoke` (`SubscriptionRevoke.sig` preimage, §25.5.1) — reserved, distinct from every `DMTAP-v0/…`, `DMTAP-PUB-v0/…`, and `DMTAP-SYNC-v0/…` DS-tag already registered (§21.24b, §21.24c). `FeedHint` needs no DS-tag of its own — it is ordinary `Payload` content authenticated by the existing `Payload.sig` preimage (§18.9.2), unchanged. |
+| Hash domain-separation tags (§18.1.6's DS rule, applied to a hash rather than a signature) | `DMTAP-PUB-v0/subscription-id` (`subscription_id`'s preimage tag, §25.4.1) — reserved and distinct from every signature DS-tag in the row above and from `DMTAP-PUB-v0/feed`'s hash domain (§22.4.1), so a `subscription_id` cannot collide with an `announce_id`, a `PubManifest.id`, a `FeedEntry` address, or a signature preimage computed over related bytes. |
 
 A peer that has not advertised `pubsub-1` MUST treat kinds `0x41`–`0x43` under the ordinary
 forward-compatibility rule already governing unassigned/unimplemented kinds (§21.16, §10.1): it MUST
@@ -554,18 +817,26 @@ advertises `pubsub-1` is not held to any of them.
 
 | Invariant | Clause | Trigger | Behavior / error on violation |
 |-----------|--------|---------|-------------------------------|
-| **`Subscription` unknown version/suite** | §25.4.1 | a `v`/`suite` this implementation does not support | reject, never guess; `ERR_PUB_UNSUPPORTED_VERSION` `0x0901`, FAIL_CLOSED_BLOCK (the same code §22.3.1/§22.4.1 use, scope extended to this appendix's objects). A `SubscriptionRevoke` has **no** `v`/`suite` of its own — it inherits both from the target `Subscription` it names, which a verifier necessarily holds (§25.5.1) — so this rule has no surface there. |
+| **`Subscription` unknown version/suite** | §25.4.1 | a `v`/`suite` this implementation does not support | reject, never guess; `ERR_PUB_UNSUPPORTED_VERSION` `0x0901`, FAIL_CLOSED_BLOCK (the same code §22.3.1/§22.4.1 use, scope extended to this appendix's objects). |
 | **`Subscription` missing mandatory `expires`** | §25.4.2 | decode of a `Subscription` lacking key `7` | malformed, reject on decode — no indefinite subscription exists |
 | **`Subscription` signature / DeviceCert chain** | §25.4.1 | `sig` fails under `signer`, or `signer` not authorized by `subscriber` | reject; `ERR_PUB_SUBSCRIPTION_SIG_INVALID` `0x090E`, FAIL_CLOSED_BLOCK |
+| **`subscription_id` computed over `sig`, or two body-identical `Subscription`s treated as distinct** | §25.4.1 | an implementation includes key `10` in the `subscription_id` preimage, or stores a mauled-signature duplicate as a second subscription | non-conformant; MUST derive from `det_cbor(Subscription ∖ {10})` under the `subscription-id` DS-tag and MUST treat body-identical copies as one subscription for revocation, quota and standing purposes alike (§25.13 C-03) |
 | **Expired `Subscription` honored** | §25.4.2 | current time > `expires`, and the holder still treats it as active / pushes a hint under it | reject/stop; `ERR_PUB_SUBSCRIPTION_EXPIRED` `0x090F`, FAIL_CLOSED_BLOCK |
+| **Delegated holder originates a `FeedHint`** | §25.4.3 | a holder with `Subscription`-record custody, but not authorized under the feed's own `DeviceCert` chain, signs and sends a `FeedHint` | the hint fails the standing test's identity binding (§25.6.4 test 3) and is disposed of as an unsolicited push; a subscriber MUST NOT treat custody of a `Subscription` copy as authorization to originate hints (§25.13 C-06) |
 | **`SubscriptionRevoke` cross-subscriber** | §25.5.1 | `signer` ≠ the target `Subscription.subscriber` (or an authorized device thereof), or `sig` invalid | reject; `ERR_PUB_SUBSCRIPTION_REVOKE_INVALID` `0x0911`, FAIL_CLOSED_BLOCK — only the subscriber who granted a subscription may withdraw it |
-| **Revoked `Subscription` honored** | §25.5.2 | a `Subscription` presented/acted on after a valid matching `SubscriptionRevoke` has been accepted | reject; `ERR_PUB_SUBSCRIPTION_REVOKED` `0x0910`, FAIL_CLOSED_BLOCK |
-| **Unsolicited `FeedHint`** | §25.6.4 | a `feed_hint` MOTE with no matching active `Subscription` record at the recipient | not a wire fault — ordinary §2.7/§9.2 cold-sender disposition (defer to requests area, §2.7a); no new error code |
+| **`SubscriptionRevoke` unknown version/suite** | §25.5.1 | a `SubscriptionRevoke` carrying a `v`/`suite` (its own, keys 5/6 — independent of the target `Subscription`'s) this implementation does not support | reject, never guess; `ERR_PUB_UNSUPPORTED_VERSION` `0x0901`, FAIL_CLOSED_BLOCK (§25.13 C-04) |
+| **Revoked `Subscription` honored** | §25.5.2 | a `Subscription` presented/acted on after a valid matching `SubscriptionRevoke` has been accepted, for *any* copy whose body hashes to the named `subscription_id` | reject; `ERR_PUB_SUBSCRIPTION_REVOKED` `0x0910`, FAIL_CLOSED_BLOCK |
+| **Subscriber discards state needed to revoke** | §25.5.1 | a subscriber fails to retain `det_cbor(Subscription ∖ {10})` (or reproducing state) for an active `Subscription` through backup/restore/migration | non-conformant; the subscriber is left with only the bounded-`expires` backstop and has no protocol means of revoking (§25.13 C-08) |
+| **Unsolicited `FeedHint`** | §25.6.4 | a `feed_hint` MOTE whose carrying `Payload.from` is not the identity named by `FeedHint.pub` (or an authorized device) | not a wire fault — ordinary §2.7/§9.2 cold-sender disposition (defer to requests area, §2.7a); no new error code |
+| **`FeedHint` outside subscriber's own standing** | §25.6.4 | a `FeedHint` whose `(pub, topic)` does not match a `Subscription` the recipient itself issued and that is currently active | MUST be discarded before any fetch is performed or scheduled — never merely un-notified; closes fan-in amplification against an uninvolved third party (§25.13 C-05) |
 | **`FeedHint` treated as authoritative** | §25.6.2 | a client advances its accepted-`seq` watermark, or treats content as delivered, from `FeedHint.seq`/`tip`/`announce` without independent §22.4.2/§22.3.3 verification | non-conformant client; the hint is a reason to check, never a fact checked |
 | **Inlined `announce` unverified** | §25.6.3 | an inlined `FeedHint.announce` treated as valid without recomputing `announce_id` / verifying `sig`/`signer` chain | non-conformant client; verify exactly as a pulled `PubAnnounce` (§22.3.3), or reuse `0x0904`/`0x0905` on failure |
 | **Publisher subscriber-admission bound** | §25.7.1 | aggregate active-subscription count (or subscribe rate) past a holder's configured bound | `ERR_PUB_SUBSCRIBE_QUOTA` `0x0912`, DENY_POLICY |
 | **Subscriber inbound hint-rate bound** | §25.7.2 | inbound `FeedHint` rate from one publisher/topic past the subscriber's own configured budget | `ERR_PUB_HINT_RATE_LIMITED` `0x0913`, DROP_SILENT — excess dropped, never surfaced |
 | **Topic backward compatibility** | §25.3.3 | a publisher's pre-existing feed is altered, renumbered, or orphaned upon adopting topics | non-conformant; `topic = ""` MUST remain byte-for-byte the pre-existing chain |
+| **`FeedHead` topic-mismatch / capability leak** | §25.3.1, §25.3.2 | a served `FeedHead`'s key `64` (absent ⇒ `""`) does not byte-equal the requested topic, or key `64` is sent to a peer that has not advertised `pubsub-1` | reader: reject, `ERR_PUB_FEED_TOPIC_MISMATCH` `0x0915`, FAIL_CLOSED_BLOCK; server: MUST NOT send, protocol violation (§25.13 C-01) |
+| **Topic-labeled reader state cross-contaminated** | §25.3.5 | §22.4.2 anti-rollback watermark, retained `tip`, or fork record compared/advanced across two different `(pub, topic)` pairs | non-conformant; state MUST be keyed by `(pub, topic)`; two heads differing only in `topic` MUST NOT be raised as `0x0907`/`0x0908` or published as equivocation evidence (§25.13 C-02) |
+| **Non-conforming topic label accepted or normalized** | §25.3.4 | a `Subscription.topic`, `FeedHint.topic`, `FeedHead` key `64`, or `{topic}` locator segment fails NFC-only, the ≤ 128 B bound, the forbidden-code-point set, or the one-spelling-for-empty rule | reject the containing object/request on decode; MUST NOT normalize and proceed (§25.13 C-07) |
 
 The governing rule of §10.7.5 applies unchanged: a DMTAP-PUBSUB security-relevant failure is either
 refused (fail closed) or surfaced as an explicit choice, never a silent degradation.
@@ -624,3 +895,34 @@ registers no new subsystem. Codes follow the §21 conventions and responder-acti
 | `0x0911` | `ERR_PUB_SUBSCRIPTION_REVOKE_INVALID` | `SubscriptionRevoke` verification (§25.5.1) | `sig` fails under `signer`, or `signer` does not match the target `Subscription.subscriber` (or an authorized device thereof). | No | FAIL_CLOSED_BLOCK |
 | `0x0912` | `ERR_PUB_SUBSCRIBE_QUOTA` | Subscription admission policy (§25.7.1) | A holder's aggregate subscriber-admission bound (count/rate per feed or topic) is exceeded. A policy deny, never a security/crypto gate. | Yes (after freeing / under a laxer policy) | DENY_POLICY |
 | `0x0913` | `ERR_PUB_HINT_RATE_LIMITED` | Subscriber-side inbound rate policy (§25.7.2) | A subscriber's configured per-publisher (or per-topic) inbound `FeedHint` budget is exceeded; excess hints are dropped. | Yes (next budget window) | DROP_SILENT |
+| `0x0915` | `ERR_PUB_FEED_TOPIC_MISMATCH` | `FeedHead` verification, topic-scoped fetch (§25.3.1) | A verified `FeedHead`'s key `64` (absent ⇒ `""`) is not byte-equal to the topic the reader requested. Not allocated contiguously with the block above: `0x0914` (`ERR_PUB_SUITE_BELOW_FLOOR`) belongs to §22 (§22.10), allocated between this appendix's two registration passes. | No | FAIL_CLOSED_BLOCK |
+
+## 25.13 Change log — normative corrections
+
+This document is pre-1.0 and is corrected in the open, in the same discipline
+[`substrate/SYNC.md` §14](substrate/SYNC.md) established: a defect found by an adversarial protocol
+audit is fixed here **and recorded here**, never silently edited. Each entry states what changed,
+whether it changes **wire bytes** (a CDDL shape, a DS-tag/hash-domain preimage, or a value carried
+on the wire — a KAT/vector consumer must be updated) or is a **behavioral rule** (a MUST governing
+what a conformant implementation does with bytes whose shape is unchanged), and how it was found.
+
+| # | Change | Class | Found by |
+|---|--------|-------|----------|
+| **C-01** | **§25.3.1/§25.3.2 bind the topic into the signed `FeedHead` (new key `64`) and gate it behind `pubsub-1`, replacing the false claim of parity with §22.2.3.** The prior text put `topic` only in the serving-layer locator and defended that design by analogy to §22.2.3's manifest-type binding — an analogy that does not hold, because §22.2.3 folds the type into a *computed* hash/signature preimage while a locator is not a preimage; nothing was folded anywhere. Two concrete failures followed, both closed by the same fix: (a) §22.4.2's fork/rollback detector is keyed on `pub` alone, so several unsigned topic chains under one `pub` produced overlapping `seq`/`tip` pairs that tripped `0x0907`/`0x0908` against an honest publisher and handed a third party two genuinely-signed heads presentable as equivocation evidence; (b) a hostile holder could serve topic A's chain at topic B's locator and pass every §22 check, so a `security-advisories` subscriber could be handed a valid, advancing, verifiable feed that never contains the advisory. Fixed per §18.1.2's negotiated-extension procedure: `FeedHead` gains OPTIONAL key `64` (`topic`, absent iff `topic = ""`), inside `det_cbor(FeedHead ∖ {8})` and therefore covered by `FeedHead.sig`; a reader MUST reject a mismatch (`ERR_PUB_FEED_TOPIC_MISMATCH`, `0x0915`, new); a server MUST NOT send key `64`, and a reader MUST NOT request a topic-scoped feed, without `pubsub-1` (§18.1.2's `≥ 64` signed-object extension rule). §25.2's "three new object types, zero field additions" claim and §25.8's capability-token row are corrected to match: exactly **one** field addition, and topic-scoped serving/reading is a `pubsub-1` surface, not `pub-1`. | **NORMATIVE — wire bytes.** `FeedHead` gains one OPTIONAL key (strictly additive: absent on every pre-existing default-feed head, so no previously valid object or signature changes, §25.3.3); one new error code `0x0915` (§25.12); the capability-token row (§25.8) is corrected, not merely reworded. A `pub-1`-only verifier handed a topic-bearing head rejects it fail-closed under §18.1.2 — the intended behavior, not a regression, since a topic chain silently consumed as the default feed is exactly the confusion key `64` exists to prevent. | Adversarial protocol audit (item PS-1/PS-2): keying `feed_head`/fork-detection state on `pub` alone while topic lived only in the locator was found to make the two consequences above unavoidable, and the §22.2.3 "parity" claim was found to rest on a hash-preimage property the locator design never had. |
+| **C-02** | **§25.3.5 is new: `pubsub-1` reader state is keyed by `(pub, topic)`, and two heads differing only in `topic` are explicitly not equivocation.** A direct consequence of C-01's signed topic field: once `FeedHead` can carry a topic, §22.4.2's rollback/fork-detection state — the accepted-`seq` watermark, the retained `tip`, the fork record — MUST be kept **per** `(pub, topic)`, never merged across topics under one `pub`. A reader MUST NOT raise `ERR_PUB_FEED_ROLLBACK`/`ERR_PUB_FEED_CHAIN_BROKEN` across two different topics' heads, and MUST NOT publish or forward them as evidence that the publisher equivocated — the exact self-inflicted failure mode C-01 item (a) identified. A `pub-1`-only reader needs no change: it never receives key `64`, holds one chain per `pub`, and `(pub, "")` and `pub` coincide by construction. | **NORMATIVE — behavioral rule; no additional wire bytes** (the field it keys on is C-01's). Un-implementing this rule while implementing C-01 reintroduces the self-inflicted-equivocation failure C-01 was partly written to close. | Adversarial protocol audit (item PS-1/PS-2), same investigation as C-01 — found by tracing what §22.4.2's existing state-keying does once a second topic exists under one `pub`. |
+| **C-03** | **§25.4.1's `subscription_id` is re-derived from the `Subscription` body under a dedicated DS-tag, never from the complete signed object.** The prior formula, `0x1e ‖ BLAKE3-256(det_cbor(Subscription))`, included `sig` (key `10`) in the preimage, by analogy to `announce_id` (§22.3.1). §1.3 forbids exactly this construction by name — no identifier may be derived from a signature, because hybrid AND-composition gives EUF-CMA, not SUF-CMA (§1.3), so a valid `sig` is maulable into a different valid signature over the same body. Because `SubscriptionRevoke` (§25.5) names its target by `subscription_id`, a holder that mauls (or simply retains a mauled copy of) a `Subscription`'s signature stores an object under a different id than the one a later, correctly-targeted revoke names — an unmatched revoke is unevaluable (§25.5.1), so hint service continues to `expires` with the subscriber having done everything the protocol asks: a **revocation bypass**. The same mauled duplicate also counted twice against §25.7.1's aggregate admission bound and re-granted §25.6.4 standing on replay. Fixed by deriving `subscription_id = 0x1e ‖ BLAKE3-256("DMTAP-PUB-v0/subscription-id" ‖ 0x00 ‖ det_cbor(Subscription ∖ {10}))` — the body only, DS-tagged against every other hash/signature domain in the family (§18.1.6's separation rule applied to a hash) — and requiring every holder to treat body-identical `Subscription`s as **one** subscription for revocation, quota and standing purposes alike, whatever their `sig` bytes. `nonce` (key `8`) is now the sole source of `subscription_id` distinctness and its CSPRNG/no-reuse requirement is stated accordingly. | **NORMATIVE — wire bytes.** The `subscription_id` preimage and value change for every `Subscription` (a new hash domain-separation tag is reserved, §25.8); `SubscriptionRevoke.subscription` (key `1`) carries the new value. No CDDL shape changes on `Subscription` itself. | Adversarial protocol audit (item PS-3), applying §1.3's signature-derived-identifier prohibition to §25.4.1 by the same reasoning being applied in parallel to `announce_id`/`Identity_id` in §18/§22 — kept consistent with that fix's derivation style (DS-tagged hash over the body, `sig` excluded). |
+| **C-04** | **§25.5.1's `SubscriptionRevoke` gains its own `v`/`suite` (keys `5`/`6`) instead of inheriting the target `Subscription`'s.** The prior text reasoned that a revoke is never evaluated without its target already in hand, so the target's discriminators are necessarily available and a second, independently-negotiable choice would be redundant. The premise is retained; the conclusion did not survive that `signer` need not be the device that signed the target (§25.5.1 admits any currently-authorized device of `subscriber`) — and §18.1.6's message representative is suite-dependent, so a device holding no key at the target's suite could not produce the inherited signature at all. A subscriber whose device was lost, retired, or suite-rotated would then be **unable to revoke**, for the one operation whose purpose is to work when circumstances have changed. Fixed by giving the revoke its own REQUIRED `v` (key `5`) and `suite` (key `6`), governing only this object's own `sig`; an OPTIONAL inline `device_cert` (key `7`) is added alongside so an offline holder can complete the §1.2 chain check without directory access. Unknown `v`/`suite` on a revoke is `ERR_PUB_UNSUPPORTED_VERSION` (`0x0901`), fail-closed, exactly as for every other object in this family. | **NORMATIVE — wire bytes.** `SubscriptionRevoke` gains three keys (`5`, `6`, REQUIRED; `7`, OPTIONAL); every previously-describable revoke lacked a `v`/`suite` of its own, so this is a strict, additive widening, not a break of a previously-conformant object (there was none, since the prior text specified no encoding for `v`/`suite` at all). | Adversarial protocol audit (item PS-4): found by asking which device produces a revoke's signature when the original signing device is gone, and observing that §18.1.6's suite-dependent representative makes "inherit the target's suite" sometimes unproducible. |
+| **C-05** | **§25.6.4 requires a subscriber to discard, before any fetch, a `FeedHint` whose `(pub, topic)` is not one it itself holds an active `Subscription` for.** Nothing in the prior text required a hint's `(pub, topic)` to match a subscription the recipient had actually issued; the only check was on the *sender* (§25.6.4 test, now renumbered test 3: is `Payload.from` the identity `FeedHint.pub` names). A publisher with many subscribers could therefore sign hints naming a **third party's** feed, and §25.6.2's "a hint is a reason to check" rule converted one signed act into as many independently-verified fetches at an identity that had never published to, or accepted a subscription from, any of them — **fan-in amplification** aimed at a victim who follows no one involved, with the amplification factor set by the attacker's own subscriber count rather than the victim's. §25.7.2's subscriber-side rate bound does not reach it, since each subscriber sees only one hint, well inside its own budget. Fixed by adding tests 1–2 (an active, unexpired, unrevoked `Subscription` whose `feed`/`topic` byte-match the hint) ahead of the existing sender-identity test, and requiring the discard happen **before** any fetch is performed or scheduled, not merely before the hint is surfaced as a notification. | **NORMATIVE — behavioral rule; no wire bytes.** No CDDL, DS-tag or error-code change; the fix is a MUST on when a subscriber may act on a `FeedHint` it has already decoded and authenticated. | Adversarial protocol audit (item PS-5): found by tracing who pays for the fetches a `FeedHint` triggers and observing that §25.6.4's identity check constrains only the *sender*, never the *target* the hint names. |
+| **C-06** | **§25.4.3 states plainly that delegating `Subscription` custody does not delegate the authority to originate `FeedHint`s.** An earlier revision let a publisher delegate hint-pushing to any holder with custody of its subscriber records, while §25.6.4 granted standing only to "that publisher's operational key" and §25.7.3 asserted there is "no second identity to launder through" — the three cannot hold at once, because a delegated pusher **is** a second identity, and a `Subscription` is a portable, self-contained artifact every custodian already holds a copy of: accepting hints from any holder of a copy would make mere possession sufficient to push into a subscriber's inbox with pre-authorized standing and pre-authorized fetches. Resolved in favor of the smaller answer rather than a new signed `HintDelegation` object (which would add a registry allocation and a second revocation lifecycle to keep consistent with the first): a `FeedHint` MUST be signed by a key the feed identity itself authorizes (`Payload.from` equal to `FeedHint.pub`, or chained to it by an unrevoked `DeviceCert`), and a subscriber MUST verify that binding before treating the hint as solicited. Custody delegation for admission, the aggregate bound, audit and failover is unchanged. | **NORMATIVE — behavioral rule; no wire bytes.** No new object, key or error code; the existing §25.6.4 identity-binding test (test 3) already enforces this once stated, so a delegated holder's hint fails standing and is disposed of as an ordinary unsolicited push. | Adversarial protocol audit (item PS-6): found by checking §25.4.3's delegation grant against §25.6.4's standing rule and §25.7.3's accountability claim and finding the three mutually inconsistent. |
+| **C-07** | **§25.3.4 is new: a normative topic-label grammar (NFC-only, ≤ 128 B, forbidden code points, byte-equality comparison, one spelling for the empty topic).** The label carried in `Subscription.topic`, `FeedHint.topic`, `FeedHead` key `64` and the `{topic}` locator segment was previously an unconstrained `tstr`. Left unconstrained: two Unicode-equivalent but byte-distinct forms (NFC vs NFD) would name two different feeds that render identically in any UI, letting a subscriber be moved onto a feed that only *looks* like the one requested; an unescaped `/` (or its percent-encoded form) turns a label into path structure at the locator layer, the classic locator-confusion bug; an unbounded label sits inside every signed head a subscriber fetches; and the empty topic had two possible locator spellings, one of which contains an empty path segment that a proxy or normalizing router is entitled to collapse. §25.3.4 states five MUST rules closing each of these, requires reject-on-decode (never repair-and-proceed) for a non-conforming label, and requires byte-equality comparison at every layer — no case-folding, width-folding or Unicode collation. | **NORMATIVE — new constraint on an existing field's valid values; no CDDL shape change.** No key is added, retyped or removed; what is newly non-conformant is a producer or decoder that accepted, emitted, or silently normalized a label failing any of the five rules. `Subscription.topic`/`FeedHint.topic`/`FeedHead` key `64`'s table rows are updated to cite this section. | Adversarial protocol audit (item PS-7): found by asking what a topic label is compared *against*, and observing that neither NFC-equivalence nor path-separator characters had a stated rule. |
+| **C-08** | **§25.5.1 is new: a subscriber MUST retain the state needed to compute `subscription_id` for every `Subscription` it has issued that is neither expired nor revoked, through backup/restore/device-migration.** A direct consequence of C-03: once the identifier a `SubscriptionRevoke` names is derived from the body rather than recomputable from an address the object was fetched at (a `Subscription` is delivered, never pulled, §25.4.1), the *only* way to name it is to still hold — or be able to reproduce byte-for-byte — `det_cbor(Subscription ∖ {10})`. A subscriber that treats its subscription list as disposable cache satisfies every other rule in this appendix while quietly losing the ability to revoke at all, left with only the bounded-`expires` backstop (§25.4.2) — which is exactly why that backstop is a MUST, but a poor substitute for the operation the user actually asked for. Nothing else in this appendix placed a retention obligation on the *subscriber* side (§25.4.3's delegation duties are the publisher's), so the gap was easy to miss. | **NORMATIVE — behavioral rule; no wire bytes.** No CDDL, DS-tag or error-code change; a client-side retention MUST, parallel to the existing backup/restore/migration expectations §25.9 already states for other client obligations. | Adversarial protocol audit (item PS-8): found by asking what happens when a subscriber that issued a `Subscription` has discarded its own copy before `expires`, and observing that no protocol path lets it name the object it meant to revoke. |
+
+**Standing rule.** A defect between this document and an implementation is resolved by deciding
+**which side is right on the merits** and correcting the other in the open, exactly as
+[`substrate/SYNC.md`](substrate/SYNC.md) §14 states it. **C-01, C-02, C-03 and C-04 change wire
+bytes** (a CDDL shape, a hash-domain preimage, or a value carried in an existing field) and are
+classed NORMATIVE — wire bytes accordingly; **C-05, C-06, C-07 and C-08 change no byte** — each adds
+or sharpens a MUST governing what a conformant implementation does with, or requires of, bytes whose
+shape is unchanged — and are classed NORMATIVE — behavioral rule. None is classed INFORMATIVE: unlike
+§24.14's non-normative migration guidance, every entry in this table corrects a `pubsub-1`
+conformance requirement, not advice.

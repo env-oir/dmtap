@@ -608,22 +608,48 @@ your key already holds your key-name, and no authority can allocate, deny, seize
 It is the **floor of the naming ladder** (§3.13) and the zero-authority escape hatch referenced
 throughout (§3.9.4, §3.11.5): whatever else fails, you remain nameable and reachable by key-name.
 
-- **Derivation (normative).** The key-name is a word encoding of `BLAKE3-256(ik)` — **whose exact
-  preimage is pinned in §18.9.17**, because `Identity.iks` is a map of one key *per suite* and
-  "`ik`" alone does not name a value. The hashed input is the entry at `Identity.anchor_suite`
-  (§1.2.0), as raw public-key bytes. Consequently an anchor-suite migration changes the key-name;
-  an operational-suite migration does not. Continuing: it is the identity's
-  root key `IK` (§1.2) — rendered as an **8-word** sequence (80 bits) over the same curated,
-  language-agnostic **~1024-word list** and **folded checksum** used for safety-number word
-  rendering (§3.4.1), so a single mistyped word **fails closed** rather than resolving to a
-  different key. A **12-word** (128-bit) form is defined for the adversary-proof mode (§16.2).
-  Distinct keys yield distinct key-names with overwhelming probability (collision-resistant hash),
-  which is what makes the key-name **globally unique without any consensus or registry** — the one
-  Zooko corner (global + authority-free) a derived name can occupy, at the cost of not being
-  human-*chosen* (§3.9, §15.5 Zooko's Triangle).
+- **Derivation (normative).** The key-name is a word encoding of a digest over the identity's
+  **root key `IK`** (§1.2) — **whose exact preimage is pinned in §18.9.17**, because
+  `Identity.iks` is a map of one key *per suite* and "`ik`" alone does not name a value. The hashed
+  input is a derivation-version byte, the §18.1.5 prefix of the hash itself, and the entry at
+  `Identity.anchor_suite` (§1.2.0) as raw public-key bytes — in v0,
+  `BLAKE3-256(0x01 ‖ 0x1e ‖ ik_pub_bytes)`. The algorithm is committed *inside* the input so a
+  future hash migration produces a **distinguishable** key-name rather than silently replacing
+  every existing one (§18.9.17). Consequently an anchor-suite migration changes the key-name; an
+  operational-suite migration does not. The digest is rendered as an **8-word** sequence (80 bits)
+  over the same curated, language-agnostic **~1024-word list** and **folded checksum** used for
+  safety-number word rendering (§3.4.1), so a single mistyped word **fails closed** rather than
+  resolving to a different key. A **12-word** (120-bit) form is REQUIRED in the adversary-proof
+  mode (§16.2.1). Distinct keys yield distinct key-names with overwhelming probability, which is what
+  makes the key-name **globally unique without any consensus or registry** — the one Zooko corner
+  (global + authority-free) a derived name can occupy, at the cost of not being human-*chosen*
+  (§3.9, §15.5 Zooko's Triangle).
+- **The margin is the TRUNCATION's, not BLAKE3-256's — state it, do not borrow it (normative).**
+  The 8-word form is **80 bits** of a 256-bit digest, and truncation does not preserve the
+  untruncated function's security level. Against a **chosen** collision — an attacker generating
+  two keys of their own whose key-names coincide — the birthday bound gives ≈ **2⁴⁰** work, which
+  is *trivially* reachable on commodity hardware. Against a **second preimage** — an attacker
+  finding a key matching *your* already-published key-name — the bound is ≈ **2⁸⁰** work, which is
+  large but is a **fingerprint-grade**, not a key-grade, margin, and is not a number to build a
+  long-lived trust decision on. Calling the derivation a "collision-resistant hash" and stopping
+  there borrows BLAKE3-256's property for a value that does not have it; the honest statement is
+  the two numbers above. The 12-word form (§16.2.1) raises them to ≈ 2⁶⁰ and ≈ 2¹²⁰ and exists for
+  exactly this reason.
+- **A key-name MUST NOT be a security-relevant discriminator (normative).** Because the chosen-
+  collision margin is ≈ 2⁴⁰, a client **MUST NOT** use a key-name as an allowlist or blocklist
+  entry, as a deduplication or database key for identities, as a group-membership or capability
+  lookup key, or as the sole basis for any trust decision. Every one of those is a *discriminator*:
+  it asks "are these the same identity?", and an attacker who can produce two keys sharing a
+  key-name at 2⁴⁰ work answers it wrongly at will. Identities are discriminated by **key** — the
+  full `ik`, or a content address over it — everywhere a decision depends on the answer. The
+  verification artifact a human compares is the **full-`Identity` safety number** (§3.4.1), which
+  covers the whole multi-suite identity at its full length; the key-name is a *convenience
+  confirmation* over one key at 80 bits, and the two are not interchangeable. A client MAY display
+  a key-name, index a *display cache* by it, or let a user type one to look up a candidate — and
+  MUST then verify the recovered key itself before acting on it.
 - **A key-name VERIFIES an identity; it does not, by itself, ADDRESS one (normative — read this
   before treating a key-name as an address).** The key-name is a **one-way** function of the key:
-  80 bits of `BLAKE3-256(ik)` (§18.9.17), rendered to words. Given the key you can compute and
+  the 80 leading bits of the §18.9.17 digest, rendered to words. Given the key you can compute and
   confirm the name; **given only the name you cannot recover the key**, and the key is what
   addressing actually requires — the HPKE seal (§2.4), the `DeliveryTag` (§2.2a), the `recipient`
   scope of a work proof (§9.4), and the DHT lookup key `hash(ik)` (§4.2) are all functions of

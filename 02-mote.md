@@ -143,7 +143,6 @@ Payload {
   refs:     [* bytes],      // ids of MOTEs this replies to / references (threading)
   attach:   [* Attachment], // §2.5
   expires:  ?u64,           // requested expiry (client-enforced deletion)
-  fs_ratchet: ?bytes,       // forward-secrecy ratchet material (§5.2)
   provenance: ?[+ GatewayAttestation],  // sealed gateway-attestation chain (§7.8, §18.3.11);
                             //   present iff gateway-touched, absent ⇒ provably pure-mesh
 }
@@ -163,6 +162,21 @@ Body = tstr / bytes         // text or opaque MIME
 Only the recipient (or group members) can decrypt `Payload`, so **all sender identity,
 subject, recipients, threading, and content are hidden from the network** — this is what
 sealed sender + payload encryption buys.
+
+**`fs_ratchet` is removed (was: `?bytes`, "forward-secrecy ratchet material," §5.2).** An
+adversarial audit found the field OPTIONAL, opaque, and — searched across the whole
+specification — never given a preimage, a derivation, a verifier obligation, or any interpreter
+at all. An undefined field that gestures at "forward secrecy" is worse than no field: it invites
+an implementer to believe FS is handled somewhere they have not looked, for exactly the messages
+(HPKE-sealed 1:1/first-contact MOTEs) that the honest disclosure now added at §5.2 and §6.9 SP-6
+says carry none. Rather than retrofit real ratchet semantics onto a field that would either (a)
+duplicate the already-specified MLS epoch mechanism (§5.1) for an established group, where it
+would be redundant, or (b) reintroduce, for the bootstrap HPKE-to-KeyPackage-key message, exactly
+the second per-message ratchet protocol DMTAP deliberately declined to build outside the optional
+deniable mode (§5.2.1) — the field is deleted and the gap it papered over is disclosed as a gap
+instead (§5.2, §6.9 SP-6). **§18.3.5's `Payload` CDDL carries the corresponding key (8,
+`fs_ratchet`) and needs the matching removal (or an explicit `Reserved — do not assign` marking
+if the key number must not be reused); reported to the §18 owner.**
 
 ## 2.5 Attachments and files
 
@@ -221,10 +235,20 @@ deliver(outer_mote)   → recipient node receives, unwraps outer, verifies envel
 ack(id)               → recipient confirms receipt of MOTE `id`.
 ```
 
-- **`ack(id)` transport.** An `ack` is a **small signed control MOTE** (kind `system`, §2.3) —
-  or, on a live direct/`fast` connection, a transport-level ack over the same channel — carrying
-  `id` and signed by the recipient's device key, so the sender's retry queue (§4.7) can
-  authenticate the confirmation. Acks are not themselves acked (no ack storm).
+- **`ack(id)` transport (normative — signing is MUST, not an optional hardening).** An `ack` is a
+  **small signed control MOTE** (kind `system`, §2.3) — or, on a live direct/`fast` connection, a
+  transport-level ack over the same channel — carrying `id`, and it **MUST** be signed (§19.3.2:
+  this was previously an OPTIONAL implementation hardening, which is corrected here) by a key
+  currently authorized under the recipient's pinned identity: the `IK` itself, or a non-revoked
+  `DeviceCert`-chained device key (§1.2) — the identical authorization test §5.6.1 already applies
+  to cluster-sync peers. The sender's retry queue (§4.7) MUST verify this signature before
+  transitioning to `ACKED` (§20.1); an unsigned, wrongly-signed, or unauthorized-key ack MUST be
+  ignored — it is not delivery evidence. An `ack` **MUST travel at the same privacy tier as the
+  MOTE it acknowledges** (a `private`-tier MOTE's ack MUST NOT be downgraded to `fast` for
+  convenience — the same no-silent-downgrade discipline as §4.4.9). Acks are not themselves acked
+  (no ack storm). See §19.3.2 for the CDDL this requires and the full rationale, and §6.9 SP-2 for
+  the disclosed residual (a signature necessarily proves a *specific device* produced it — a
+  stronger identity commitment than an unsigned event carried).
 - **Durability = the sender's node retries** until `ack`, with exponential backoff and an
   `expires`-bounded deadline. The mixnet/relay holds nothing durably.
 - **Deduplication.** A recipient re-acks only an `id` it has **previously acked** (a stored,
@@ -253,6 +277,39 @@ in order:
    (identity is authenticated later, inside `ciphertext`, at step 8). The `challenge` at step 6
    MUST be bound to `sender_key` (§9.4), so this step also fixes which ephemeral key the abuse
    proof was minted for.
+3a. **Freshness (replay bound, normative).** Reject a MOTE whose `ts` (§2.2) is more than the
+   **clock-skew tolerance** (§16.1, ±120 s) ahead of the receiver's clock, **or** more than the
+   **durable seen-id horizon** (§16.10) in the past. Drop on failure — same disposition as step 3
+   (no ack; a duplicate of an `id` already acked is still re-acked per §2.6, since that rule runs
+   at step 9 and is unaffected by this step). Two conditions are checked, not one, because they
+   defend against different things and a single symmetric window cannot serve both:
+   - **Too far in the future** catches a broken or lying clock — the pre-existing, narrow ±120 s
+     bound (`ERR_TIMESTAMP_OUT_OF_SKEW`, `0x020C`, already registered in §21 but, until this fix,
+     never actually wired into this procedure — a MOTE could not fail a check the validation steps
+     never performed).
+   - **Too far in the past** catches replay of a captured, validly-signed MOTE **after** it has
+     aged out of the node's dedup cache (§2.6) but is presented again with every other check —
+     `sender_sig`, `Payload.sig`, decryption — still passing, because nothing before this fix
+     bounded how old an accepted `ts` may be. This bound MUST NOT be the same ±120 s figure used
+     for the future direction: `ts` is fixed at a MOTE's original construction and does **not**
+     change across a sender's retries (§20.1 keeps the envelope `id` — and therefore, since
+     `Payload.sig`'s preimage binds `ts`, §18.9.2, the `ts` itself — stable across every
+     re-onion-wrap), so a 120 s past-bound would reject a message still legitimately retrying at
+     hour 71 of its 72 h deadline (§16.1), or one delivered from a 20-day offline buffer
+     (§16.6/§14.5) the moment it drains. The past bound MUST instead be **at least as large as**
+     the longer of the retry deadline and the offline-buffer TTL — which is exactly what the
+     durable seen-id horizon (§16.10, currently 20 days) already is. Using that one figure for
+     both the freshness past-bound and the dedup-cache retention is the point: freshness and
+     dedup lifetime become **the same bound**, not the three different figures (§16.1's "≥ 300 s"
+     replay-cache retention, §16.10's 20-day durable seen-id horizon, and §2.6's dedup-by-
+     previously-acked set, which as written has no upper bound at all) this specification
+     previously carried for what is conceptually one cache. **§16.1 and §16.10 need reconciling
+     into a single cited parameter for this purpose, and §18.3.1's claim that `ts` is "used only
+     for ordering/expiry, never for correctness" needs amending — `ts` now also gates a
+     correctness/security check. Both are reported to their owning sections, not made here.**
+   - **Deniable-mode parity.** The deniable 1:1 mode's first-message replay defense (§5.2.1(a))
+     already enforces an equivalent bound for `DeniableInit`. This step brings the **default**
+     (non-deniable) path to parity; the default path previously had none at all.
 4. **Resolve `to`** to this node (or a group it belongs to). If `to` does not resolve, drop.
 5. **Classify the sender** by `to`/pinning state: a **known contact** (fast path) vs an
    **unknown/cold sender**.
@@ -330,6 +387,37 @@ in order:
    store-and-ack a kind it cannot validate (§21.16 forward-compatibility rule, §10.1) — an ack
    asserts validated delivery, which is impossible for semantics the node cannot check.
 9. Apply `expires`, `refs`, `kind` semantics; store; `ack`.
+
+   **Same-author gate for `edit`/`redact` (normative).** For `kind = edit` (`0x03`) or
+   `kind = redact` (`0x04`), apply the referenced supersede/delete **only if** this MOTE's
+   `Payload.from` equals the `Payload.from` of **every** MOTE named in `refs`, **as the recipient
+   itself stored it** (the check is against the recipient's own recorded authorship of the
+   target — never a claim carried by the incoming `edit`/`redact` itself). A `refs` target this
+   node does not hold cannot be checked and MUST be treated as a mismatch (fail closed, not fail
+   open).
+   On mismatch — including an unresolvable `refs` target — the node MUST NOT apply the
+   edit/redaction, MUST NOT surface it as the named author's own retraction or revision, and MUST
+   discard the incoming MOTE **silently, without `ack`** (`ERR_EDIT_REDACT_AUTHOR_MISMATCH`,
+   proposed `0x0212`, §21 registration needed) — deliberately the **same** disposition regardless
+   of which of the two triggering conditions applied, so the check cannot become an authorship or
+   existence oracle against a `refs` target a prober does not already know is present. This
+   mirrors the disposition of a forged `sender_sig` (step 3): the sender's own retry independently
+   reaches `EXPIRED` (§16.1); no explicit rejection is returned.
+   **Why this is needed.** Without it, `edit`/`redact` had no same-author rule anywhere: §5.4 said
+   only that they "reference a prior MOTE by `id` via `refs`," and §5.6.4 makes a durable redact
+   remove-wins and unresurrectable across the owner's whole device cluster. Composed, any
+   correspondent — in a 1:1 or a group — could permanently delete or silently rewrite another
+   party's message in *the recipient's own view*, with a validly signed MOTE of their own. §24.7's
+   public-profile lineage got this right ("`supersedes` is strictly *same-identity* history"); the
+   messaging path now matches it.
+   **Group moderation is a distinct kind, never a relaxed `edit`/`redact` (normative).** Where a
+   deployment wants an admin/moderator (§5.8.2) to remove another member's post from a group, that
+   is a **moderation action** — a different `kind`, rendered to members as an operator/moderator
+   removal, never as the original author's own edit or retraction. `edit`/`redact` are reserved
+   for same-author supersede/delete and MUST NOT be repurposed for moderation.
+   **`reaction` (`0x02`) is unaffected.** A reaction does not claim to be the referenced author's
+   own act — it is the *reactor's* own annotation on someone else's message — so it carries no
+   authorship claim to impersonate, and this gate binds `edit`/`redact` only.
 
 Known contacts MAY skip step 6 (they are pre-authorized). Only known-contact MOTEs reach
 decryption on the fast path; unknown senders must pass the anonymous abuse gate first.

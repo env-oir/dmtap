@@ -51,7 +51,7 @@ an unknown key in a **signed** object fail-closed; it MAY ignore unknown keys �
 
    The motivating parity uses (§17) are **public mailing-list archives**, **software release
    announcements and newsletters**, and **open-hardware / open-data part libraries**; the CAD
-   artifact profile (§23) is the first production application over this substrate.
+   artifact facet (§24.18) is the first production application over this substrate.
 
 ### 22.1.2 Non-goals
 
@@ -132,11 +132,28 @@ PubManifest.id = 0x1e ‖ MTH(h_0 … h_{n-1})
 The `h_i = prefix ‖ BLAKE3-256(plaintext_i)` construction is the normative allocation (contrast the
 sealed `h_i = prefix ‖ BLAKE3-256(AEAD(key, plaintext_i))` of §18.9.5). Because the DS-tag is folded
 into **every** leaf and node, a public root and a sealed root over the *same* chunk-hash list are
-different values — the type is bound into the address, not asserted by a boolean flag (§22.2.3). The
-prefix (§18.1.5) preserves hash-agility: an implementation may migrate the digest (e.g. to SHA2-256
-for FIPS compliance) without changing the address format, and the same prefix is the
-interoperability seam with external content-addressed stores (a Git-LFS / sha256 pointer maps onto
-`0x12 ‖ SHA2-256(plaintext)`; see §23's appendix).
+different values — the type is bound into the address, not asserted by a boolean flag (§22.2.3).
+
+**The prefix is not a free per-object choice, and it is not an interoperability seam (normative,
+corrected).** An earlier draft of this paragraph read the §18.1.5 prefix as hash-agility in the
+loose sense — "an implementation may migrate the digest (e.g. to SHA2-256 for FIPS compliance)
+without changing the address format, and the same prefix is the interoperability seam with external
+content-addressed stores (a Git-LFS / sha256 pointer maps onto `0x12 ‖ SHA2-256(plaintext)`)." That
+is false, and §18.1.5's own precedence rule says why: where the containing object carries a `suite`
+(§18.1.4) — and `PubManifest` does, key 6 — every `hash` inside it MUST carry that suite's hash
+prefix, and a verifier MUST **reject** the object on disagreement (`ERR_HASH_ALG_MISMATCH`,
+`0x0127`, §18.1.5), never honor the prefix in the suite's place and never "try both." No v0 suite
+selects SHA2-256 (`0x12` is RESERVED — no suite selects it in v0, §18.1.5's own table), and this
+section's `leaf()`/`node()` are defined only for BLAKE3. A `PubManifest` built by pointing `chunks`
+at existing SHA-256 digests — for instance reusing a Git-LFS store's own pointers verbatim, the case
+the withdrawn sentence held out as an interop seam — is therefore **rejected by every conformant
+peer**, not merely one that happens to implement only BLAKE3: it is a rejected object, not a bridge
+to an external store. Migrating the digest a future suite selects (`0x05`'s SHA3-256, §18.1.4)
+remains possible *as a suite migration*, which is the sense in which the prefix genuinely preserves
+hash-agility (§18.1.5) — it is migration-without-reformatting, not a standing bridge to stores keyed
+by an algorithm no suite selects. §24's Appendix B (kerf mapping) already states this correctly for the profile
+built on this section; this paragraph is the normative twin that read the other way and is now
+brought into agreement with it.
 
 ### 22.2.3 Type-incompatibility with sealed manifests (fail closed)
 
@@ -176,6 +193,32 @@ This acceptance has one hard, normative boundary:
 > reintroduce exactly the leak §5.5 exists to prevent. The publish act (§22.7) is the sole gate
 > from private to public, and it is irrevocable (§22.7, §22.9).
 
+### 22.2.5 Origination floor (`PubManifest.suite`)
+
+A `PubManifest` carries no signature and no identity field (§22.2.1) — the recovered-signing-key
+forgery §22.3.3 step 1a defends against has no direct analogue here. What `PubManifest.suite` (key
+6) governs is narrower: purely the **hash** discipline binding `id` and each `h_i` (§22.2.2). In the
+current registry this has no practical bite — v0's suites `0x01`–`0x04` all select the identical
+hash, BLAKE3-256 (§18.1.4) — but the floor exists for the suite the registry already reserves for
+the day that stops being true: `0x05` is registered precisely as the hash-diverse **emergency
+target**, "RESERVED (hash-diverse emergency target, §1.1, §16.7, §21.15)" (§18.1.4), i.e. the
+fallback if BLAKE3-256 is ever found weak. If BLAKE3-256 is retired in favor of `0x05`'s SHA3-256, a
+`PubManifest` still carrying a BLAKE3-only suite is exactly the below-floor case step 1a defends
+against, for the identical underlying reason: an adversary who has broken the retired hash can
+construct a **second**, adversary-chosen `chunks` list whose recomputed root collides with an `id` a
+publisher genuinely announced, substituting content behind an address a reader already trusts.
+
+A verifier MUST therefore apply the **same local, absolute floor** (§22.3.3 step 1a) to
+`PubManifest.suite`: reject a `PubManifest` carrying a **known but below-floor** `suite`
+(`ERR_PUB_SUITE_BELOW_FLOOR`, `0x0914`, FAIL_CLOSED_BLOCK), unless the identical narrow
+pinned-`Identity` exception applies — evidence the verifier **already holds**, never anything
+carried by the manifest itself (a `PubManifest` has no `ts` field at all, §22.2.1), that the object
+predates the retirement of its suite. In practice that evidence is most often an at-or-above-floor
+`PubAnnounce`/`FeedHead` the verifier has already accepted whose `roots` (§22.3.1) names this exact
+`id` — the same reachability exception §22.3.3 describes for announces. Absent that, a genuine
+pre-floor manifest fails closed, on the same honest terms as step 1a: there is no offline test that
+tells a retired-hash original from a retired-hash forgery.
+
 ## 22.3 The `pub_announce` object (kind `0x40`)
 
 A `pub_announce` is a **bare, unsealed, signed CBOR object** — not a MOTE. Unlike kinds `0x00`–`0x0b`
@@ -193,7 +236,7 @@ PubAnnounce = {
   2 => suite,                    ; suite      signature/hash suite (§18.1.4)
   3 => ik-pub,                   ; pub        publisher root identity key IK (§1.2) — the point
   4 => [+ hash],                 ; roots      referenced PubManifest root(s) (§22.2) — the content
-  5 => { * tstr => ext-value },  ; meta       structured metadata map (profile-defined, §23; ext-value §18.3.6)
+  5 => { * tstr => ext-value },  ; meta       structured metadata map (profile-defined, §24; ext-value §18.3.6)
   ? 6 => hash,                   ; supersedes content address of a prior PubAnnounce (revision chain, §22.3.4)
   7 => ts,                       ; ts         publish timestamp (ms epoch)
   8 => ik-pub,                   ; signer     operational key that produced `sig`; a DeviceCert (§1.2) chains it to `pub`
@@ -206,25 +249,65 @@ PubAnnounce = {
 | `v` | 1 | `u8` | MUST | PUB object format version. MUST equal `0` in v0; any other value is rejected fail-closed (`ERR_PUB_UNSUPPORTED_VERSION`, `0x0901`). Distinct from the frozen top-level `Envelope.v` (§18.3.1); DMTAP-PUB evolves through its own registries, not this byte. |
 | `suite` | 2 | `suite` | MUST | Algorithm suite for `sig` and for the `roots` digests. Unknown ⇒ reject fail-closed (`0x0901`; the extension analogue of `ERR_UNKNOWN_SUITE` §1.1/`0x0101`). |
 | `pub` | 3 | `ik-pub` | MUST | The **publisher's root identity key** `IK`. Carried in the clear — authenticity, not anonymity. A reader binds `pub` to a human name only if it wants to *display* one, via ordinary pinning/KT (§3.4/§3.5); verification itself needs no name (§22.3.3). |
-| `roots` | 4 | `[+ hash]` | MUST | One or more `PubManifest.id` content addresses (§22.2). At least one; an announce with an empty `roots` is malformed. Multiple roots let one announce publish a set (e.g. an artifact in several formats, §23). |
-| `meta` | 5 | `{* tstr => ext-value}` | MUST (MAY be empty) | Structured metadata (title, kind, license, etc.), text-keyed and restricted to the deterministic-safe `ext-value` subset (§18.3.6) because it rides inside the signed body. Concrete schemas are **profile-defined** (§23); a reader MUST ignore keys it does not recognize (forward-compat, §21.20). A profile MAY carry a compact integer-keyed schema by embedding it as deterministic CBOR (§18.1.1) in a `bytes` value under a single profile-named key (e.g. `"artifact"`, §23.3.1) — opaque to a generic reader, which ignores the key like any other unrecognized one; the embedded bytes are covered by `sig` like every other `meta` value. |
+| `roots` | 4 | `[+ hash]` | MUST | One or more `PubManifest.id` content addresses (§22.2). At least one; an announce with an empty `roots` is malformed. Multiple roots let one announce publish a set (e.g. an artifact in several formats, §24.18). |
+| `meta` | 5 | `{* tstr => ext-value}` | MUST (MAY be empty) | Structured metadata (title, kind, license, etc.), text-keyed and restricted to the deterministic-safe `ext-value` subset (§18.3.6) because it rides inside the signed body. Concrete schemas are **profile-defined** (§24); a reader MUST ignore keys it does not recognize (forward-compat, §21.20). A profile MAY carry a compact integer-keyed schema by embedding it as deterministic CBOR (§18.1.1) in a `bytes` value under a single profile-named key (e.g. `"artifact"`, §24.18.1) — opaque to a generic reader, which ignores the key like any other unrecognized one; the embedded bytes are covered by `sig` like every other `meta` value. |
 | `supersedes` | 6 | `hash` | OPTIONAL | Content address of a prior `PubAnnounce` this one revises, borrowing `edit` (`0x03`, §2.3/§5.4) semantics: a successor supersedes a predecessor by id, forming a revision chain (§22.3.4). The referenced announce MUST have the **same** `pub`, else `ERR_PUB_SUPERSEDE_INVALID` (`0x090B`). Absent ⇒ this is an original announcement. |
 | `ts` | 7 | `ts` | MUST | Publish wall-clock time (ms epoch), subject to clock-skew tolerance (§16.1). Used for display/ordering; feed `seq` (§22.4) is authoritative for order, never `ts`. |
 | `signer` | 8 | `ik-pub` | MUST | The **operational (device) key** that produced `sig`. It MUST be authorized by `pub` via a `DeviceCert` (§1.2) that the verifier checks (§22.3.3); `signer` MAY equal `pub` when `IK` signs directly. Keeping `IK` cold (§1.2a) is RECOMMENDED — an operational key signs day-to-day publishes. |
 | `sig` | 9 | `sig-val` | MUST | Signature by `signer` over `DMTAP-PUB-v0/announce ‖ 0x00 ‖ det_cbor(PubAnnounce ∖ {9})` (§18.1.6). A failure is `ERR_PUB_ANNOUNCE_SIG_INVALID` (`0x0904`). For `suite = 0x02` the AND-composition rule of §18.1.6 applies (both component signatures MUST verify). |
 
-**Content address.** A `PubAnnounce` has no self-`id` field — a field cannot contain its own hash.
-Following the `Identity`-anchor rule (§18.9.4), the announce's content address is derived from the
-**fully-signed** object:
+**Content address — the signature (key 9) is EXCLUDED (normative, corrected).** A `PubAnnounce`
+has no self-`id` field — a field cannot contain its own hash. Following the `Identity`-anchor rule
+(§18.9.4), the announce's content address is derived from the **same signature-excluded body the
+DS-tagged `sig` already covers** (§22.3.1's `sig` row), **not** from the complete object:
 
 ```
-announce_id = 0x1e ‖ BLAKE3-256( det_cbor(PubAnnounce) )     ; the complete, signed object
+announce_id = 0x1e ‖ BLAKE3-256( det_cbor(PubAnnounce ∖ {9}) )   ; key 9 (sig) EXCLUDED
 ```
+
+**Why: §1.3 forbids deriving an identifier from a signature.** An earlier draft of this formula
+hashed the *complete, signed* object, `sig` included. §1.3 states the general rule plainly: "no
+identifier, dedup key, or replay-cache key in this protocol is derived from a signature… An
+implementation MUST NOT introduce a construction that depends on signature uniqueness or
+non-malleability" — and §18.1.6 already concedes hybrid signatures are EUF-CMA, not SUF-CMA
+(malleable). Hashing `sig` into `announce_id` did exactly what §1.3 forbids: two byte-distinct but
+both-valid signatures over the same `PubAnnounce ∖ {9}` body (a re-signing, or a malleated hybrid
+component) would produce two different `announce_id`s for what is semantically **one**
+announcement — defeating the "one canonical id" property that `supersedes` (§22.3.4), feed entries
+(§22.4) and the fetch-address bind (step 2 below) all depend on. Excluding `sig` closes this: the
+id is now a pure function of the signed content, exactly as the signature already treats it. This
+is a **restoration of §1.3's invariant, not an exception carved out of it**: §1.3 already forbade a
+signature-derived identifier before `announce_id` existed, and the sig-included formula was the
+violation, not a case §1.3 declined to reach. The correction brings `announce_id` into the rule
+§1.3 always stated, rather than amending §1.3 to tolerate it.
+
+**Consequence, stated rather than left implicit: the id is now stable across re-signing.** Because
+`sig` is excluded, re-signing the identical `PubAnnounce ∖ {9}` body — under the same key, a
+second device key, or after a suite's signature is refreshed with no content change — yields the
+**same** `announce_id` with a *different* valid `sig`. This is benign and intentional: it means one
+`announce_id` may legitimately carry two (or more) valid signatures over its lifetime, and a
+verifier accepting **any one** valid `sig`/`signer` chain over the pinned body is conformant. It is
+recorded here because it is a real behavior change from the prior (flawed) formula, not a
+side-effect to discover by surprise.
+
+The `0x1e ‖ BLAKE3-256` here is the instantiation of `PubAnnounce.suite`'s content-hash, not an
+independent choice: as everywhere else, the suite selects both the hash and the §18.1.5 prefix it
+travels under, and a prefix disagreeing with the suite is a rejection (`ERR_HASH_ALG_MISMATCH`,
+`0x0127`, §18.1.5). Every suite a v0 node may originate selects BLAKE3-256, which is why the
+literals are written out.
 
 `announce_id` is what a feed entry (§22.4) and a `supersedes` reference (§22.3.4) point at, and what
 a fetcher recomputes and checks on receipt (`ERR_PUB_ANNOUNCE_ID_MISMATCH`, `0x0905`) before trusting
 the bytes. *(Rejected alternative: a self-referential `id` field — circular and impossible to
-compute; the derived-anchor rule of §18.9.4 is used instead, for consistency with `Identity`.)*
+compute; the derived-anchor rule of §18.9.4 is used instead, for consistency with `Identity`, which
+receives the identical sig-exclusion correction, §18.9.4.)*
+
+**Conformance-vector impact (flagged prominently).** The committed `pub_announce_id` vector in
+`conformance/vectors/pub_vectors.json`, and every vector derived from it —
+`pub_announce_supersede_same_author_valid`/`_wrong_pub` and any `FeedEntry`/`FeedHint` fixture that
+embeds this `announce_id` — were generated under the withdrawn **sig-included** formula and are
+**wrong** under this correction. They need regeneration from the signature-excluded body. This
+document does not edit `conformance/**`; see the report accompanying this change.
 
 ### 22.3.2 Why signed plaintext, not a sealed MOTE
 
@@ -239,8 +322,20 @@ from unsolicited push (§9), and a public announce pushes to no one (§22.6.3).
 A verifier presented with a `PubAnnounce` MUST, in order:
 
 1. Reject unknown `v`/`suite` (`0x0901`, fail closed) — the extension analogue of §2.7 step 1.
-2. Recompute `announce_id = 0x1e ‖ BLAKE3-256(det_cbor(PubAnnounce))` and reject on mismatch against
-   the address it was fetched by (`0x0905`).
+
+   **Step 1a — the origination floor.** Then reject a **known** `suite` that is **below this
+   verifier's public-object floor** (`ERR_PUB_SUITE_BELOW_FLOOR`, `0x0914`, fail closed), unless
+   the narrow pinned-`Identity` exception below applies. Step 1 rejects a suite the verifier does
+   not *know*; step 1a rejects one it knows and no longer *trusts* to originate a public object.
+   The floor **defaults to the current originating floor of §1.1** — suite `0x02` in v0 — and MUST
+   NOT default to "accept anything registered". A verifier MAY configure a lower floor, and MUST
+   then surface the reduced assurance rather than accept silently (§10.7.5). The identical floor
+   applies to `PubManifest.suite` (§22.2.5) and `FeedHead.suite` (§22.4.5) — a below-floor suite is
+   refused origination trust uniformly, wherever this extension's `suite` hook appears, not only on
+   `PubAnnounce`.
+
+2. Recompute `announce_id = 0x1e ‖ BLAKE3-256(det_cbor(PubAnnounce ∖ {9}))` (key 9, `sig`, EXCLUDED
+   — §22.3.1) and reject on mismatch against the address it was fetched by (`0x0905`).
 3. Verify `sig` under `signer` over the DS-tagged preimage (§22.3.1); drop on failure (`0x0904`).
 4. Verify `signer` is authorized by `pub` — either `signer == pub`, or a `DeviceCert` (§1.2) signed
    by `pub` (or an `IK`-authorized chain) covers `signer` and is not revoked (§1.5). A broken chain
@@ -248,7 +343,44 @@ A verifier presented with a `PubAnnounce` MUST, in order:
 5. If `supersedes` is present, require the referenced announce's `pub` to equal this `pub`
    (`0x090B` on mismatch) — a publisher may only supersede its *own* announcements.
 
-This is **entirely offline-verifiable with zero DNS and zero name-chain**, consistent with §3.13:
+**Why step 1a exists, and why §1.3's ratchet cannot supply it (normative rationale).** The suite
+high-water-mark of §1.3 polices a **relationship**: it needs a pin to ratchet, and it lives on a
+per-contact record. A first-contact archive fetch has neither — which is not an oversight but the
+premise of this subsection, whose whole value is that it works with no pin, no DNS and no log. So
+the ordinary anti-downgrade machinery is simply absent here, and step 1 alone accepts suite `0x01`
+forever, because `0x01` must remain a *registered* code point in order to verify history at all
+(§1.1). The attack that opens is concrete: an adversary who recovers a classical `IK` — which is
+what a harvest-now-decrypt-later adversary with a quantum computer eventually does, and precisely
+what §1.1's PQ-hybrid floor exists to anticipate — mints a **fresh** `PubAnnounce` at suite `0x01`,
+self-asserts any `ts` it likes, points `supersedes` at the author's genuine final announcement, and
+it **verifies**. Steps 2–5 are all satisfied: the address recomputes, the signature is valid under a
+key the chain really authorized, and the supersede is same-author. Under §22.7 irrevocability the
+forgery is then **permanent**, and the author — whose classical key is exactly the one that broke —
+has no way to publish a correction that a reader can prefer.
+
+**§22's offline guarantee is about NAMES, not TIME (stated plainly).** Nothing in a bare announce
+proves **when** it was made. `ts` is self-asserted by the signer (§22.3.1); an offline verifier has
+nothing to check it against — no KT log, no DNS, no timestamping authority — **by design**, and
+ordering comes from the author feed (§22.4), which a first-contact archive fetch does not have
+either. "Offline-verifiable" therefore means a reader can establish **which key** published these
+bytes without asking anyone; it has never meant they can establish **when**, and a reader who
+treats a signed old-suite announce as evidence of age is reading a guarantee the object does not
+carry. A **local absolute floor** is the only defence available that requires no external party,
+which is why step 1a is a locally-configured policy floor rather than a protocol-wide constant.
+
+**The exception (narrow, and evidence the verifier already holds).** A verifier MAY accept a
+below-floor announce where a **pinned `Identity`** (§3.4) independently establishes that the object
+predates the retirement of its suite — for example the announce is reachable from a feed entry
+(§22.4) already covered by a pinned, at-or-above-floor `FeedHead`, or the publisher's pinned
+identity chain (§1.5) records the below-floor key's retirement at a point the verifier's own
+history places after the announce. The exception MUST be satisfied only by evidence the verifier
+**already holds**; it MUST NOT be satisfied by anything carried in the announce itself, and in
+particular MUST NOT be satisfied by `ts`. Where it does not apply, a genuine pre-floor archive
+fails closed — which is the honest cost, disclosed: a floor that admits every old object it cannot
+date admits the forged ones too, and there is no offline test that separates them.
+
+Subject to step 1a, this is **entirely offline-verifiable with zero DNS and zero name-chain**,
+consistent with §3.13:
 authenticity is a property of the keys carried in the object (`pub`, `signer`, and the `DeviceCert`
 chain), never of a name lookup. A name is needed only to *display* "who is `pub`" and is an optional
 convenience layered over an identity that is already verified (§3.13.2). Replay and ordering are
@@ -262,11 +394,31 @@ rollback state; its position in an author feed does.
 lineage for audit. Because each announce is immutable and content-addressed, a revision is a **new**
 object with a **new** `announce_id`, not a mutation of the old one — the predecessor remains fetchable
 forever (§22.9). **Deprecation / yank is a successor announcement**, never a deletion: a publisher
-marks a revision deprecated in `meta` (schema per §23) and points `supersedes` at the retired one.
+marks a revision deprecated in `meta` (schema per §24) and points `supersedes` at the retired one.
 This is the only honest model under irrevocability (§22.7): you cannot un-publish, you can only
 publish a correction. A chain MUST be single-author (every link's `pub` identical, §22.3.3 step 5);
 a fork in a revision chain is a client-display concern, resolved by feed order (§22.4), not a
 protocol fault.
+
+### 22.3.5 Identity equality (normative)
+
+Step 4 (§22.3.3) requires `signer == pub` — or a `DeviceCert` chain from `pub` to `signer` — but
+neither that step nor step 5's same-author `supersedes` check has, until now, said **at which
+suite** such an equality is taken. The gap is not cosmetic: the same identity has different key
+bytes under different suites (§18.1.4) — an `IK`'s Ed25519 half and its ML-DSA-65 half are distinct
+byte strings naming the same `Identity`. Left unstated, an implementation is free to compare a
+`signer` at one suite against a `pub` at another and reach a verdict that means nothing.
+
+> **Identity equality (normative).** Every field in DMTAP-PUB and its profiles that names an
+> identity is typed `ik-pub` (§18.1.7) — raw public-key bytes, never a digest — and carries or
+> inherits the `suite` (§18.1.4) governing its length. Equality of two identity references is
+> **bytewise equality at one suite** (§18.2). A verifier that already holds the referenced
+> `Identity` MAY additionally accept a cross-suite match, but MUST NOT **fetch** one in order to do
+> so — a fetch converts §22.3.3's zero-DNS offline check into an online one.
+
+This rule governs every same-suite comparison this document makes: step 4's `signer == pub`, step
+5's and §22.3.4's `supersedes`-chain `pub` equality, and §22.4's `FeedHead.pub` continuity. It is
+stated once, here, rather than separately at each site, because it is one rule, not several.
 
 ## 22.4 Author feeds
 
@@ -363,7 +515,7 @@ chain discontinuity against another source.
 built *over* feeds are **rebuildable and never authoritative** — the authoritative state is always the
 set of signed feeds. Any node MAY build an index; a disagreement between an index and a feed is always
 resolved in favour of the feed. This mirrors the cluster rule that indexes over immutable objects are
-derived (§5.6.2) and the §23 "a workshop is a set of followed feeds; its category index is derived
+derived (§5.6.2) and the §24.18.9 "a workshop is a set of followed feeds; its category index is derived
 data any node can rebuild."
 
 ### 22.4.4 Head retrieval and range fetch (transport-independent)
@@ -382,6 +534,29 @@ transport (§22.5 gives concrete bindings):
 
 All five are **read-only, content-addressed, and (for the content-addressed four) immutable**, which
 is what makes the HTTP and mesh bindings below cache-friendly and trustless.
+
+### 22.4.5 Origination floor (`FeedHead.suite`)
+
+`FeedHead` carries a full sign+hash `suite` (key 2) and a `sig` (key 8, §22.4.1) under exactly the
+signing discipline `PubAnnounce` uses (§22.3.1) — so the recovered-key forgery §22.3.3 step 1a
+defends against applies here **without modification**, and with a larger blast radius: §22.4.2's
+anti-rollback accepts the highest `seq` it sees, unconditionally, from any `FeedHead` that verifies.
+An adversary who recovers a publisher's classical `IK` does not need to forge one announce — a
+self-consistent fabricated `prev`-chain of `FeedEntry`/`PubAnnounce` objects is straightforward to
+construct under a key the attacker fully controls, so the adversary can mint a **fresh, higher-`seq`**
+`FeedHead` at a below-floor suite, and every reader's anti-rollback state accepts it as the new tip
+on sight — permanently displacing the genuine feed for that `pub` (§22.4.2), for any reader that has
+not already retained a higher genuine `seq`.
+
+A verifier MUST therefore apply §22.3.3 step 1a's floor to `FeedHead.suite` exactly as to
+`PubAnnounce.suite`: reject a `FeedHead` carrying a **known but below-floor** `suite`
+(`ERR_PUB_SUITE_BELOW_FLOOR`, `0x0914`, FAIL_CLOSED_BLOCK), unless the same narrow
+pinned-`Identity` exception applies — evidence the verifier already holds, never `FeedHead.ts`
+(self-asserted exactly like `PubAnnounce.ts`; §22.3.3's "offline guarantee is about names, not
+time" applies unchanged), that the head predates its suite's retirement. **This check runs before
+§22.4.2's `seq` comparison**: a below-floor head is rejected outright, never weighed against the
+retained highest `seq` — a forged head MUST NOT be allowed to consume or perturb the anti-rollback
+watermark at all, even as a rejected candidate.
 
 ## 22.5 Serving
 
@@ -443,7 +618,7 @@ the swarm parallelism cap (§16.4). The **one** difference is the payoff of plai
 because two publishers of identical bytes compute the **same** content address, dedup is **global and
 cross-user** — the direct inverse of §5.5's intra-key-scope-only dedup. A file published once is,
 from then on, one set of chunks in the swarm no matter how many publishers reference it, and a cheap
-fork (a derived revision, §23) that changes few chunks shares the rest by construction.
+fork (a derived revision, §24.7) that changes few chunks shares the rest by construction.
 
 ## 22.6 Operator opt-in & anti-abuse
 
@@ -549,6 +724,7 @@ implementation of `pub-1` enforces every row.
 | **Feed hash-chain integrity (fork)** | §22.4.2 | two `FeedEntry`s at one `seq` with the same `prev`, or a `prev` not resolving to `seq-1` | `ERR_PUB_FEED_CHAIN_BROKEN` `0x0908`, HALT_ALERT — same posture as a committer fork (`0x0404`) / cluster-journal break (`0x0412`); publish the conflicting entries as evidence |
 | **Feed head signature** | §22.4.1 | `FeedHead.sig` fails under `signer`/`pub` chain | reject; `ERR_PUB_FEED_SIG_INVALID` `0x0906`, FAIL_CLOSED_BLOCK |
 | **Unknown PUB version/suite** | §22.3.1, §22.4.1 | a `PubAnnounce`/`PubManifest`/`FeedHead` carrying a `v`/`suite` the implementation does not support | reject, never guess; `ERR_PUB_UNSUPPORTED_VERSION` `0x0901`, FAIL_CLOSED_BLOCK — the extension analogue of the unknown-suite rule (§1.1, `0x0101`) |
+| **Public-object origination floor** | §22.3.3 step 1a, §22.2.5, §22.4.5 | a `PubAnnounce`, `PubManifest`, or `FeedHead` carrying a **known but below-floor** `suite` (default floor = the §1.1 originating floor, `0x02`), with no pinned-`Identity` evidence that it predates that suite's retirement | reject; `ERR_PUB_SUITE_BELOW_FLOOR` `0x0914`, FAIL_CLOSED_BLOCK. The §1.3 high-water-mark cannot apply — a first-contact archive fetch has no pin to ratchet — and a self-asserted `ts` (where the object even carries one) proves nothing about age, so a recovered classical key or a broken hash suite could otherwise mint a permanent forgery: a `supersedes`-ing `PubAnnounce` under §22.7 irrevocability, a feed-hijacking `FeedHead` ahead of §22.4.2's anti-rollback watermark, or a content-substituting `PubManifest` behind a trusted `id`. A lowered floor is a configuration choice that MUST be surfaced, never a silent default |
 | **Serve refusal is policy, not fault** | §22.6.2 | a holder declines to serve a requested public object per its serve policy | `ERR_PUB_NOT_SERVED` `0x090C`, DENY_POLICY at the holder; the fetcher rotates to another holder — refusal is NOT a correctness error and NEVER a protocol-level takedown |
 | **Serving resource limit** | §22.6.3 | a serving node's admission policy (object size / per-publisher quota / append rate) is exceeded | `ERR_PUB_SERVE_QUOTA` `0x090D`, DENY_POLICY — a policy deny, never a security/crypto gate, never a silent hole (cf. `0x0806`) |
 | **Publish is explicit + irrevocable (UX)** | §22.7 | a would-be publish that is implicit/background, or a UI that presents deletion as achievable | non-conformant client — the publish act MUST be explicit and MUST warn irrevocability; retraction is supersede-only |
@@ -592,7 +768,17 @@ be fixed; each is an inherent consequence of the public quadrant, disclosed for 
    attacker published in the interval is itself irrevocable (item 1) and must be superseded, not
    deleted, after recovery. Keeping `IK` cold and signing with a revocable operational key (§1.2a,
    §22.3.1) bounds the blast radius.
-6. **No metadata privacy for reads — by construction.** Public reads are anonymous to the object
+6. **An announce proves authorship, never age.** Verification here is offline and zero-DNS
+   (§22.3.3), so there is no log, no clock and no authority to check `ts` against — `ts` is
+   self-asserted by the signer and an offline reader can neither confirm nor refute it. A bare
+   announce therefore evidences **which key** published these bytes and nothing whatever about
+   **when**. This is inherent to the offline guarantee, not a gap in it, and it is why the
+   defence against a recovered-key backdated forgery has to be a **local origination floor**
+   (step 1a, `0x0914`) rather than a freshness test: the only party present at verification time
+   is the verifier. The floor's cost is equally honest — a genuine pre-floor archive with no
+   pinned-`Identity` evidence of its age fails closed, because no offline test distinguishes it
+   from the forgery.
+7. **No metadata privacy for reads — by construction.** Public reads are anonymous to the object
    (no auth, §22.5.1) but not to the transport: an HTTP server or mesh holder sees *which reader
    fetched which public object from it*. DMTAP-PUB does not route public fetches through the mixnet
    (§22.5.2) because the objects carry no secret; a reader who needs to hide *that they read a public
@@ -604,7 +790,8 @@ be fixed; each is an inherent consequence of the public quadrant, disclosed for 
 DMTAP-PUB occupies subsystem byte **`0x09`** — the §21.1 subsystem table assigns it to this
 extension, and §21.24b records the registration under the §21.14 new-subsystem-byte policy. Codes
 follow the §21 conventions and responder-action vocabulary (§21.2). The table below is the block's
-initial, authoritative contents.
+initial, authoritative contents. The gap between `0x090D` and `0x0914` is not an error: `0x090E`–
+`0x0913` were allocated within this block by DMTAP-PUBSUB and are defined in §25.12 (§21.24d).
 
 | Code | Name | Operation(s) | Meaning | Retryable | Action |
 |------|------|--------------|---------|:---------:|--------|
@@ -621,3 +808,4 @@ initial, authoritative contents.
 | `0x090B` | `ERR_PUB_SUPERSEDE_INVALID` | Revision-chain check (§22.3.4) | `supersedes` references an announce whose `pub` differs from this announce's `pub`. | No | FAIL_CLOSED_BLOCK |
 | `0x090C` | `ERR_PUB_NOT_SERVED` | Holder serve policy (§22.6.2) | A holder declines to serve a requested public object per its per-holder serve policy. Refusal is a policy decision, not a correctness fault, and never a protocol takedown. | Yes (try another holder) | DENY_POLICY at the holder; ROTATE_RETRY at the fetcher |
 | `0x090D` | `ERR_PUB_SERVE_QUOTA` | Serving admission policy (§22.6.3) | A serving node's resource policy (object size / per-publisher storage quota / feed-append rate) is exceeded. A policy deny, never a security gate, never a silent hole. | Yes (after freeing / under a laxer policy) | DENY_POLICY |
+| `0x0914` | `ERR_PUB_SUITE_BELOW_FLOOR` | `PubAnnounce` verification (§22.3.3 step 1a); `PubManifest` verification (§22.2.5); `FeedHead` verification (§22.4.5) | The object carries a **registered but below-floor** algorithm suite for a public object, and no pinned-`Identity` evidence establishes that it predates that suite's retirement. Distinct from `0x0901` (`ERR_PUB_UNSUPPORTED_VERSION`, a suite the verifier does not *know*): here the suite is known and its crypto (or, for `PubManifest`, its hash) verifies — it is simply no longer trusted to *originate* a public object. Applies uniformly to every object carrying this extension's `suite` hook (`PubAnnounce`, `PubManifest`, `FeedHead`), for object-specific reasons detailed at each site: a recovered signing key (§22.3.3, §22.4.5) or a broken hash (§22.2.5). The public-quadrant analogue of `ERR_SUITE_BELOW_FLOOR` (`0x0125`, §1.1), needed separately because §1.3's per-contact high-water-mark has no pin to ratchet on a first-contact archive fetch and `ts` is self-asserted or absent (§22.3.3). | No | FAIL_CLOSED_BLOCK — reject; a verifier that deliberately lowers its floor MUST surface the reduced assurance |

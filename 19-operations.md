@@ -768,6 +768,21 @@ definition, which is exactly why its ordering is normatively fixed (§2.7).
    on mismatch.
 3. Verify `sender_sig` over `(id ‖ to ‖ ts ‖ kind ‖ challenge)` under the envelope's ephemeral
    key — cheap, no decryption. Drop on failure.
+3a. **Freshness (replay bound, normative; §2.7 step 3a, H-7).** Reject `ts` more than the
+   clock-skew tolerance (§16.1, ±120 s) ahead of this node's clock, **or** more than the durable
+   seen-id horizon (§16.10) in the past. Drop on failure, same disposition as step 3 (no ack; a
+   duplicate of an already-acked `id` is still re-acked, per step 9's dedup rule, unaffected by
+   this step). This step exists because nothing before it bounds how *old* an accepted `ts` may
+   be: a captured, validly-signed MOTE replayed after it ages out of this node's dedup cache
+   (§2.6) would otherwise pass every remaining check — `sender_sig`, `Payload.sig`, decryption —
+   unaltered. The past-direction bound MUST NOT be the same figure as the future-direction skew
+   tolerance (a legitimate MOTE's `ts` is fixed at construction and does not change across the
+   sender's retries, §20.1, so a MOTE genuinely retrying at hour 71 of its 72 h deadline, §16.1, or
+   drained from a 20-day offline buffer, §16.6, must still pass); it MUST instead be **at least as
+   large as** the durable seen-id horizon (§16.10), which already covers both figures. Unlike the
+   future-direction leniency §21's `0x020C` permits for known contacts, this past-direction bound
+   MUST NOT be relaxed for anyone — leniency here is exactly the replay window this step exists to
+   close. See §2.7 step 3a for the full rationale and the §16/§18/§21 reconciliation it requires.
 4. **Resolve `to`** to this node's own key, or a group this node belongs to (`DeliveryTag`
    resolution, §2.2a: identity key, group id, or blinded tag recognized via the node's own
    per-contact secret). If `to` does not resolve to anything this node holds, drop (this node is
@@ -945,9 +960,45 @@ sender-side retry loop (§4.7).
 
 **Parameters.**
 - `id` (`bytes`, MUST) — the content address being acknowledged.
-- `ack_sig` (`bytes`, OPTIONAL) — implementations MAY sign the ack (e.g. under the same ephemeral
-  mechanism as `sender_sig`) so a relay cannot forge acks on the recipient's behalf; this is an
-  implementation hardening, not specified further at the object-format level in v0.
+- `tier` (`uint`, MUST) — the privacy tier (§4.6) this `ack` itself is carried at. MUST equal the
+  tier of the MOTE it acknowledges (§2.6): an `ack` for a `private`-tier MOTE MUST travel the
+  mixnet, never a `fast`-tier shortcut taken for convenience — the same no-silent-downgrade
+  discipline §4.4.9 already applies to the forward direction, applied here to the return path.
+- `ack_sig` (`bytes`, **MUST — normative correction**; this field was previously **OPTIONAL** in
+  this section ("an implementation hardening, not specified further at the object-format level in
+  v0"). That was wrong, not merely permissive, and is corrected here (H-6). Signature over the
+  DS-tagged preimage `DMTAP-v0/ack ‖ 0x00 ‖ det_cbor({id, tier})` (§18.9; exact CDDL and registry
+  entry owed to that section, reported below), by a key **currently authorized under the
+  recipient's own pinned identity**: the `IK` itself, or a non-revoked `DeviceCert`-chained device
+  key (§1.2) — the identical authorization test §5.6.1 already applies to cluster-sync peers, reused
+  here rather than inventing a second one.
+
+  **Why OPTIONAL was a defect, not a hardening.** The envelope `id` an `ack` carries travels in the
+  **cleartext** `Envelope` (§18.3.1, field 3) at every hop: a mixnet relay, an exit mix, or an
+  offline/peer buffer holder (§14.5) all read it off the wire whether or not they can decrypt
+  anything else. With signing OPTIONAL, none of them needed a key at all to produce a byte-for-byte
+  acceptable `ack(id)` — they already had the one input the object required. The sender's retry
+  queue (§19.3.3, §20.1) transitions straight to `ACKED` and cancels the deadline timer that is the
+  **entire** durability mechanism of this protocol (§0.5, §4.7: "the mixnet/relay holds nothing
+  durably" — durability lives *only* in this retry). A forged, unsigned `ack` is therefore **total,
+  deniable, user-invisible suppression** of a message that was never received: the sender's UI shows
+  delivered, the retry stops, and nothing distinguishes this outcome from a genuine receipt at
+  either endpoint. Signing does not make forgery harder; it is the difference between an ack being
+  possible evidence at all and an ack being **noise indistinguishable from proof**.
+
+  **Disclosed residual (honest limit, not a reason to weaken this).** Requiring `ack_sig` makes an
+  `ack` a signature by a *specific device*, where an unsigned event was anonymous even to an
+  observer who could read it. An adversary positioned to observe the mixnet reply path this `ack`
+  travels — e.g. a SURB (single-use reply block, §4.4) holder, or an exit mix on the return leg —
+  learns, from the mere presence of a valid device-authorized signature, that *some device of the
+  pinned recipient identity* produced this reply, which is strictly more identity commitment than a
+  bare, unauthenticated confirmation carried. This is a real, narrow reduction in the recipient's
+  deniability on the **return** path only (it does not touch sender anonymity, SP-3/SP-4, and it
+  does not identify *which* device among the identity's cluster, since any authorized device key
+  qualifies) — it is not eliminated by picking a different mechanism, because *some* durable
+  authentication of "delivery actually happened" is precisely what an unforgeable ack requires. It
+  is disclosed, not hidden: the canonical residual statement belongs in §6.9 SP-2 (reported below;
+  not made here, since this section does not own §6).
 
 **Preconditions.** The recipient has completed `deliver`'s procedure for `id` to a terminal state
 the §2.7a table marks as ack-eligible: **stored** (inbox), or a de-duplication of an `id` it has
@@ -966,14 +1017,20 @@ could not be closed by policy. The ack asymmetry between **stored** and **deferr
 load-bearing for §6.4 and §6.6 recipient exposure, not an implementation detail.
 
 **Procedure (normative).**
-1. Construct a minimal `ack{id}` message.
-2. Send it back over the same channel/rung the `Envelope` arrived on if still open, or via a
+1. Construct a minimal `ack{id, tier}` message, `tier` set to the tier `deliver` received this
+   `id` at.
+2. Sign it: `ack_sig = Sign(sk, DS-tag "DMTAP-v0/ack" ‖ 0x00 ‖ det_cbor({id, tier}))` under an `IK`
+   or `DeviceCert`-chained device key currently authorized for this identity (§1.2, §5.6.1). A node
+   MUST NOT emit an `ack` it cannot sign under such a key.
+3. Send it back over the same channel/rung the `Envelope` arrived on if still open, or via a
    fresh `deliver`-style send addressed to the original sender's key if the channel has since
-   closed (an ack is itself routed like any other small MOTE-adjacent message — it does not
-   require a dedicated wire object beyond `id`).
+   closed — **at the same tier as step 1's `tier` value, never downgraded** (an ack is itself
+   routed like any other small MOTE-adjacent message — it does not require a dedicated wire object
+   beyond `{id, tier, ack_sig}`).
 
-**Success result.** The sender's retry-queue entry for `id` transitions to `ACKED` (§4.7) and is
-removed from the retry schedule.
+**Success result.** The sender's retry-queue entry for `id` transitions to `ACKED` (§4.7) **only
+after** `ack_sig` verifies under a key currently authorized for the recipient's pinned identity
+(§20.1); on success the entry is removed from the retry schedule.
 
 **Failure modes.**
 
@@ -981,6 +1038,8 @@ removed from the retry schedule.
 |---|---|---|
 | Ack is sent but never reaches the sender (network loss) | Defer (at the sender) | The sender's retry queue does not learn of the ack and re-sends; the recipient's `deliver` dedup (§2.6, §19.3.1 step 9) absorbs the duplicate and re-acks — eventually consistent, never a correctness problem, only a bandwidth cost |
 | Recipient tries to ack an `id` it silently dropped (implementation bug) | Reject (protocol-level should-never-happen) | MUST NOT occur per §2.7a; if it does, the sender incorrectly believes a forged/invalid message was delivered — implementations MUST guard this invariant in code, since the spec provides no wire-level defense against a buggy recipient acking garbage |
+| `ack_sig` is absent, fails to verify, or verifies under a key not currently authorized for the recipient's pinned identity — **including a relay/mix/buffer holder synthesizing `ack(id)` from the cleartext `id` alone (H-6)** | Reject (at the sender) | The sender MUST ignore the ack: it is **not delivery evidence**. The retry-queue entry MUST remain in its current state (`IN_FLIGHT`/`RETRY`, §20.1) and continue its ordinary backoff toward `EXPIRED` — this is the entire point of making `ack_sig` MUST rather than OPTIONAL, and it is the intended, non-exceptional disposition for a forged ack, not an error condition an implementation needs to surface specially |
+| A genuinely-signed `ack` arrives at the sender via a different tier than the acknowledged MOTE was sent at (e.g. a `private`-tier send acked over a `fast` shortcut) | Reject (at the sender) | Treated identically to a signature failure: ignored, not delivery evidence, no state change. A tier-mismatched ack is either a downgrade attempt or an implementation bug; neither is grounds to short-circuit the mixnet-carried delivery the sender actually requested |
 
 **Idempotency / retry.** Sending the same `ack(id)` multiple times is harmless — the sender's
 retry-queue transition to `ACKED` is itself idempotent (an already-acked entry receiving another
@@ -1012,8 +1071,12 @@ the `QUEUED`/draft state, §4.7).
    `SEALED`.
 2. `SEALED` → an in-flight send attempt is made (mixnet path for `private`, direct/reachability-
    ladder for `fast`) → `IN_FLIGHT`.
-3. On `ack(id)` received → `ACKED`. Terminal; remove from the retry queue.
-4. On send failure or no `ack` within the current backoff window → `RETRY`: re-attempt with
+3. On `ack(id)` received **and its `ack_sig` verified** under a key currently authorized for the
+   recipient's pinned identity (§19.3.2) → `ACKED`. Terminal; remove from the retry queue. An
+   `ack` that fails this check (unsigned, wrongly signed, unauthorized key, or wrong `tier`) MUST
+   be ignored — no transition, no state change; the queue entry continues exactly as if no ack
+   had arrived (§19.3.2, H-6).
+4. On send failure or no valid `ack` within the current backoff window → `RETRY`: re-attempt with
    **exponential backoff** (§16.1: base 30 s, cap 1 h, with jitter), returning to step 2 each
    time (a fresh reachability-ladder attempt, since network conditions may have changed).
 5. If `retry_deadline` (or the smaller of `expires`, if set) elapses while still un-acked →
@@ -1031,6 +1094,7 @@ left in indefinite limbo; every entry reaches one of exactly two terminal states
 | `expires` requested shorter than the default retry deadline | Defer, bounded | The smaller of the two governs — a MOTE MUST NOT be retried past its own requested expiry even if the default deadline is longer |
 | Sender's own node restarts mid-retry | Defer | The retry queue MUST be durable across restart (it is the sole durability mechanism, §0.5) — an implementation that loses queued-but-unacked MOTEs on restart violates the "durability lives entirely in this sender-side queue" invariant (§4.7) |
 | A duplicate `ack` arrives for an already-`ACKED`/removed entry | N/A | Ignored; no state change (idempotent, §19.3.2) |
+| An unsigned, wrongly-signed, or unauthorized-key `ack` arrives (forged, e.g. by a mixnet relay/exit mix/buffer holder reading the cleartext `id`, H-6) | Reject | Ignored — not delivery evidence; state remains `IN_FLIGHT`/`RETRY` and backoff continues unaffected toward `EXPIRED` if no genuine ack ever arrives (§19.3.2) |
 
 **Idempotency / retry.** The entire point of this operation is retry-safety: every re-attempt at
 step 2 is a fresh, idempotent send of the same immutable `Envelope` (same `id`), relying on the

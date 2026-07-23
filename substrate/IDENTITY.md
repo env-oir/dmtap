@@ -169,16 +169,26 @@ never weaken the invariant that authenticity is the key.
 ## 5. The key-name — the zero-authority floor (profile of §3.9.6)
 
 The **key-name** is the one name that needs no resolver, no DNS, no registration, and no `@`: it is a
-deterministic word-encoding of `BLAKE3-256(IK)` rendered as an **8-word** sequence (80 bits) over the
+deterministic word-encoding of a digest over the anchor `IK` — `BLAKE3-256(0x01 ‖ 0x1e ‖ ik_pub)`,
+pinned in §18.9.17, with the hash algorithm committed inside the input so a future hash migration
+yields a *distinguishable* name — rendered as an **8-word** sequence (80 bits) over the
 same curated ~1024-word list and folded checksum as the safety number (§3.4.1), so a single mistyped
-word fails closed. A **12-word** (128-bit) form exists for the adversary-proof mode (§16.2).
+word fails closed. A **12-word** (120-bit) form is REQUIRED in the adversary-proof mode (§16.2.1).
 
 For a non-mail product the key-name is the most valuable single thing this capability provides for free:
 
 - **Globally unique with zero infrastructure.** Distinct keys yield distinct key-names with
-  overwhelming probability (collision-resistant hash), so a product gets a globally-unique handle for
+  overwhelming probability, so a product gets a globally-unique handle for
   every identity **without any registry, consensus, or network** — the one Zooko corner (global +
   authority-free) a derived name can occupy (§3.9.6, §15.5).
+- **80 bits, and a product MUST NOT spend them as if they were 256.** The 8-word form's margins are
+  the truncation's, not BLAKE3-256's: ≈ **2⁴⁰** for a chosen collision and ≈ **2⁸⁰** for a second
+  preimage (§3.9.6). A product **MUST NOT** use a key-name as an allowlist entry, a dedup or
+  database key for identities, or the sole basis for a trust decision — identities are discriminated
+  by **key**, and the human-comparable verification artifact is the full-`Identity` safety number
+  (§3.4.1). Display it, index a display cache by it, accept it as a lookup hint; then verify the
+  key. Where the key-name is the *only* verification, or where the rendering is printed, engraved or
+  published, the 12-word form is REQUIRED (§16.2.1).
 - **`self`-resolving.** In the resolver framework (§3.12) the key-name is resolver-type `self`:
   "resolution" is a local derivation from the key, not a lookup — nothing to KT-audit, because the
   binding *is* the key. It carries no `@` because it belongs to no authority's namespace.

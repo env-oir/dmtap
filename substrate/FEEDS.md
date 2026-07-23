@@ -23,7 +23,7 @@ identity (§1), readable by anyone, globally deduplicated.** Here the publisher'
 
 This is exactly the substrate a product needs when it wants to **publish signed, verifiable, public
 data** — a software release feed, a mailing-list archive, an open-hardware part library, a CAD artifact
-catalog (§23), a public changelog — without any of the sealed-messaging machinery. It subsumes two
+catalog (§24.18), a public changelog — without any of the sealed-messaging machinery. It subsumes two
 niches that today require separate ecosystems, using **one** object model:
 
 - a **signed public event stream** keyed to a self-sovereign identity — the niche served by Nostr-style
@@ -97,11 +97,15 @@ node(left,right)  = BLAKE3-256( DS ‖ 0x01 ‖ left ‖ right )
 PubManifest.id    = 0x1e ‖ MTH(h_0 … h_{n-1})               ; split at largest power of 2 < n
 ```
 
-The multihash prefix (§18.1.5) preserves hash-agility and is the **interoperability seam with external
-content-addressed stores**: a Git-LFS / sha256 pointer maps onto `0x12 ‖ SHA2-256(plaintext)`, and a
-CIDv1 (raw codec) can be derived from a chunk hash for an IPFS fetch-adapter. This is not hypothetical —
-the kerf-pub reference (below) ships **SHA2-256 under prefix `0x12`** as its interop digest and derives
-CIDv1 for its optional IPFS adapter, changing the digest with "a one-line change" and no flag day.
+The multihash prefix (§18.1.5) is a **hash-agility / migration hook, not an interoperability seam** with
+external content-addressed stores. §18.1.5's precedence rule requires every `hash` inside a `suite`-bearing
+object to use **that suite's** prefix and to **reject** the object (`ERR_HASH_ALG_MISMATCH`, `0x0127`) on any
+disagreement; no v0 suite selects SHA2-256, and the `leaf()`/`node()` functions above are defined only for
+BLAKE3. A `PubManifest` addressing its chunks under `0x12 ‖ SHA2-256(plaintext)` is therefore a **rejected
+object, not an interop surface** — every conformant peer rejects it. **§22.2.2 states this in full and
+withdraws the earlier "interop seam" reading** (as does §24 Appendix B); an external-store digest (a Git-LFS
+SHA-256, an IPFS CID) MAY be retained out-of-band as provenance but MUST NOT appear as a `PubManifest.chunks`
+value. BLAKE3-256 (`0x1e`) from the start, no flag day.
 
 > **Note (verified-by-exhaustion, not proved): the RFC 6962 split rule and level-by-level odd-node
 > promotion build the same tree.** `MTH` above is stated as the RFC 6962 split rule — recurse on the
@@ -390,7 +394,7 @@ Hint = [ hint_type: uint, value: tstr ]
 | `3` | `relay-blob` | base URL of a relay/PUB-server blob surface (§5.1) |
 | `4` | `bundle` | locator of a self-verifying bundle containing the blob |
 
-A publisher MAY carry `hints` alongside an announce or manifest (as the CAD/Video profiles do, §23/§24);
+A publisher MAY carry `hints` alongside an announce or manifest (as the media and engineering-artifact facets do, §24);
 a holder MAY advertise which addresses it serves. New transports are new hint types. Because a hint is
 advisory, an implementation that ignores the whole mechanism loses nothing but discovery speed — the
 verification gate (§5.1) is unchanged, and the address, not the hint, is the truth.
@@ -400,7 +404,7 @@ verification gate (§5.1) is unchanged, and the address, not the hint, is the tr
 ## 6. Reference implementation — kerf-pub proves the HTTP test
 
 **kerf-pub** (`/Users/pc/code/exo/kerf/packages/kerf-pub`) is the reference implementation of §22 (with
-the §23 CAD profile layered on top). It is named here only as an existence proof; per the repository's
+the §24.18 engineering-artifact facet layered on top). It is named here only as an existence proof; per the repository's
 implementation-neutral stance it is not part of the standard and not required to speak it, and where it
 and the spec disagree, **the spec wins.** It proves §22 works over plain HTTPS with no mesh in three
 interlocking ways (all observable in its test suite):
@@ -422,9 +426,12 @@ interlocking ways (all observable in its test suite):
    client is shown sufficient** — the mesh (§22.5.2) and an IPFS adapter (§22.5.3) are strictly optional
    additional fetch-adapters behind the identical verification gate.
 
-Two honest notes about the reference (not the spec): kerf-pub v1 ships **SHA2-256 (prefix `0x12`)** as
-its digest rather than the v0-REQUIRED BLAKE3-256 (`0x1e`) — sanctioned by §23 Appendix A as the
-Git-LFS/IPFS interop seam, swappable in one line — and it does **not** yet implement `DeviceCert` chains,
+Two honest notes about the reference (not the spec): a `PubManifest` digest MUST be the v0-REQUIRED
+**BLAKE3-256 (`0x1e`)** — a SHA2-256 (`0x12`) digest is a **rejected object** under §22.2.2, not a
+sanctioned interop seam (correcting the earlier "§24 Appendix B sanctions SHA-256 as the Git-LFS/IPFS
+interop seam" reading — Appendix B requires BLAKE3). Any SHA-256 retained for Git-LFS/IPFS provenance
+stays out-of-band, never in `PubManifest.chunks`. The kerf-pub reference also does **not** yet implement
+`DeviceCert` chains,
 so it enforces `signer == pub` always (§22.9's full-blast-radius residual). Both are implementation
 choices the spec permits to be tightened; a conformant v0 implementation SHOULD carry BLAKE3-256 and
 SHOULD support the `DeviceCert` chain of §22.3.3 step 4.

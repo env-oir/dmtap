@@ -12,8 +12,17 @@ to rate-limit and block abusers. The resolution is **anonymous but accountable**
    contacts, challenge strangers, block per-identity — *before* surfacing to the user (§2.7).
 3. **Cost for cold contact.** Reaching a stranger costs something (a token, proof-of-work, or
    a paid stamp), so bulk unsolicited sending is uneconomic. Known contacts are free.
-4. **Anonymity preserved.** Abuse control MUST NOT deanonymize the sender or link a sender
-   across recipients.
+4. **Anonymity preserved — with one disclosed, structural exception.** Abuse control MUST NOT
+   deanonymize the sender or link a sender across recipients. **The vouch (§9.7) is the sole
+   exception, and it is exempted by construction, not by oversight:** a `Vouch` (§18.3.3) names
+   the voucher, the subject (the cold sender being introduced), and the recipient as identity
+   keys, and §9.2a requires the whole `ChallengeResponse` — vouch included — to ride the
+   **cleartext** envelope so the gate can check it before decryption (§2.7 step 6). Every exit
+   mix and any on-path observer of that hop therefore reads all three identities on any
+   first-contact MOTE that presents a vouch. This principle binds ARC (§9.3), PoW (§9.4), and
+   postage (§9.5) without exception; it does **not** bind the vouch, and no implementation or
+   operator MAY describe vouch-based introduction as anonymity-preserving (§6.9 SP-11, SP-5;
+   §9.7's own honest-limit clause states the exposure in full).
 
 ## 9.2 Recipient policy
 
@@ -87,7 +96,7 @@ are** and **without the sender being linkable across recipients**.
 do **not**, alone, give the exact combination DMTAP needs: *per-recipient rate-limiting* AND
 *cross-recipient unlinkability*. That combination requires per-origin-scoped issuance —
 **Anonymous Rate-limited Credentials (ARC)**, specified in the Privacy Pass space by
-`draft-yun-privacypass-arc` — an **individual** Internet-Draft, not a working-group document. DMTAP tokens MUST use ARC-style per-origin binding, not plain
+`draft-ietf-privacypass-arc-protocol` — a Privacy Pass **WG-adopted** Standards-Track Internet-Draft (formerly the individual `draft-yun-privacypass-arc`), still a draft, not an RFC. DMTAP tokens MUST use ARC-style per-origin binding, not plain
 tokens, for the anonymity + accountability guarantee to hold simultaneously.
 
 - A sender obtains blinded tokens from an **issuer** bound to a *rate budget*.
@@ -351,14 +360,41 @@ trusts (a mutual connection) — to bypass VDF/PoW/stamp. This bootstraps first 
 social graph without a central authority, and MUST itself be rate-limited to prevent vouch
 farming.
 
-**Vouch is a primary tier, not a curiosity (normative).** Of every anti-abuse mechanism in this
-section, the vouch is the **only** one an adversary cannot buy with either compute or money: it
-requires that someone the recipient already trusts is willing to spend their own reputation on
-the sender. That makes it the most robust cold-contact path against a well-resourced adversary,
-and implementations MUST offer it wherever a mutual contact exists rather than treating it as an
-exotic fallback. It is also the mechanism with the best user experience — an introduction is how
-humans actually make first contact — so the incentives of security and usability point the same
-way here, which is rare enough to exploit.
+**Vouch is a primary tier, not a curiosity (normative) — but not a free one.** Of every anti-abuse
+mechanism in this section, the vouch is the **only** one an adversary cannot buy with either
+compute or money: it requires that someone the recipient already trusts is willing to spend their
+own reputation on the sender. That makes it the most robust cold-contact path against a
+well-resourced adversary, and it is also the mechanism with the best user experience — an
+introduction is how humans actually make first contact. Usually security and usability pull the
+same way here, which is rare enough to exploit; **the vouch is the one place in this section they
+do not**, because it is bought with a privacy cost the other three mechanisms do not charge (see
+below). Implementations MUST offer it wherever a mutual contact exists **and** MUST disclose that
+cost at the point of offer — it MUST NOT be presented, defaulted to, or auto-selected as though it
+were privacy-equivalent to an ARC token, a PoW solution, or postage.
+
+**Honest limit — a vouch is a disclosed exception to sealed sender (normative).** A `Vouch`
+(§18.3.3) names the **voucher**, the **subject** (the cold sender), and the **recipient** as
+identity keys, and §9.2a requires the whole `ChallengeResponse` — vouch included — to ride the
+**cleartext** envelope so the recipient's gate can check it before decryption (§2.7 step 6). There
+is no sealed variant of a vouch: by the shape of the mechanism it *is* three identity keys plus a
+signed, transferable social-graph edge, readable by every exit mix and any on-path observer of
+that hop — precisely on the first-contact message whose sender most needs protecting. This is a
+**different** exposure from the theft/replay issue §9.2a and §2.7 step 8(b2) close: that fix stops
+a stolen vouch from being replayed by someone else; it does nothing about what the *legitimate*
+vouch itself discloses to an observer when it is used exactly as designed. It directly narrows
+SP-11's claim and §9.1 principle 4's guarantee (see there for the precise scope), and it means
+`vouch` is the wrong choice of proof whenever the sender's identity, the voucher's identity, or the
+bare fact that the two are mutually connected to the recipient is itself the sensitive fact —
+the vouch cannot be used to reach such a recipient privately; only PoW, ARC, or postage can.
+
+Closing this exposure requires a structural change this specification does not make here: either
+**(a)** move the vouch inside `ciphertext` and restructure §2.7's cheapest-and-anonymous-first
+validation order into a bounded decrypt-then-gate path for the vouch case specifically, or
+**(b)** replace the cleartext vouch with a blinded, ARC-style presentation proving "someone the
+recipient trusts vouched for the holder of `sender_key`" without revealing the voucher's or the
+subject's identity to anyone but the recipient. Both are redesigns of §2.7 and/or §18.3.3, not
+editorial fixes — this specification discloses the exposure they would close rather than choosing
+between them.
 
 ## 9.7a The zero-relationship delivery floor (normative)
 

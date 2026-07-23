@@ -123,10 +123,11 @@ FAILCLASS_EXPECT: dict[str, str] = {
 SUITE_STATUS: dict[str, str] = {
     "0x01": "legacy",     # verify only, MUST NOT originate
     "0x02": "required",   # the v0 originating suite
-    "0x03": "reserved",
-    "0x04": "reserved",
+    "0x03": "reserved",   # AEAD-diverse emergency target
+    "0x04": "reserved",   # signature-diverse emergency target (the anchor profile)
+    "0x05": "reserved",   # hash-diverse emergency target (SHA3-256)
 }
-SUITE_ROW_RE = re.compile(r"^\|\s*`(0x0[1-4])`\s*\|(.+)$")
+SUITE_ROW_RE = re.compile(r"^\|\s*`(0x0[1-5])`\s*\|(.+)$")
 
 # C11: load-bearing numbers that §16 owns and prose restates. Parameter drift is
 # the class that caused the worst defect of the 2026-07-21 waves: §16.3 was
@@ -327,7 +328,7 @@ def check_conformance() -> list[Finding]:
     from collections import Counter as _C
     actual = _C(c.get("status") for c in cases if isinstance(c, dict))
     for p2 in [ROOT / "10-conformance.md", ROOT / "README.md",
-               ROOT / "conformance" / "README.md"]:
+               ROOT / "conformance" / "README.md", ROOT / "conformance" / "SUITE.md"]:
         if not p2.exists():
             continue
         plain = re.sub(r"[*`_]", "", read(p2))
@@ -347,7 +348,7 @@ def check_conformance() -> list[Finding]:
                             f"status counts {sorted(actual.values())}"))
     # C5 — every document that states the count must state the same one.
     for p in [ROOT / "10-conformance.md", ROOT / "README.md",
-              ROOT / "conformance" / "README.md"]:
+              ROOT / "conformance" / "README.md", ROOT / "conformance" / "SUITE.md"]:
         if not p.exists():
             continue
         text = read(p)
@@ -356,6 +357,12 @@ def check_conformance() -> list[Finding]:
         # for exactly this reason.
         plain = re.sub(r"[*`_]", "", text)
         claimed = {int(x) for x in re.findall(r"\b(\d{3})\s+(?:numbered\s+)?cases\b", plain)}
+        # "NNN are byte-runnable" (e.g. "62 of 343 are byte-runnable") states the
+        # same total in a shape "\d+\s+cases\b" does not match — it drifted
+        # uncaught in exactly this phrasing (conformance/README.md and SUITE.md
+        # both said "343" here after suite.json had grown to 352 cases).
+        claimed |= {int(x) for x in
+                    re.findall(r"\bof\s+(\d+)\s+are\s+byte-runnable\b", plain, re.IGNORECASE)}
         for c in claimed:
             if c != n:
                 out.append(("ERROR", p.name,

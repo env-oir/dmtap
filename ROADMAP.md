@@ -86,10 +86,40 @@ Workshop (decentralized CAD part sharing) as the first production application.
 - [x] Track 1 core hook
 - [x] Track 2 `22-public-objects.md`
 - [x] Track 3 `23-cad-artifact-profile.md`
-- [x] Cross-document consistency verify (allocations, links; build script auto-globs `NN-*.md`, so §22/§23 enter the HTML/PDF build with no list edit — rebuild pending)
+- [x] Cross-document consistency verify (allocations, links; build script auto-globs `NN-*.md`, so §22, §23 and §24 enter the HTML/PDF build with no list edit — rebuild pending)
 - [x] Track 4 kerf ADR + roadmap (landed in the kerf repo)
 - [x] `conformance/` suites for PUB + CAD profile (follow-up wave)
 - [ ] Envoir node `pub-1` serving (follow-up wave)
+
+## Spec perfection — what's left (paused 2026-07-23)
+
+A perfection pass reality-verified every external citation against primary sources (all groundings
+applied), folded §23 (CAD) into §24 as the engineering-artifact facet (§24.18), and added the README
+honest-limits node-count math. Lint is 0-error. Remaining, **paused for founder review**:
+
+1. **KEYTRANS partial delegation (§3.5).** The IETF KEYTRANS WG (`draft-ietf-keytrans-architecture`,
+   `draft-ietf-keytrans-protocol`) now standardizes the monitor/auditor role taxonomy + the log+prefix-tree
+   data structure that §3.5.2 hand-derives. Cite them (with the same "still a draft" disclosure X-Wing
+   gets) and narrow §3.5.2 to what KEYTRANS does *not* cover and DMTAP genuinely adds: the multi-log
+   `>n/2` quorum-of-a-pinned-set federation, the concrete gossip/freshness parameters, and the
+   HALT/ALERT/evict incident-response.
+2. **Redundancy collapses** (verified duplicates — state once + reference): §9.10/§9.11 restate §7.11's
+   gateway anti-abuse MUSTs → collapse to a pointer; §4.4.10's mixnet parameter table duplicates §16.3 →
+   pointer; §7.9 ↔ §12.7 (usage-audit) → §12.7 canonical; §6.8 ↔ §7.8 (transport-provenance) → §7.8
+   canonical; the replay/dedup cache's three divergent figures (§16.1 ≥300 s / §16.10 20-day / §2.6
+   unbounded) → reconcile to one parameter (the spec itself flags this at §2.6).
+3. **Relay-scope trim** — move relay from a *mechanism* DMTAP re-specifies to a *property* it requires:
+   §4 states "the substrate MUST provide content-blind, direct-first reachability; v0 = libp2p (Circuit
+   Relay v2 / DCUtR)" + an informative binding note; drop the vestigial, never-triggered relay codes
+   `0x0305`/`0x0306`/`0x0309` from §21.
+4. **Conformance-vector gap** — the new `FeedHead.topic` (key 64) and `SubscriptionRevoke` keys 5/6/7 have
+   **no spec-derived vectors yet** (`gen_pub_vectors.py` / `gen_pubsub_vectors.py` don't generate them).
+   Add them from spec text — never hand-matched to the implementation.
+5. **Minor groundings** — §27.5.1 should state a RECOMMENDED SFrame KID epoch-window `E`; note the
+   MLS-combiner / MLS-pq-ciphersuites current pre-RFC (WG-adopted-but-unpublished) status where cited.
+
+> The §23 references in the "Status" block above are historical — §23 (CAD/artifact profile) is folded
+> into **§24.18** (the engineering-artifact facet); §23 is a retained gap, not renumbered.
 
 ## Future candidates (not scheduled)
 

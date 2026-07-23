@@ -171,6 +171,20 @@ uptime while keeping per-holder cost near-zero (no long-term archive). Single-ho
 §14.3a requires the general form. The gateway's short queue (§7.4) is only the legacy-translation
 hop and MUST NOT become a store; the buffer role is **not** a gateway function (§7.1).
 
+> **Honest limit (retrieval is not anonymous, MUST disclose):** a holder indexes its held
+> ciphertext by the recipient's per-recipient delivery tag (§16.6), and retrieval is a **plain
+> poll against that index** — there is no retrieval ceremony, no blinded-pickup object, and no
+> state machine here or anywhere in this specification that would decouple *which* tag was
+> fetched from *who* fetched it. A holder — or anyone observing it — that serves a returning node
+> therefore learns **that node's tag set, the arrival and pickup timing of each item, and the
+> volume moved**: exactly the untrusted-shared-store access pattern PIR exists to remove, restated
+> for a mailbox instead of a database (§6.6 item 17, which owns this residual; §6.4 owns the
+> always-on-push case this does not cover). This section MUST NOT describe retrieval as anonymous
+> or unlinkable — content-blindness (above) is not the same property. Closing this for real means
+> either running PIR against the buffer or specifying a genuine blinded-retrieval mechanism (its
+> own credential, a defined wire object, and a retrieval state machine) — neither exists today, and
+> **which of the two DMTAP adopts, if either, is an open founder decision**, not resolved here.
+
 > **Honest limit:** a relay-mailbox is a **buffer, not an archive** — a node offline past the
 > TTL loses undelivered mail. Durability MUST land at the recipient's edge once fetched. Senders
 > retry (§2.6) within their own deadline regardless.
