@@ -548,7 +548,7 @@ and total).** Apply exactly one row to every clause `(kind, n)` in `rotate_thres
 
 | # | Case | Verdict | Why |
 |---|---|---|---|
-| B1 | `kind = Ik` | **WF** | rule 3 is an absolute bar on `IK`-alone weakening, independent of what an `Ik` clause would otherwise license |
+| B1 | `kind = Ik` | **WF** | rule 3 is an absolute bar on `IK`-alone weakening — enforced by dropping every `Ik` clause before the §1.4a weakening-gate satisfaction check (`verify()`) — independent of what an `Ik` clause would otherwise license |
 | B2 | `recover_threshold` has a clause of the **same** kind, count `m` | **WF iff `n ≥ m`** | counts are monotone within a kind; a same-kind pair that rotates more cheaply than it recovers is the shape a numeric comparison must catch |
 | B3 | no same-kind `recover_threshold` clause, and `n ≥ 2` | **WF** (unconstrained) | honest residual — no principled ranking between different kinds' multi-factor coalitions, and no single compromised factor reaches a genuine `n ≥ 2` cross-kind clause |
 | B4 | no same-kind `recover_threshold` clause, and `n = 1` | **NOT WF** | a lone factor of a kind `recover_threshold` doesn't independently accept at that strength must never be enough to rotate — "no single weak factor rotates" falls out of the table instead of needing its own hand-written rule |
@@ -635,7 +635,14 @@ fn verify(chain: &[RecoveryPolicy], candidate: &RecoveryPolicy) -> Result<(), Er
     // Rules 3/4 — weakening classification against the whole chain (Table D).
     let evicted = evicted_ledger(chain);                        // accumulator, never pairwise
     if is_weakening(prev, candidate, &evicted) {
-        if !satisfies(candidate.sig, prev.rotate_threshold, prev.factors()) {
+        // Rule 3 — `IK` alone MUST NOT weaken. Satisfaction of rotate_threshold for a
+        // *weakening* change drops every `Ik` clause first, so a bare `IK` signature can
+        // never clear this bar regardless of what rotate_threshold contains — this is the
+        // absolute bar Table B B1 delegates here. If dropping the `Ik` clause(s) leaves no
+        // clause, the policy admits no IK-free rotation and thus cannot be weakened at all
+        // (the safe reading of "IK alone can never weaken"). The `Ik` disjunct still serves
+        // reactive authentication (rule 1) and additive, non-weakening changes (rule 3).
+        if !satisfies(candidate.sig, prev.rotate_threshold.drop_ik_clauses(), prev.factors()) {
             return Err(ERR_RECOVERY_WEAKENING_UNQUORUMED);      // 0x010E
         }
         if !veto_window_elapsed_unvetoed(candidate) {
@@ -656,8 +663,9 @@ prose or to an implementer's judgement.
 - **(a) Monotonicity** is structural (Table A) — no clause shape can express a "more factors ⇒
   less authorised" rule, so it cannot occur by construction, not by review.
 - **(b) The bypass is structurally excluded** — the only path to a weakening change accepted by
-  `verify()` is `is_weakening ⟹ satisfies(rotate_threshold)`; there is no branch that accepts a
-  weakening change without a genuine minimal authorised set of `rotate_threshold` behind it, and
+  `verify()` is `is_weakening` ⟹ satisfaction of `rotate_threshold` **with every `Ik` clause
+  dropped**; a bare `IK` signature never clears it, and there is no branch that accepts a weakening
+  change without a genuine **non-`Ik`** minimal authorised set of `rotate_threshold` behind it, and
   `Evicted` is chain-wide, so no sequence of hops opens a path around that branch.
 - **(c) `verify()` above is total and decidable**: B1–B4 and D0–D3 are exhaustive case splits
   fixed by the shape of `Threshold`/`RecoveryPolicy`, not a list grown by finding
