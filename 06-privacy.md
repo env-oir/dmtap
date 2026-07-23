@@ -624,9 +624,10 @@ to the opt-in `private` mixnet only.**
   tie that tag to the recipient's persistent identity key. **This claim does not extend to a
   first-contact/cold delivery**, which is a distinct case addressed in the residual below, not a
   weaker instance of this one.
-- *Holds by:* blinded delivery tag `BT = HKDF(shared_secret, epoch_day)`, recognized by the
-  recipient but unlinkable across time and across observers (§2.2a); network/human identity
-  decoupling and recipient-side cover (§6.4).
+- *Holds by:* blinded delivery tag `BT = HKDF-SHA256(shared_secret, …)` — the KDF, inputs, and
+  16-byte length pinned in [§18.3.2](18-wire-format.md) — recognized by the recipient but
+  unlinkable across time and across observers (§2.2a); network/human identity decoupling and
+  recipient-side cover (§6.4).
 - *Against:* a global passive adversary / final mix, for the *tag-linkage* property, on the
   established-contact path only.
 - *Residual (stated, not overclaimed):* blinding removes the persistent-key linkage in the envelope;

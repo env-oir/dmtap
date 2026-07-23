@@ -79,10 +79,11 @@ Envelope {
   own key), so an envelope bearing it is always classified **cold** at §2.7 step 5; a known contact
   MUST move to a blinded tag; or
 - a **group id** (for MLS group messages, §5); or
-- a **blinded delivery tag** — a per-contact value `BT = HKDF(shared_secret, epoch_day)` derived
+- a **blinded delivery tag** — a per-contact value `BT = HKDF-SHA256(shared_secret, …)` derived
   from a secret established at first contact (`epoch_day` is the **day-counter epoch**, §0.8 —
-  distinct from an MLS group epoch or a mix-key epoch), which the recipient's node recognizes but
-  which is **unlinkable across time and across observers** to the recipient's persistent key.
+  distinct from an MLS group epoch or a mix-key epoch) — the KDF, inputs, and 16-byte length are
+  pinned in [§18.3.2](18-wire-format.md) — which the recipient's node recognizes but which is
+  **unlinkable across time and across observers** to the recipient's persistent key.
 
 Blinded tags are RECOMMENDED for the `private` tier. **Honest limit (reconciled with §6.4):**
 even a blinded tag does not hide *that a packet was delivered to a particular node* from the
