@@ -53,6 +53,11 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — key-name (`NAME`) | 7 | 1 | 0 | 5 | 1 |
 | **Core** — safety number (`SAFE`) | 2 | 2 | 0 | 0 | 0 |
 | **Core** — suite fail-closed (`SUITE`) | 10 | 9 | 0 | 1 | 0 |
+<!-- NOTE (normative, §10.3a): the "**Core** — …" prefix in this table denotes the SPEC AREA a
+     category derives from (the numbered core chapters, vs a Legacy/Auth/Private/Clients profile).
+     It does NOT mean the category is required at the Core conformance LEVEL — several area-Core
+     rows below are explicitly optional extensions (`pub-1`, `pubsub-1`). The Core LEVEL boundary
+     is only the "## Core level" case block. -->
 | **Core** — §2.7 validation pipeline (`VAL`) | 15 | 0 (2 reuse ADDR/PRE) | 0 | 15 | 0 |
 | **Core** — identity / KT / naming (`IDENT`) | 6 | 0 | 0 | 6 | 0 |
 | **Core** — aliases (`ALIAS`) | 3 | 0 | 0 | 3 | 0 |

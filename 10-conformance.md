@@ -193,6 +193,14 @@ discipline the §5 kind table and the SPEC index use).
   the escrow / dispute / matching primitives. On receiving an object, kind, `suite`, or code outside
   its implemented scope a Core node **fails closed** (§10.1) — it never guesses, and never `ack`s
   what it cannot validate.
+- **Disambiguation — two senses of "Core" (normative).** `conformance/SUITE.md`'s coverage-summary
+  table prefixes many category rows with "**Core** — …". That prefix denotes the **spec area** a
+  category derives from (the numbered core chapters, as opposed to a `Legacy` / `Auth` / `Private` /
+  `Clients` profile); it does **NOT** mean the category is required at the Core conformance *level*.
+  The table proves this on its own face: rows such as "**Core** — DMTAP-PUB extension, **optional
+  `pub-1`**" and "**Core** — DMTAP-PUBSUB extension, **optional `pubsub-1`**" are area-Core and
+  simultaneously optional. The Core *level* boundary is, and is only, the `## Core level` case block
+  above. An implementer or verifier MUST NOT infer a Core-level obligation from the area prefix.
 - **Scale of the floor (informative, this revision).** Core is ≈ **71 of ~354** conformance cases,
   ≈ **28 of ~166** registered error codes, and ≈ **300 of ~2 144** normative MUSTs across the
   numbered chapters — roughly a **15–20 % slice**. These counts are informative and drift as the

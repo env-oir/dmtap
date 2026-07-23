@@ -438,10 +438,25 @@ Known contacts MAY skip step 6 (they are pre-authorized). Only known-contact MOT
 decryption on the fast path; unknown senders must pass the anonymous abuse gate first.
 
 **Dedup ordering (normative).** Deduplication by `id` (§2.6) runs **after** classification
-(step 5), never before: a duplicate of a previously **acked** `id` is then re-acked immediately
-without further processing, while a duplicate of an `id` held only in the deferred requests area
-follows §2.7a unchanged — held, not acked. Running dedup earlier would let a duplicate probe
-short-circuit the abuse gate and turn the ack itself into an existence oracle.
+(step 5), never before, and its effect is **conditioned on that classification**:
+
+- **Known contact** (pre-authorized, the step-5 fast path): a duplicate of a previously **acked**
+  `id` is re-acked immediately without further processing — idempotent redelivery, and no oracle,
+  because the sender is already authenticated.
+- **Unknown/cold sender:** a duplicate MUST NOT be acked before the **step-6** abuse gate is
+  satisfied. It is handled exactly as any other cold MOTE — challenged, or held per §2.7a — and only
+  a sender that clears the gate may then receive the idempotent re-ack. **A cold duplicate MUST NOT
+  short-circuit step 6.**
+- A duplicate of an `id` held only in the deferred requests area follows §2.7a unchanged — held,
+  not acked.
+
+Running dedup before classification — **or re-acking a cold duplicate ahead of step 6** — would let a
+duplicate probe short-circuit the abuse gate and turn the ack itself into an existence oracle. Step 5
+classifies but **authenticates nothing**: a `KeyTag` envelope is forced COLD and carries no sender
+information, and `sender_key` asserts no identity, so an attacker replaying any previously-acked
+`ciphertext` under a throwaway `sender_key`, with no challenge presented, would otherwise obtain a
+signed `ack` at zero cost — confirming that the recipient stored that exact content-hash. The gate,
+not the classification step, is what makes the ack safe to emit.
 
 ### 2.7a Outcome of a failed/absent challenge (normative)
 
