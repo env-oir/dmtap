@@ -78,8 +78,8 @@ The uncurated figure, over every capitalised MUST in the specification, is **84%
 
 | Level | Case prefixes | Requires (spec) |
 |-------|---------------|-----------------|
-| **Core** | `CBOR`, `ADDR`, `SIG`, `PRE`, `NAME`, `SAFE`, `SUITE`, `VAL`, `IDENT`, `ORG`, `ATTEST`, `PROFILE`, `ALIAS`, `RESOLVE`, `LOC`, `FLOOR`, `FAILCLASS` | Identity (§1), MOTE (§2), naming + TOFU + fail-closed KT + org administration + `Profile` display data + aliases + pluggable resolvers (§3), delivery + `deliver`/`ack` + location records and resolution order (§4.2), MLS 1:1 (§5), cold-sender challenge gating **and the zero-relationship delivery floor** (§9.7a, §9.4.1), device attestation (§1.2a), the §10.7.0 failure classes |
-| **Private** | `PRIV`, `DENIABLE`, `KTV1`, `MIXPROF`, `FLEET`, `GUARD` (+ Core) | Core + mixnet + sealed sender + cover traffic + anti-active-adversary + fail-closed no-downgrade + privacy tiers (§4.4, §6); the derived fleet view (§4.4.2), entry-guard/ASN-diversity rules (§4.4.8) and Bootstrap-profile anti-drift constraints (§4.4.10a); optional deniable 1:1 mode (§5.2.1) and KT-v1 hardening (§3.5.2) guards MUST hold when those modes are implemented. A production mail node MUST implement Private. |
+| **Core** | `CBOR`, `ADDR`, `SIG`, `PRE`, `NAME`, `SAFE`, `SUITE`, `VAL`, `IDENT`, `ORG`, `ATTEST`, `PROFILE`, `ALIAS`, `RESOLVE`, `LOC`, `FLOOR`, `FAILCLASS` | Identity (§1), MOTE (§2), naming + TOFU + fail-closed KT + org administration + `Profile` display data + aliases + pluggable resolvers (§3), delivery + `deliver`/`ack` + location records and resolution order (§4.2), MLS 1:1 (§5), cold-sender challenge gating **and the zero-relationship delivery floor** (§9.7a, [docs/research/vdf.md §9.4.1](../docs/research/vdf.md)), device attestation (§1.2a), the §10.7.0 failure classes. Because the default transport tier is `fast`, not `private` (§4.6), Core alone is sufficient for a production mail node to operate at the protocol's own default. |
+| **Private** | `PRIV`, `DENIABLE`, `KTV1`, `MIXPROF`, `FLEET`, `GUARD` (+ Core) | Core + the **OPTIONAL, research-tier** mixnet + sealed sender + cover traffic + anti-active-adversary + fail-closed no-downgrade + privacy tiers (§6; mixnet mechanics [docs/research/mixnet.md §4.4](../docs/research/mixnet.md)); the derived fleet view ([docs/research/mixnet.md §4.4.2](../docs/research/mixnet.md)), entry-guard/ASN-diversity rules ([docs/research/mixnet.md §4.4.8](../docs/research/mixnet.md)) and Bootstrap-profile anti-drift constraints ([docs/research/mixnet.md §4.4.10a](../docs/research/mixnet.md)); optional deniable 1:1 mode (§5.2.1) and KT-v1 hardening (§3.5.2) guards MUST hold when those modes are implemented. An implementation targets Private only if it chooses to offer the opt-in mixnet — it is **not required** of a conformant production mail node (§10.3). |
 | **Groups & Files** | `GRP`, `FILE`, `SYNC` (+ Core) | Core + MLS groups + content-addressed file transfer (§5) |
 | **Legacy** | `LEG`, `GWALIAS`, `GWROLE` (+ Core) | Core + gateway inbound/outbound + DKIM delegation (§7); the gateway role boundaries — authorize-never-classify (§7.11.4, §9.11) and privilege separation (§7.1b); gateway legacy-client surfaces (IMAP/POP/SMTP-submission, CalDAV/CardDAV) + reachability ingress + operator modes RECOMMENDED (§7.15) |
 | **Clients** | `CLI` (+ Core) | Core + **JMAP** — the node's native (and only) client surface (§8.1). Legacy client protocols (IMAP/POP/SMTP-submission, CalDAV/CardDAV) are a **gateway** capability (RECOMMENDED, §7.15), not a node one |
@@ -248,8 +248,11 @@ framings (cell, routing command, SURB, fragment header). **42 vectors** across 1
   added as those subsystems land.
 - **The wave-6 anti-drift families (`MIXPROF`, `FLEET`, `GUARD`, `LOC`, `FLOOR`, `FAILCLASS`,
   `GWROLE`)** — these pin *behaviour over time and over state*, not bytes: a profile transition
-  across mix-key epochs (§4.4.10a), a fleet view derived from a log quorum (§4.4.2), guard
-  selection across `r` rotations (§4.4.8), a resolver's lookup count (§4.2.1), a per-sender-key
+  across mix-key epochs ([docs/research/mixnet.md §4.4.10a](../docs/research/mixnet.md)), a fleet
+  view derived from a log quorum
+  ([docs/research/mixnet.md §4.4.2](../docs/research/mixnet.md)), guard selection across `r`
+  rotations ([docs/research/mixnet.md §4.4.8](../docs/research/mixnet.md)), a resolver's lookup
+  count (§4.2.1), a per-sender-key
   daily admission floor (§9.7a), the disposition a failure class takes (§10.7.0), and a gateway's
   admission decision under two contents that differ only in body (§7.11.4). Each carries a
   reproducible construction and its expected §21 code; the `manual-attestation` rows have **no

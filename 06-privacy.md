@@ -10,7 +10,7 @@ honestly, defines the guarantees, and marks the boundaries we do *not* claim.
 | Network eavesdropper (local) | reads links near a node | defeated by end-to-end encryption; sealed sender hides the sender from this observer (not from a global one, below) |
 | Malicious relay / mix node | sees ciphertext it forwards | defeated (content-blind; on the `fast` tier a relay still sees the endpoints it directly connects, §6.5) |
 | Curious directory / DNS / KT log | sees lookups | binding tamper-evident (KT §3.5); lookup privacy beyond that is the opt-in mixnet's routing (§3.7, [docs/research/mixnet.md](docs/research/mixnet.md)) |
-| **Global passive adversary** | observes all links, all timing | **default posture: NOT defeated for the social graph.** By default (`fast` tier), a global passive adversary recovers the communication graph via IP + timing + volume correlation; sealed sender denies it the sender's identity/signature but not the graph. Graph/timing privacy against this adversary is available only via the opt-in, research-tier mixnet (§4.4, `private` tier) — see the honest restatement below and §6.9 SP-3 |
+| **Global passive adversary** | observes all links, all timing | **default posture: NOT defeated for the social graph.** By default (`fast` tier), a global passive adversary recovers the communication graph via IP + timing + volume correlation; sealed sender denies it the sender's identity/signature but not the graph. Graph/timing privacy against this adversary is available only via the opt-in, research-tier mixnet ([docs/research/mixnet.md](docs/research/mixnet.md), `private` tier) — see the honest restatement below and §6.9 SP-3 |
 | Global *active* adversary (inject/drop/delay at will, unlimited resources) | shapes traffic to correlate | **not defeated by default**; the opt-in mixnet adds detection/response mechanisms discussed in §6.6 item 1, themselves research-tier |
 | Compromised endpoint (node seized/keylogged) | reads that node's plaintext | **hardened, then bounded** (§6.6 item 3): hardware-backed non-exportable keys (§1.2a), device-unlock-gated at-rest encryption (§6.7), per-device sealing, and fast revocation heal all cases **except** a device *actively compromised while unlocked and in use* |
 
@@ -322,8 +322,11 @@ retrieval ceremony that would remove it — this is the priced-in cost of not pa
     participants (§0.2.2, §14.1) that the `fast`-tier default depends on, and they are load-bearing
     regardless of the mixnet. The **mixnet fleet** specifically (mix nodes, the research-tier
     `private` path, [docs/research/mixnet.md](docs/research/mixnet.md)) is an *additional*,
-    opt-in role with its own default-on proposal for always-on public nodes that choose to
-    implement it ([docs/research/mixnet.md §4.4.2a](docs/research/mixnet.md)) — but because that
+    **opt-in — not default-on — role**: an always-on public node MAY choose to run the mix role,
+    and if it does, [docs/research/mixnet.md §4.4.2a](docs/research/mixnet.md) proposes the node
+    default that role itself on rather than requiring a second, buried opt-in once the first
+    choice to run it is made — but no node is expected to run the role, and it is never assumed
+    present. Because that
     layer is research-tier, unshipped, and untested at scale, DMTAP does not assume it exists: the
     default (`fast`) does not depend on it, `private`-tier paths are simply **unbuilt** unless and
     until an implementation ships the mix role and enough operators run it, and a client MUST NOT
@@ -477,8 +480,8 @@ DMTAP lets a recipient learn and verify a message's **transport-path provenance*
 arrived on, whether it was gateway-touched or pure-mesh, and a coarse hop descriptor (§7.8, wire
 objects §18.3.11 / §18.8.1). This is deliberately constrained so it **reveals only trust-boundary
 crossings the recipient can already infer, and nothing more** — it MUST NOT weaken sealed sender
-(§6.2) or the opt-in mixnet's anonymity property when that tier is in use (§4.4,
-[docs/research/mixnet.md](docs/research/mixnet.md)):
+(§6.2) or the opt-in mixnet's anonymity property when that tier is in use
+([docs/research/mixnet.md](docs/research/mixnet.md)):
 
 - **Provenance answers "which trust boundaries did this cross?", never "which nodes carried it?"**
   For the `private` tier the recipient learns only the **profile floor** the path satisfied

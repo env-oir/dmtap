@@ -198,8 +198,9 @@ Attachment {
 The manifest lists chunk hashes (a BLAKE3 Merkle DAG). Chunks are fixed-size, individually
 encrypted and content-addressed, enabling **resumable, parallel, swarmed, deduplicated**
 transfer. Only the manifest + `key` travel in the (private) MOTE; the chunks travel per the
-size tier below — normal-tier via the mixnet, large-tier direct (§4.5). See §5.5 for the full
-file model.
+size tier below — normal-tier via whichever tier the message itself uses (default `fast`, or
+the opt-in research-tier mixnet if a sender has selected it), large-tier via the `fast`/onion
+bulk path (§4.5). See §5.5 for the full file model.
 
 **Metadata-privacy size tiers (normative threshold, reconciles §2.5 / §4.5 / §6.5).** These are
 **metadata-privacy tiers** — they fix which *path* the bytes take and what an observer can
@@ -208,15 +209,16 @@ orthogonal axis. A file is handled by one of three paths, by size:
 
 | Tier | Size | Path | Metadata privacy |
 |------|------|------|------------------|
-| **inline** | ≤ v0 **48 KiB** of content — the padded MOTE then rides the top bucket rung, 64 KiB = 32 Sphinx cells (§4.4.1/§16.3); the 16 KiB gap is ≈12 kB PQ envelope plus ≈4.4 kB header/framing headroom (§5.5.1) | in `Attachment.inline`, inside the MOTE | full (rides the message's tier) |
-| **normal** | > inline, ≤ 4 chunks (v0: ≤ 4 MiB) | manifest in MOTE; **chunks also routed via the mixnet** | full (like messages, §6.5) |
-| **large** | > normal | manifest in MOTE; **chunks via the fast/onion bulk path** (§4.5) | weaker — Tor-class (§6.5) |
+| **inline** | ≤ v0 **48 KiB** of content — the padded MOTE then rides the top bucket rung, 64 KiB = 32 Sphinx cells, opt-in research-tier mixnet only ([docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)/§16.3); the 16 KiB gap is ≈12 kB PQ envelope plus ≈4.4 kB header/framing headroom (§5.5.1) | in `Attachment.inline`, inside the MOTE | full (rides the message's tier) |
+| **normal** | > inline, ≤ 4 chunks (v0: ≤ 4 MiB) | manifest in MOTE; **chunks route via whichever tier the message uses** — default `fast`, or the opt-in research-tier mixnet if selected | full when the opt-in mixnet is in use; the default `fast` tier's guarantee otherwise (like messages, §6.5) |
+| **large** | > normal | manifest in MOTE; **chunks via the `fast`/onion bulk path** (§4.5) | weaker — Tor-class (§6.5) |
 
 The v0 numeric thresholds (48 KiB / 4 MiB) are parameters (§16.4) and MAY be tuned;
 the three-tier model is normative. This removes the earlier binary small/large ambiguity.
 **Note on "inline" and the mixnet cell:** an inline payload is **not** a single mix packet — the
 Sphinx cell is 2 KiB (§16.3), so a padded inline MOTE is a **whole number of 2 KiB cells** on the
-**bucket ladder** {16, 64} KiB (§4.4.1) — i.e. 8 or 32 cells. The inline tier's ceiling is the
+**bucket ladder** {16, 64} KiB ([docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)) — i.e.
+8 or 32 cells. The inline tier's ceiling is the
 **top rung** (64 KiB, 32 cells), not one packet; the byte-level derivation of the 48 KiB cap from
 that rung is §5.5.1's (11.9 kB PQ envelope + 4.4 kB headroom). Only ladder sizes appear on the
 wire, so size still leaks nothing — the metadata-privacy point §5.5.1 does not itself make.
@@ -241,7 +243,8 @@ ack(id)               → recipient confirms receipt of MOTE `id`.
   transitioning to `ACKED` (§20.1); an unsigned, wrongly-signed, or unauthorized-key ack MUST be
   ignored — it is not delivery evidence. An `ack` **MUST travel at the same privacy tier as the
   MOTE it acknowledges** (a `private`-tier MOTE's ack MUST NOT be downgraded to `fast` for
-  convenience — the same no-silent-downgrade discipline as §4.4.9). Acks are not themselves acked
+  convenience — the same no-silent-downgrade discipline as
+  [docs/research/mixnet.md §4.4.9](docs/research/mixnet.md)). Acks are not themselves acked
   (no ack storm). See §19.3.2 for the CDDL this requires and the full rationale, and §6.9 SP-2 for
   the disclosed residual (a signature necessarily proves a *specific device* produced it — a
   stronger identity commitment than an unsigned event carried).

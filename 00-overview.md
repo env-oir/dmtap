@@ -57,8 +57,8 @@ and does **all the real work**:
 - Mesh participation: peer discovery (DHT), relaying for others, delivery (§4).
 - Sealed sender: keeps the sender's identity out of intermediaries' view, on by default
   regardless of tier (§2.2, §6.2). Mixnet client (opt-in, research-tier `private` tier):
-  onion-wrapping and cover traffic on top of sealed sender (§4.4, non-normative — DIRECTION
-  §9).
+  onion-wrapping and cover traffic on top of sealed sender
+  ([docs/research/mixnet.md](docs/research/mixnet.md), non-normative — DIRECTION §9).
 - Messaging: MLS groups for 1:1, chat, and file folders; MLS KeyPackages (§5.3).
 - Client access: **JMAP** (native — the node's only client surface, §8). Legacy client
   protocols (IMAP/POP/SMTP-submission, CalDAV/CardDAV) are served by the **gateway**, not the
@@ -74,7 +74,7 @@ none is sold, and none has a gatekeeper:
 | Role | Flag | What it provides | Why anyone can run it |
 |------|------|------------------|-----------------------|
 | **Relay** | `--relay` | reachability hop for NAT'd peers; content-blind (§4.3) | needs only a public address |
-| **Mix** | `--mix` | a mixnet hop for the **opt-in, research-tier** `private` transport tier (§4.4, non-normative — DIRECTION §9) | needs only a public address; the fleet self-provisions with adoption |
+| **Mix** | `--mix` | a mixnet hop for the **opt-in, research-tier** `private` transport tier ([docs/research/mixnet.md](docs/research/mixnet.md), non-normative — DIRECTION §9) | needs only a public address; the fleet self-provisions with adoption |
 | **Buffer / relay-mailbox** | `--mailbox` | short-TTL content-blind hold for an offline peer (§14.3, §14.5) | an **n-of-m** arrangement among peers and the owner's own devices — not a hosted service |
 | **KT log** | `--kt-log` | an append-only `name → key` log others audit (§3.5) | append-only storage; verifiers pin a *set*, so more logs is strictly better |
 | **Rendezvous** | `--rendezvous` | non-DHT lookup fallback + bootstrap entry (§4.2.1, §4.2.2) | needs only a stable address |
@@ -242,7 +242,8 @@ rest of this document is built to protect (§7.1, §12.3, §14.1).
 **Honest boundary:** by default, DMTAP reduces metadata exposure **to intermediaries**
 (sealed sender) — it does not, by default, resist a **global passive adversary** correlating
 IP address and timing. Full graph/timing privacy against a global passive observer is an
-**opt-in, research-tier** goal (the `private`/mixnet tier, §4.4, §6, DIRECTION §9), not a
+**opt-in, research-tier** goal (the `private`/mixnet tier,
+[docs/research/mixnet.md](docs/research/mixnet.md), §6, DIRECTION §9), not a
 shipping guarantee. Perfect resistance to a global *active* adversary with unlimited resources
 is not claimed at any tier; see §6.
 
@@ -295,12 +296,13 @@ listed deprecated synonyms are read as their canonical term.
   the sealed payload, §2.4, §7.8).
 - **epoch** — three unrelated counters, always qualified: the **MLS group epoch** (the group
   ratchet state counter, §5.1); the **mix-key epoch** (the 24 h Sphinx-key rotation period,
-  §4.4.4); and the **day-counter epoch** (`epoch_day`, the KDF input of the blinded delivery
-  tag, §2.2a).
+  opt-in research-tier, [docs/research/mixnet.md §4.4.4](docs/research/mixnet.md)); and the
+  **day-counter epoch** (`epoch_day`, the KDF input of the blinded delivery tag, §2.2a).
 - **suite** — three distinct registries: the **Envelope suite** (the u8 of §1.1, registry
   §21.15); the **MLS ciphersuite** (the u16 of RFC 9420, §5.1); and the **mix suite** (the
-  Sphinx packet-format tag, §4.4.12, §21.23). Their downgrade floors are policed independently
-  (§5.1).
+  opt-in research-tier Sphinx packet-format tag,
+  [docs/research/mixnet.md §4.4.12](docs/research/mixnet.md), §21.23). Their downgrade floors
+  are policed independently (§5.1).
 - **relay** — four senses: the **mesh circuit relay** (libp2p Circuit Relay v2, rung 3 of the
   reachability ladder, §4.3); the **legacy-client ingress** (a gateway edge surface that
   terminates legacy client protocols, §7.15); the **relay role** (any public-address node
@@ -314,7 +316,7 @@ listed deprecated synonyms are read as their canonical term.
   legacy-bridged message, §7.8); **device attestation** (platform/hardware-keystore evidence
   over a device key, §1.2a); and **operator attestation** (a DNS/KT record binding an
   infrastructure node to an accountable operator domain — `_dmtap-gw` §7.2a, `_dmtap-mix`
-  §4.4.8).
+  opt-in research-tier, [docs/research/mixnet.md §4.4.8](docs/research/mixnet.md)).
 - **requests area** — the quarantine where a cold sender's unproven MOTEs are deferred: held,
   rate-limited, never surfaced as inbox mail and never acked (§2.7a).
 - **key transparency (KT) log** — canonical term for the append-only Merkle log that makes

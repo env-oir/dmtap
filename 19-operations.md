@@ -337,7 +337,10 @@ least one prior `SignedTreeHead` per followed log (bootstrap fetch otherwise).
 **Procedure (normative; mirrors §3.5.2).**
 1. **`gossip-sth`** — on fetching any `SignedTreeHead` (verify its signature under `log_id`,
    `0x0108` on failure), **re-publish** the head `(log_id, tree_size, root_hash, timestamp, sig)` to
-   gossip peers (SHOULD over the mixnet, §3.7; direct only at bootstrap, §3.5.2(a) disclosed leak).
+   gossip peers. This gossip defaults to `fast`/direct like any other control traffic (§4.6); a
+   node that has elected the opt-in, research-tier mixnet SHOULD route it there instead so
+   auditing does not leak who-audits-whom (§3.7). Before that opt-in tier is available at all
+   (bootstrap), gossip MUST go direct, which is a disclosed leak (§3.5.2(a)).
 2. **`verify-consistency`** — on receiving a `gossiped_sth` for a followed log, request a
    `ConsistencyProof` between `own_sth` and `gossiped_sth` and verify the smaller tree is a prefix
    of the larger (§18.4.11). Two validly-signed heads with equal `tree_size` but differing
@@ -670,12 +673,14 @@ A: reachability established via rung 2 (hole-punch)
 A: proceed to deliver() over this connection
 ```
 
-### 19.2.4 Mixnet operations (§4.4) — `publish-mix-descriptor` / `publish-mix-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`
+### 19.2.4 Mixnet operations (opt-in, research-tier — [docs/research/mixnet.md §4.4](docs/research/mixnet.md)) — `publish-mix-descriptor` / `publish-mix-directory` / `fetch-directory` / `build-path` / `send-over-mixnet` / `emit-loop` / `detect-active-attack`
 
-**Purpose.** The `private`-tier metadata-privacy operations (§4.4): how a mix advertises itself,
-how the directory is published and fetched, and how a sender builds a fail-closed path and sends,
-plus the loop-cover active-attack detector. Grouped because they share the mixnet objects
-(`MixNodeDescriptor`, `MixDirectory`, `SphinxCell`, §18.5.2–§18.5.4).
+**Purpose.** The `private`-tier metadata-privacy operations, an **opt-in, research-tier** layer
+([docs/research/mixnet.md §4.4](docs/research/mixnet.md), non-normative — DIRECTION §9; the
+default transport tier is `fast`/direct, §4.6, and does not use any of this): how a mix
+advertises itself, how the directory is published and fetched, and how a sender builds a
+fail-closed path and sends, plus the loop-cover active-attack detector. Grouped because they
+share the mixnet objects (`MixNodeDescriptor`, `MixDirectory`, `SphinxCell`, §18.5.2–§18.5.4).
 
 **Initiator / Responder.** Initiator: a mix node (`publish-mix-descriptor`, `emit-loop`), a
 directory authority (`publish-directory`), or a sender (`fetch-directory`, `build-path`,
@@ -683,37 +688,39 @@ directory authority (`publish-directory`), or a sender (`fetch-directory`, `buil
 
 **Parameters.**
 - `descriptor` (`MixNodeDescriptor`, MUST for publish) — with `operator` + a valid `_dmtap-mix`
-  attestation (§4.4.8) if it is to count toward operator-diversity.
+  attestation ([docs/research/mixnet.md §4.4.8](docs/research/mixnet.md)) if it is to count toward operator-diversity.
 - `directory` (`MixDirectory`, MUST) — the KT-anchored fleet snapshot for an epoch.
-- `mote` (`Envelope`, MUST for send) — already padded to a bucket rung (§4.4.1).
+- `mote` (`Envelope`, MUST for send) — already padded to a bucket rung ([docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)).
 - `profile` (`{Standard|High-security}`, MUST for `build-path`/`send`) — the in-force profile
-  (§4.4.10).
+  ([docs/research/mixnet.md §4.4.10](docs/research/mixnet.md)).
 
-**Preconditions.** The sender has the pinned directory-authority key (§4.4.2) and a fresh
-`MixDirectory` for the current epoch; a mix has an IK-authorized identity (§4.4.2).
+**Preconditions.** The sender has the pinned directory-authority key ([docs/research/mixnet.md §4.4.2](docs/research/mixnet.md)) and a fresh
+`MixDirectory` for the current epoch; a mix has an IK-authorized identity ([docs/research/mixnet.md §4.4.2](docs/research/mixnet.md)).
 
-**Procedure (normative; mirrors §4.4).**
+**Procedure (mirrors [docs/research/mixnet.md §4.4](docs/research/mixnet.md); binding only on an
+implementation that offers the opt-in mixnet tier — the tier itself is non-normative and not
+conformance-tested, §4.4 of [04-transport.md](04-transport.md)).**
 1. **`publish-mix-descriptor`** — a mix signs and publishes its `MixNodeDescriptor` (current + next
    epoch Sphinx keys, layer, `operator`). Its **operator control MUST be attested** by a
-   `_dmtap-mix` DNS/KT record (§4.4.8) or it does not count as a distinct operator.
-2. **`publish-mix-directory`** — the (threshold-held / `> n/2`-quorum, §4.4.2) authority signs a
+   `_dmtap-mix` DNS/KT record ([docs/research/mixnet.md §4.4.8](docs/research/mixnet.md)) or it does not count as a distinct operator.
+2. **`publish-mix-directory`** — the (threshold-held / `> n/2`-quorum, [docs/research/mixnet.md §4.4.2](docs/research/mixnet.md)) authority signs a
    versioned `MixDirectory` of attested mixes, ≥ 1 per stratified layer, and appends its root to KT.
    Not authority-signed ⇒ `ERR_MIX_DIRECTORY_SIG_INVALID` (`0x030B`); a directory split view is
-   detectable to the degree the KT profile allows (v1 gossip; v0 only after-the-fact, §4.4.2, M4).
+   detectable to the degree the KT profile allows (v1 gossip; v0 only after-the-fact, [docs/research/mixnet.md §4.4.2](docs/research/mixnet.md), M4).
 3. **`fetch-directory`** — a sender refreshes the `MixDirectory` at least once per epoch; verifies
    the authority signature and the KT anchor; a stale descriptor/epoch key ⇒
    `ERR_MIX_DESCRIPTOR_STALE` (`0x030C`).
 4. **`build-path`** — draw one mix per stratified layer in order, under the **in-force profile's**
    bar: **≥ 3 hops / ≥ 3 attested-disjoint operators** (Standard) or **≥ 5 / ≥ 5** (High-security),
-   current-epoch keys, honoring pinned **entry guards** (§4.4.8). Un-attested/absent-`operator`
-   mixes do **not** contribute diversity (§4.4.8, M3). If no path meeting the in-force bar is
+   current-epoch keys, honoring pinned **entry guards** ([docs/research/mixnet.md §4.4.8](docs/research/mixnet.md)). Un-attested/absent-`operator`
+   mixes do **not** contribute diversity ([docs/research/mixnet.md §4.4.8](docs/research/mixnet.md), M3). If no path meeting the in-force bar is
    buildable, **fail closed** — never silently satisfy a lesser bar (`ERR_MIX_PATH_UNBUILDABLE`
    `0x030D` / `ERR_PRIVATE_TIER_DOWNGRADE_REFUSED` `0x0310`).
 5. **`send-over-mixnet`** — fragment the padded `mote` into `bucket/2 KiB` `SphinxCell`s
    (§18.5.4), each over an **independent** `build-path` result, with per-hop Poisson delays; emit.
-   A build failure holds the MOTE in the retry queue (§4.7), never downgrades (§4.4.9).
+   A build failure holds the MOTE in the retry queue (§4.7), never downgrades ([docs/research/mixnet.md §4.4.9](docs/research/mixnet.md)).
 6. **`emit-loop`** — every `private` node emits client loops (via SURB) and every mix emits mix
-   loops at `λ_loop` (§4.4.7); loops are Sphinx cells indistinguishable from real traffic.
+   loops at `λ_loop` ([docs/research/mixnet.md §4.4.7](docs/research/mixnet.md)); loops are Sphinx cells indistinguishable from real traffic.
 7. **`detect-active-attack`** — track the sliding-window loop-return fraction and latency; below the
    loop-loss threshold (§16.3) ⇒ `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`) → rotate away from
    implicated mixes/guards, `HALT_ALERT`, and **fail closed for `private`** (never auto-downgrade).
@@ -734,7 +741,7 @@ with no silent downgrade; or a held+alerted fail-closed state under attack/outag
 | Loop-return below threshold | Defer + Alert | `ERR_MIX_ACTIVE_ATTACK_SUSPECTED` (`0x030F`), HALT_ALERT + rotate + fail-closed |
 
 **Idempotency / retry.** Path building and sending are **not** idempotent at the path level (each
-cell MUST take a fresh, independent path, §4.4.3); MOTE delivery is idempotent end-to-end via
+cell MUST take a fresh, independent path, [docs/research/mixnet.md §4.4.3](docs/research/mixnet.md)); MOTE delivery is idempotent end-to-end via
 content-address dedup at the recipient (§2.6). `publish-mix-directory`/`publish-mix-descriptor` are
 monotonic-version publishes (older-or-equal rejected).
 
@@ -748,14 +755,16 @@ cheapest-first order (§2.7), and either stores it for the user, defers it to th
 protocol: every failure path is defined, matching §2.7's decryption-DoS defense.
 
 **Initiator / Responder.** Initiator: the sending node (over whatever transport rung §19.2.3
-established, or via the mixnet, §4.4). Responder: the recipient's node — the party that runs
-this entire procedure.
+established, or, if elected, via the opt-in mixnet,
+[docs/research/mixnet.md §4.4](docs/research/mixnet.md)). Responder: the recipient's node —
+the party that runs this entire procedure.
 
 **Parameters.**
 - `outer_mote` (`Envelope`, MUST) — the full envelope as defined in §2.2: `v, suite, id, to,
   epoch, ts, kind, keypkg, challenge, ciphertext, sender_sig`. (The "outer" mixnet wrapper, if
-  present, has already been peeled by the time this operation's input is the `Envelope`; onion
-  unwrapping is a transport-layer concern of §4.4, not restated here.)
+  present — i.e. only when the opt-in mixnet tier was used — has already been peeled by the time
+  this operation's input is the `Envelope`; onion unwrapping is a transport-layer concern of
+  [docs/research/mixnet.md §4.4](docs/research/mixnet.md), not restated here.)
 
 **Preconditions.** None — this operation is the entry point for unauthenticated network input by
 definition, which is exactly why its ordering is normatively fixed (§2.7).
@@ -865,7 +874,8 @@ definition, which is exactly why its ordering is normatively fixed (§2.7).
    - If `Payload.provenance` is **absent**, `origin = 0` (**pure-mesh** — never plaintext at a
      gateway, §7.8.1(b)).
    - Record the **observed** arrival `tier`/`profile` and the **coarse** `min_hops` **profile
-     floor** (§4.4.10) — **never** any mix-node identity or path (§6.8) — and assemble the
+     floor** ([docs/research/mixnet.md §4.4.10](docs/research/mixnet.md)) — **never** any
+     mix-node identity or path (§6.8) — and assemble the
      node-local `ProvenanceRecord` for the client surface (§8.6, §19.9). This record is **not**
      re-transmitted and is served only to the owner's own devices.
 9. Apply `expires`/`refs`/`kind` semantics (§2.4, §2.3); **store** the MOTE. If step 6/8 cleared
@@ -962,8 +972,9 @@ sender-side retry loop (§4.7).
 - `id` (`bytes`, MUST) — the content address being acknowledged.
 - `tier` (`uint`, MUST) — the privacy tier (§4.6) this `ack` itself is carried at. MUST equal the
   tier of the MOTE it acknowledges (§2.6): an `ack` for a `private`-tier MOTE MUST travel the
-  mixnet, never a `fast`-tier shortcut taken for convenience — the same no-silent-downgrade
-  discipline §4.4.9 already applies to the forward direction, applied here to the return path.
+  opt-in mixnet, never a `fast`-tier shortcut taken for convenience — the same no-silent-downgrade
+  discipline [docs/research/mixnet.md §4.4.9](docs/research/mixnet.md) already applies to the
+  forward direction, applied here to the return path.
 - `ack_sig` (`bytes`, **MUST — normative correction**; this field was previously **OPTIONAL** in
   this section ("an implementation hardening, not specified further at the object-format level in
   v0"). That was wrong, not merely permissive, and is corrected here (H-6). Signature over the
@@ -988,8 +999,10 @@ sender-side retry loop (§4.7).
 
   **Disclosed residual (honest limit, not a reason to weaken this).** Requiring `ack_sig` makes an
   `ack` a signature by a *specific device*, where an unsigned event was anonymous even to an
-  observer who could read it. An adversary positioned to observe the mixnet reply path this `ack`
-  travels — e.g. a SURB (single-use reply block, §4.4) holder, or an exit mix on the return leg —
+  observer who could read it. An adversary positioned to observe the opt-in mixnet reply path
+  this `ack` travels — e.g. a SURB (single-use reply block,
+  [docs/research/mixnet.md §4.4](docs/research/mixnet.md)) holder, or an exit mix on the return
+  leg —
   learns, from the mere presence of a valid device-authorized signature, that *some device of the
   pinned recipient identity* produced this reply, which is strictly more identity commitment than a
   bare, unauthenticated confirmation carried. This is a real, narrow reduction in the recipient's
@@ -2379,7 +2392,7 @@ ordinary `deliver`, §19.3.1), and — implicitly — every future chunk-swarm p
   | Tier | `size` | Where the bytes go |
   |---|---|---|
   | **inline** | ≤ 48 KiB of content (the padded MOTE rides the 64 KiB top rung) | `Attachment.inline`, inside the MOTE itself |
-  | **normal** | ≤ 4 MiB (≤ 4 chunks) | Manifest in the MOTE; chunks fetched via the **mixnet** (full privacy) |
+  | **normal** | ≤ 4 MiB (≤ 4 chunks) | Manifest in the MOTE; chunks fetched via whichever tier the message itself uses — default `fast`, or the opt-in research-tier mixnet's full privacy if selected |
   | **large** | > 4 MiB | Manifest in the MOTE; chunks fetched via the **fast/onion bulk path** (weaker privacy, §6.5) |
 
   This table is the **privacy** axis (which transfer *path* the chunks take). It is **orthogonal**
@@ -2397,8 +2410,9 @@ and encrypted under `Attachment.key`, held by at least the origin node (§5.5).
    is ever needed — the file rides the message's own privacy tier end to end.
 3. **Normal/large tier:** construct `Attachment{name, mime, size, manifest: ManifestRef{id, size,
    chunks}, key}` and include it in the MOTE's `Payload.attach` (§2.5). Send the MOTE as the
-   **control message**, always at the `private` tier regardless of the file's own tier (§4.5:
-   "the control MOTE... travels the private tier").
+   **control message**, at the **same default-`fast`, opt-in-`private` tier as any other control
+   MOTE** (§4.6; §4.5: "the control MOTE follows the same default-`fast`, opt-in-`private` tier
+   as any other control MOTE").
 4. Recipient's `deliver` (§19.3.1) processes the control MOTE exactly like any other message;
    the manifest + key are now known to the recipient, who can begin `fetch-chunk` (§19.8.2)
    using the tier-appropriate path.
@@ -2465,8 +2479,9 @@ chunk (origin node, or another peer that has already fetched and cached it).
 1. Identify candidate sources: the origin node, plus any peer known to have already fetched this
    `chunk_hash` (swarm discovery — mechanism is transport-layer, analogous to BitTorrent
    peer-exchange, not separately specified at the object-format level in v0).
-2. Fetch from up to `parallelism` sources concurrently, over the tier-appropriate path (mixnet
-   for normal-tier files, fast/onion bulk path for large-tier, §4.5, §6.5).
+2. Fetch from up to `parallelism` sources concurrently, over the tier-appropriate path (whichever
+   tier the message uses — default `fast`, or the opt-in mixnet if selected — for normal-tier
+   files; the fast/onion bulk path for large-tier, §4.5, §6.5).
 3. On receipt, **verify the chunk self-verifies against `chunk_hash`** (content-address
    integrity, §5.5) before accepting it into local storage.
 4. Decrypt using `Attachment.key`.

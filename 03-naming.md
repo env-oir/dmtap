@@ -204,13 +204,18 @@ detection paths carry codes `0x0107`, `0x0110`–`0x0112` (§21.3).
 - **Who gossips.** Every v1 verifier (client, monitor, auditor, §3.5.2(c)) that fetches an STH
   MUST re-publish the signed head it saw — the tuple `(log signing key, tree_size, root_hash,
   timestamp, log signature)` — to a set of gossip peers (other verifiers, the owner's monitor
-  devices, and any configured auditor) over the mesh (§4). It SHOULD route this gossip through
-  the mixnet (§6, §3.7) so auditing does not leak *who audits whom*. **Bootstrap caveat
-  (disclosed):** before the mixnet is available to a node (initial bring-up, or a deployment
-  without a live fleet, §4.4.11), gossip MAY be sent **directly**, which **leaks the
-  who-audits-whom graph** to a network observer. This is a disclosed bootstrap limit, not the
-  steady state — a node SHOULD migrate its gossip onto the mixnet as soon as a `private` path is
-  buildable, exactly as other control traffic defaults to `private` (§4.6).
+  devices, and any configured auditor) over the mesh (§4). Where a node has elected the opt-in,
+  research-tier mixnet, it SHOULD route this gossip through it (§6, §3.7) so auditing does not
+  leak *who audits whom*. **Default and bootstrap caveat (disclosed):** control traffic —
+  gossip included — defaults to `fast` like every other control MOTE (§4.6); the mixnet is an
+  opt-in tier a node elects, not something gossip switches onto automatically once one becomes
+  reachable. Before the opt-in mixnet is available to a node at all (initial bring-up, or a
+  deployment without a live fleet,
+  [docs/research/mixnet.md §4.4.11](docs/research/mixnet.md)), gossip MUST be sent over the
+  default `fast` tier, which **leaks the who-audits-whom graph** to a network observer. This is a
+  disclosed residual of the default tier, not a bootstrap-only condition — a node that wants that
+  graph hidden SHOULD deliberately elect the opt-in mixnet for its gossip once a `private` path is
+  buildable, the same user-surfaced choice any other sensitive control traffic MAY make.
 - **Cross-check (the detection step).** On receiving a gossiped STH for a log it also follows, a
   verifier MUST request a **consistency proof** between its own latest STH and the gossiped one
   and verify that the smaller tree is a **prefix of** the larger (a genuine append-only
@@ -309,9 +314,12 @@ self-sovereign name identically to a DNS name once `ik` is obtained.
 
 ## 3.7 Private lookups
 
-To keep discovery metadata-private, name→key lookups SHOULD be routed **through the mixnet**
-(§6), so neither the DNS resolver nor a KT log learns *who* is asking. This replaces
-heavier private-contact-discovery schemes for v0; stronger schemes are a v1 option.
+Name→key lookups default to a direct query like any other `fast`-tier control traffic (§4.6);
+neither the DNS resolver nor a KT log is assumed to be kept from learning *who* is asking. Where
+a node has elected the **opt-in, research-tier** mixnet
+([docs/research/mixnet.md](docs/research/mixnet.md), §6), it SHOULD route name→key lookups
+through it to keep discovery metadata-private. This replaces heavier private-contact-discovery
+schemes for v0 *when the opt-in tier is available*; stronger schemes are a v1 option.
 
 ## 3.8 Onboarding tiers (day-one setup)
 

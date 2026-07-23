@@ -134,8 +134,10 @@ Internet-Draft** (rev-03, 2025-10), a materially weaker standing than the WG-ado
 traffic for its group** — an explicit exception to the "no single node sees both ends" framing.
 This is bounded by: the committer sees only *membership-change* metadata (not application
 message content or the social graph outside the group), rotating the role spreads exposure, and
-application traffic still uses the mixnet. Groups needing stronger metadata protection SHOULD
-rotate committer frequently.
+application traffic still travels under whichever tier the group elects — default `fast`, or the
+opt-in research-tier mixnet where a group has selected it. Groups needing stronger metadata
+protection SHOULD rotate committer frequently (and, if available to them, elect the opt-in
+mixnet).
 
 Track `draft-kohbrok-mls-dmls` (Decentralized MLS) for a fully leaderless replacement; until it
 lands, the committer model above is v0.
@@ -528,21 +530,27 @@ take*) are an orthogonal axis.
 
 | Tier | Size (§16.4) | Mechanism | Durability guarantee |
 |------|-------------|-----------|----------------------|
-| **Inline** | ≤ 48 KiB | bytes ride **inside** the sealed MOTE payload (`Attachment.inline`, §18.3.7) | **durable-by-delivery** — the bytes land in the recipient's mailbox; no separate fetch; keeps MOTEs light for the mixnet (rides the top bucket rung, §16.3) |
+| **Inline** | ≤ 48 KiB | bytes ride **inside** the sealed MOTE payload (`Attachment.inline`, §18.3.7) | **durable-by-delivery** — the bytes land in the recipient's mailbox; no separate fetch; keeps MOTEs light enough to still ride the opt-in research-tier mixnet if a sender elects it (rides the top bucket rung, §16.3) |
 | **Attached** | > 48 KiB, ≤ 25 MiB | content-addressed + chunked, but the chunks are **pushed with the message** into the recipient's store / cloud spool | **durable recipient copy** — once delivered the chunks are the recipient's own copy; **survives the sender dropping permanently** |
 | **Referenced** | > 25 MiB (any size) | `ManifestRef` + key travel in the MOTE; chunks are **pulled on demand** from a holder | **best-effort by default** — durable only as strong as the file's **durability class** (below) |
 
 The Inline cap is deliberately **48 KiB — the top Sphinx bucket rung (64 KiB) *minus* the PQ
 envelope — and not larger**: an inline attachment inflates the MOTE, and a MOTE above the top
-bucket cannot ride the `private` mixnet at all (§4.4.1), so a larger inline cap would silently
-force the fast tier and drop mixnet privacy. The cap is **not** equal to the top rung, because the
-envelope is not free: under suite `0x02` it costs **11 967 B** before a byte of content (§4.4.1),
-leaving 4 417 B of headroom above a 48 KiB attachment for headers, `refs` and framing.
+bucket cannot ride the opt-in, research-tier `private` mixnet at all
+([docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)), so a larger inline cap would put the
+attachment out of reach of that opt-in tier even when a sender elects it — the **default `fast`
+tier is unaffected either way**; nothing is silently dropped, because nothing is silently assumed
+to be riding the mixnet in the first place. The cap is **not** equal to the top rung, because the
+envelope is not free: under suite `0x02` it costs **11 967 B** before a byte of content
+([docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)), leaving 4 417 B of headroom above a
+48 KiB attachment for headers, `refs` and framing.
 
 The durability tier (inline / push / pull) is **orthogonal** to the
-metadata-privacy size sub-tier of §2.5/§16.4 (mixnet ≤ 4 MiB vs. bulk > 4 MiB): a 25 MiB
-**Attached** file is pushed *and* transits the weaker bulk path (§6.5) — push-vs-pull governs
-durability, mixnet-vs-bulk governs metadata privacy.
+metadata-privacy size sub-tier of §2.5/§16.4 (**normal**, ≤ 4 MiB, rides whichever tier the
+message itself uses — default `fast`, or the opt-in mixnet if selected — vs. **bulk**, > 4 MiB,
+always the weaker `fast`/onion path): a 25 MiB **Attached** file is pushed *and* transits the
+weaker bulk path (§6.5) — push-vs-pull governs durability, normal-vs-bulk governs metadata
+privacy.
 
 ### 5.5.2 Durability descriptor (normative — the key fix)
 

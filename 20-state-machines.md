@@ -39,7 +39,7 @@ backoff/deadline of §16.1, the dedup-ack of §2.6, and the `private`-vs-`fast` 
 | State | Meaning |
 |-------|---------|
 | `QUEUED` | MOTE constructed and admitted to the sender's outbound queue; not yet sealed. |
-| `SEALED` | Envelope encrypted (MLS/HPKE) and, for the `private` tier, onion-wrapped (§4.4); tier fixed for this MOTE. |
+| `SEALED` | Envelope encrypted (MLS/HPKE) and, for the `private` tier, onion-wrapped ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)); tier fixed for this MOTE. |
 | `IN_FLIGHT` | Handed to the transport: mixnet hops (`private`) or the reachability ladder, §20.4 (`fast`). |
 | `RETRY` | Backing off after a failed/blocked attempt; will re-enter `IN_FLIGHT` (or retry sealing) when its timer fires or its precondition clears. |
 | `ACKED` | Terminal (success). Recipient's `ack(id)` received (§2.6), or dedup-acked. |
@@ -64,7 +64,7 @@ never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_e
 | State | Event | → State | Action |
 |---|---|---|---|
 | `QUEUED` | `enqueue` | `QUEUED` | Start the 72 h deadline timer [§16.1]; begin recipient resolution (§20.3) and, if this is an async/offline recipient, MLS async join (§5.3). |
-| `QUEUED` | `resolve_and_seal_ok` | `SEALED` | Fix `tier` (message-kind default, §4.6, or explicit override); build Envelope; onion-wrap if `tier=private` (§4.4). |
+| `QUEUED` | `resolve_and_seal_ok` | `SEALED` | Fix `tier` (message-kind default, §4.6, or explicit override); build Envelope; onion-wrap if `tier=private` ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)). |
 | `QUEUED` | `resolve_or_seal_blocked` | `RETRY` | Start/continue backoff timer [§16.1]. **[fill]** §3.3's fail-closed-at-first-contact (KT unreachable) is a *user-trust* decision, not a transient fault, but it re-enters exactly this bounded retry loop: held pending either KT recovery or explicit user/OOB action (§20.3), capped by the same 72 h deadline. |
 | `QUEUED` | `deadline_exceeded` | `EXPIRED` | Notify user: undelivered, resolution never completed. |
 | `SEALED` | `dispatch_ok` | `IN_FLIGHT` | Hand sealed object to mixnet (3 hops, §16.3) if `tier=private`; else invoke §20.4 reachability ladder if `tier=fast`. |
@@ -74,7 +74,7 @@ never had an authorized key), `retry_timer_fires` [§16.1: backoff], `deadline_e
 | `IN_FLIGHT` | `tier_unreachable` | `RETRY` | Start backoff timer [§16.1: base 30 s, exp, cap 1 h, jittered]. |
 | `IN_FLIGHT` | `deadline_exceeded` | `EXPIRED` | Notify user. |
 | `RETRY` (`fast`) | `retry_timer_fires` | `IN_FLIGHT` | Re-dispatch the same `SEALED` object (no re-sealing; `id` is stable, §2.2). Sound **only** for `fast`: a direct/mesh resend carries no per-hop mix tag, so an identical resend is just a retransmission. |
-| `RETRY` (`private`) | `retry_timer_fires` | `SEALED` | **MUST re-onion-wrap before re-dispatch.** Re-run the sealing step: build **fresh** mixnet paths (§4.4.3), a **fresh `α`** and **current-epoch** mix keys (§4.4.4), keeping the **stable envelope `id`** (§2.2). Re-sending the *identical* Sphinx bytes is **forbidden** for `private`: every honest first hop drops the copy as a per-hop-tag replay (`ERR_MIX_REPLAY_DETECTED`, `0x030E`, §4.4.6), so an unmodified `private` resend can **never** deliver under any packet loss until `EXPIRED`. Re-onion-wrapping produces distinct per-hop tags, so the retry is a genuine fresh delivery attempt. |
+| `RETRY` (`private`) | `retry_timer_fires` | `SEALED` | **MUST re-onion-wrap before re-dispatch.** Re-run the sealing step: build **fresh** mixnet paths ([docs/research/mixnet.md §4.4.3](docs/research/mixnet.md)), a **fresh `α`** and **current-epoch** mix keys ([docs/research/mixnet.md §4.4.4](docs/research/mixnet.md)), keeping the **stable envelope `id`** (§2.2). Re-sending the *identical* Sphinx bytes is **forbidden** for `private`: every honest first hop drops the copy as a per-hop-tag replay (`ERR_MIX_REPLAY_DETECTED`, `0x030E`, [docs/research/mixnet.md §4.4.6](docs/research/mixnet.md)), so an unmodified `private` resend can **never** deliver under any packet loss until `EXPIRED`. Re-onion-wrapping produces distinct per-hop tags, so the retry is a genuine fresh delivery attempt. |
 | `RETRY` | `ack_received` | `ACKED` | A duplicate in-flight copy was delivered before the retry fired; cancel timer. |
 | `RETRY` | `ack_invalid` | `RETRY` | No-op (H-6), same disposition as `IN_FLIGHT`'s: ignored, backoff timer unaffected. |
 | `RETRY` | `deadline_exceeded` | `EXPIRED` | Notify user. |
@@ -121,7 +121,7 @@ stateDiagram-v2
   IN_FLIGHT --> RETRY : tier_unreachable
   IN_FLIGHT --> EXPIRED : deadline_exceeded
   RETRY --> IN_FLIGHT : retry_timer_fires (fast: same bytes)
-  RETRY --> SEALED : retry_timer_fires (private: MUST re-onion-wrap, §4.4.6)
+  RETRY --> SEALED : retry_timer_fires (private: MUST re-onion-wrap, docs/research/mixnet.md §4.4.6)
   RETRY --> RETRY : ack_invalid (ignored, H-6)
   EXPIRED --> EXPIRED : late_ack (ignored, [fill])
   ACKED --> [*]
@@ -406,7 +406,7 @@ by §20.1 for the `fast` tier and by §20.7 on reconnect.
   [§16.2: 45 min].
 - **Entry `REPUBLISHING`:** sign new `LocationRecord` with incremented monotonic sequence number
   (§4.2 rollback defense).
-- Note: the `private`-tier mixnet path (§20.1, §4.4) does **not** invoke this machine — mix-hop
+- Note: the `private`-tier mixnet path (§20.1, [docs/research/mixnet.md §4.4](docs/research/mixnet.md)) does **not** invoke this machine — mix-hop
   connectivity to permissionless, generally-available mix infrastructure is a separate, simpler
   libp2p-connection concern, not gated by the peer-specific reachability ladder.
 
@@ -746,7 +746,7 @@ flowchart TD
   M206["§20.6 DMTAP-Auth"]
   M207["§20.7 Node lifecycle"]
   M202["§20.2 Inbound validation"]
-  MIX["mixnet (§4.4)<br/><i>not a state machine here</i>"]
+  MIX["mixnet (opt-in, research-tier — docs/research/mixnet.md §4.4)<br/><i>not a state machine here</i>"]
   M205["§20.5 MLS group / committer<br/><i>self-contained</i>"]
   M201 -->|fast tier| M204
   M201 -->|private tier| MIX

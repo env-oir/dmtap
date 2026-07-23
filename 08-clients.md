@@ -122,10 +122,12 @@ implementer UX guidance, not a wire requirement.
   sender), clearly marked **not E2E before the gateway** (§7.2a). Chained gateways (§7.8.3) render
   as ordered hops, with any unverified-domain hop flagged as such.
 - **Do not over-claim on `private`.** While the mix fleet is small the client MUST honour the
-  §6.6/§4.4.11 disclosure and MUST NOT present `private` as absolute anonymity; the graph shows the
-  **boundary crossings**, not a node-by-node trace. On the **Bootstrap** profile (§4.4.10a) the
-  client MUST additionally show that metadata privacy is degraded **and why**, and MUST NOT state
-  an anonymity set at all.
+  §6.6/[docs/research/mixnet.md §4.4.11](docs/research/mixnet.md) disclosure and MUST NOT present
+  `private` as absolute anonymity; the graph shows the **boundary crossings**, not a
+  node-by-node trace. On the **Bootstrap** profile
+  ([docs/research/mixnet.md §4.4.10a](docs/research/mixnet.md)) the client MUST additionally
+  show that metadata privacy is degraded **and why**, and MUST NOT state an anonymity set at
+  all.
 - **Give the user the evidence, not the operator.** For a gateway-touched message the client MAY
   let the user check the attestation against any usage claim an operator makes (§7.9, §12.7) —
   "this message used the gateway, which is why it appears on that list" — and MUST NOT show a

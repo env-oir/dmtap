@@ -97,10 +97,10 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **Solid-OIDC** (CG report) | WebID + DPoP over OIDC | architectural template for the OIDC bridge; trusts *issuers* (§13.6) |
 | **Nostr NIP-07 / NIP-98** | keypair browser signing / HTTP auth | deployed keypair-auth precedent; weaker binding than WebAuthn (§13) |
 | **UCAN v1.0** | User-Controlled Authorization Networks | capability-delegation model (§13.5) |
-| **Sphinx** (Danezis & Goldberg, 2009) | mix packet format | profiled for the Sphinx cell, replay/tagging resistance (§4.4.1, §4.4.6) |
-| **Loopix** (USENIX Sec 2017) | mixnet design | Poisson mixing, loop/drop cover + active-attack detection (§4.4.5, §4.4.7) |
-| **Nym** | deployed stratified mixnet | stratified topology + operational descendant of Loopix (§4.4.3) |
-| **Anonymity Trilemma** (Das et al., IEEE S&P 2018) | anonymity ↔ latency/bandwidth | the fundamental privacy bound; the high-security-profile lever (§6.6, §4.4.10) |
+| **Sphinx** (Danezis & Goldberg, 2009) | mix packet format | opt-in, research-tier mixnet only — profiled for the Sphinx cell, replay/tagging resistance ([docs/research/mixnet.md §4.4.1, §4.4.6](docs/research/mixnet.md)) |
+| **Loopix** (USENIX Sec 2017) | mixnet design | opt-in, research-tier mixnet only — Poisson mixing, loop/drop cover + active-attack detection ([docs/research/mixnet.md §4.4.5, §4.4.7](docs/research/mixnet.md)) |
+| **Nym** | deployed stratified mixnet | opt-in, research-tier mixnet only — stratified topology + operational descendant of Loopix ([docs/research/mixnet.md §4.4.3](docs/research/mixnet.md)) |
+| **Anonymity Trilemma** (Das et al., IEEE S&P 2018) | anonymity ↔ latency/bandwidth | opt-in, research-tier mixnet only — the fundamental privacy bound; the high-security-profile lever (§6.6, [docs/research/mixnet.md §4.4.10](docs/research/mixnet.md)) |
 | **CONIKS** (USENIX Sec 2015) / **RFC 6962** | key transparency / Certificate Transparency | auditable `name→key` (§3.5) |
 | **Zooko's Triangle** (Wilcox-O'Hearn, 2001) / **Petname Systems** (Stiegler, 2005) | the naming trilemma — a name can be at most two of *human-meaningful*, *globally-unique*, *authority-free* — and the petname resolution of it | the naming-ladder rationale (§3.9, §3.9.3, §3.9.6, §3.12): the key-name takes the global+authority-free corner (not human-chosen), petnames the human+authority-free corner (local), and a name-chain buys the human+global corner via consensus (§3.12.5) |
 | **SLIP-0039** / **RFC 9591 (FROST)** | Shamir mnemonic / threshold signatures | recovery (§1.4) |

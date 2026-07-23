@@ -113,14 +113,17 @@ existing standards**; the novelty is the composition and transport, not new cryp
   (§3.9.6) — now at least commits its algorithm inside the hashed input (§18.9.17), so a migration
   produces a distinguishable name instead of a silent replacement; that makes the event *visible*,
   not *reversible*.
-- **The preferred cold-contact cost (VDF) is not post-quantum.** Both named constructions rest on
-  a group of unknown order, which a quantum adversary computes; it is a `MAY`, memory-hard PoW is
-  the MUST floor, and the exposure is future spam cost, never retroactive confidentiality
-  (§9.4.1).
+- **The optional cold-contact cost (VDF) is not post-quantum.** Both named constructions rest on
+  a group of unknown order, which a quantum adversary computes; it is a `MAY` for the opt-in,
+  research-tier mixnet, memory-hard PoW is the MUST floor, and the exposure is future spam cost,
+  never retroactive confidentiality
+  ([docs/research/vdf.md §9.4.1](docs/research/vdf.md)).
 - **Volunteer-provisioned infrastructure may not materialise.** Mixes, KT logs, rendezvous nodes
-  and buffers are reciprocal roles, not funded services; if too few nodes take them, `private`
-  degrades to `fast` — encrypted and authenticated, without default metadata privacy (§6.6 item 13,
-  §4.4.10a).
+  and buffers are reciprocal roles, not funded services; the default (`fast`) does not depend on
+  the mixnet fleet at all, so it never degrades — but if too few nodes take the mix role, the
+  **opt-in** `private` tier simply stays **unbuilt**, and a client MUST NOT present it as
+  available (§6.6 item 13,
+  [docs/research/mixnet.md §4.4.10a](docs/research/mixnet.md)).
 - **No free, human-shareable, user-owned name exists.** Key-names are unwieldy; domains and chain
   names cost money; a free user's shareable name is a non-portable gateway alias (§3.13.4).
 

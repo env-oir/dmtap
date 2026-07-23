@@ -414,8 +414,10 @@ This is the design's answer to "how does a subscriber list stay bounded, self-pr
 rather than an unbounded durable commitment" (§25.6.1): every entry in a publisher's active-hint list
 has a hard expiry baked into the very capability that put it there, so an inactive/abandoned
 subscription self-extinguishes even if no revoke is ever sent — the same "TTL, not a promise" posture
-the relay-mailbox already applies to buffered ciphertext (§14.3) and the mixnet applies to key
-epochs (§4.4.4). Renewal is simply issuing a fresh `Subscription` before the old one lapses; there is
+the relay-mailbox already applies to buffered ciphertext (§14.3) and the opt-in, research-tier
+mixnet applies to key epochs
+([docs/research/mixnet.md §4.4.4](docs/research/mixnet.md)). Renewal is simply issuing a fresh
+`Subscription` before the old one lapses; there is
 no in-place mutation (every §22-family object is immutable and content-addressed, §22.3.4's
 `supersedes` precedent applies by analogy but is not required here — a lapsed-and-reissued
 subscription is two independent objects, not a revision chain, since there is no "current version of
@@ -663,7 +665,8 @@ This is bounded in the ways that matter:
   verification — a lying intermediary that tampered with the inlined bytes is caught the identical
   way a lying PUB server is caught (§22.5.1's "verification is the client's job, always").
 - **It changes no size ceiling.** The inlined bytes ride inside `Payload.attach`/`body` under the
-  ordinary MOTE size discipline (the bucket ladder, §4.4.1/§16.3) — a large announce (many `roots`,
+  ordinary MOTE size discipline (the bucket ladder,
+  [docs/research/mixnet.md §4.4.1](docs/research/mixnet.md)/§16.3) — a large announce (many `roots`,
   large `meta`) simply does not fit and MUST NOT be inlined; the publisher falls back to the
   seq/tip-only hint and the subscriber pulls the announce and any referenced manifest/chunks the
   ordinary way (§22.5).
