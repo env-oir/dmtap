@@ -120,10 +120,18 @@ a real refutation). Fix-agents (file-disjoint):
 - [x] **W** {02-mote, 06-privacy} `bef2927`: BlindedTag prose (§2.2a/§6.4) → reference X's §18.3.2 pin;
   honest limits preserved.
 
-**Round 3 CLOSED 8/8.** → **critique round 4** (workflow — re-covers REACH + rounds-2/3 fixes; fresh lens
-mix: security-downgrade/composition · conformance-testability · xref-integrity · honesty-overclaim ·
-reader-coherence). Two consecutive fully-clean passes from DIFFERENT lens-sets → PERFECTED (then delete this
-file, CronDelete the loop, report DONE with the commit range).
+**Round 3 CLOSED 8/8.** → **critique round 4** (fresh lens mix: security-downgrade/composition ·
+conformance-testability · xref-integrity · honesty-overclaim · reader-coherence). Two consecutive
+fully-clean passes from DIFFERENT lens-sets → PERFECTED.
+
+**Round 4 status — workflow `war2cklt5` INFRA-DEGRADED, NOT a valid pass.** Only 1/5 lenses returned
+(security-downgrade: 1 finding, refuted → clean); the other 4 lenses died on API stalls (widespread
+mid-stream stalls also hit round 3). The workflow's `overall_clean:true` is a FALSE clean (4/5 of the spec
+un-critiqued). **Re-running the 4 missing lenses as resilient individual agents (sonnet, self-verifying,
+≤3 concurrent):** conformance-testability `a657e6c7`, xref-integrity `ab9a888b`, honesty-overclaim
+`af753942` in flight; reader-coherence queued. Only when ALL 5 lenses return clean does round 4 count as
+pass 1 of 2. **Infra note:** stop using the high-concurrency opus workflow for critique; prefer individual
+sonnet lens-agents (one stall no longer voids the batch).
 
 **DECISION (founder-overridable, gap-fill) — BlindedTag KDF pinned:** `BT = HKDF-SHA256(IKM=shared_secret,
 salt="DMTAP-v0/blinded-tag", info=uint64_be(epoch_day), L=16)` (RFC 5869; the same HKDF-SHA256 as HPKE/RFC
