@@ -1862,7 +1862,7 @@
         "\u00a718.9.8",
         "\u00a713.3"
       ],
-      "checks": "Assertion.sig over DS || BLAKE3-256(det_cbor([rp_origin,nonce,issued_at,exp,aud,scope,cnf])) under the IK-authorized device key; scope is [] when the Challenge omits it and is inside the signed preimage (scope-binding, \u00a718.7.2)",
+      "checks": "Assertion.sig over DS || 0x1e || BLAKE3-256(det_cbor([rp_origin,nonce,issued_at,exp,aud,scope,cnf])) under the IK-authorized device key; scope is [] when the Challenge omits it and is inside the signed preimage (scope-binding, \u00a718.7.2)",
       "operation": "assertion_sign",
       "construction": "sign a fixed 7-field auth array (scope defaults to [])",
       "expect": {

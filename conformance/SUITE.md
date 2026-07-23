@@ -402,7 +402,7 @@ Core + DMTAP-Auth login ceremony with origin binding + key-bound sessions; OIDC 
 
 | id | req | clause | checks | expect | status |
 |----|-----|--------|--------|--------|--------|
-| DMTAP-AUTH-01 | MUST | §18.9.8, §13.3 | `Assertion.sig` over `DS ‖ BLAKE3-256(det_cbor([rp_origin,nonce,issued_at,exp,aud,scope,cnf]))` under the IK-authorized device key (`scope` is `[]` when absent; inside the signed preimage — scope-binding) | match (sig) | construction-todo |
+| DMTAP-AUTH-01 | MUST | §18.9.8, §13.3 | `Assertion.sig` over `DS ‖ 0x1e ‖ BLAKE3-256(det_cbor([rp_origin,nonce,issued_at,exp,aud,scope,cnf]))` under the IK-authorized device key (`scope` is `[]` when absent; inside the signed preimage — scope-binding) | match (sig) | construction-todo |
 | DMTAP-AUTH-02 | MUST | §13.3 | an assertion whose `rp_origin`/`aud` mismatch the issued `Challenge` is rejected | reject → `ERR_ORIGIN_MISMATCH` (0x0501) | construction-todo |
 | DMTAP-AUTH-03 | MUST | §13.3 | a replayed `nonce` is rejected | reject → `ERR_NONCE_REPLAYED` (0x0502) | construction-todo |
 | DMTAP-AUTH-04 | MUST | §13.3 | an expired `Challenge` is rejected | reject → `ERR_CHALLENGE_EXPIRED` (0x0503) | construction-todo |
