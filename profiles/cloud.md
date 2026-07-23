@@ -80,8 +80,20 @@ servable over plain HTTPS. It composes as **PUB objects in a `bucket`, served th
 publishing a new content-addressed root plus a signed announcement superseding the previous one, which
 makes the switch **atomic** and makes **rollback** a pointer back to a root that is still addressable.
 It adds **no** registry row and **no** coordinator kind. What such a site DOES need, purely to stay
-portable between providers (DEPOT-4), is one named schema — `kotva-depot/site/v0` — describing serving
-behaviour: entry/root object, SPA **fallback** path, redirect rules, and cache policy. Without it each
+portable between providers (DEPOT-4), is one named schema — `kotva-depot/site/v0` — pinning serving
+behaviour as a **deterministic-CBOR map** (§18.1) so any provider serves the same site identically:
+
+```cddl
+DepotSite = {                                    ; "kotva-depot/site/v0"
+  1 => hash,                                     ; root      content address of the site root manifest (§22)
+  ? 2 => tstr,                                   ; fallback  SPA fallback path, e.g. "/index.html"
+  ? 3 => [* {1 => tstr, 2 => tstr, 3 => uint}],  ; redirects { from, to, status }
+  ? 4 => {? 1 => uint, ? 2 => bool},             ; cache     { max_age_s, immutable }
+}
+```
+
+  A provider MUST serve `root` as the site, apply `redirects` in array order, and — for a path that
+  resolves to no object — serve `fallback` when present or return 404 when absent (never a guess). Without it each
 operator invents its own hosting config and the site stops being swappable; with it, any `cdn` or box
 serves the same site identically. It is a **schema over a content-addressed object** — no new wire
 object, DS-tag, or error code — exactly like the measurement schema of §5. Deploy pipelines are
@@ -224,10 +236,27 @@ or signature** for reputation — it defines only a **claim schema** carried ins
 - **`issuer`** — the rater's `IK`. A **self-measurement** is exactly `issuer == subject`, surfaced by
   ATTEST and weighted accordingly by consumers.
 - **`subject`** — the rated coordinator's `IK`.
-- **`schema`** — the DEPOT measurement schema `kotva-depot/measurement/v0` (an EAS schema UID or VC type
-  URI), whose `claim` body is `{ service` (§3 registry value)`, metric` ("uptime" / "conformance" /
-  "visibility-audit" / "latency-ms")`, value, method` ("probe" / "conformance-vector" / "audit" /
-  "self-report")`, observed_at, ? evidence` (a reproducible recipe / vector-id / signed transcript)` }`.
+- **`schema`** — the DEPOT measurement schema `kotva-depot/measurement/v0`. Its `claim` body is a
+  **deterministic-CBOR map** (§18.1 — integer keys, no floats, absent ≠ null), pinned here so two
+  raters and two aggregators agree byte-for-byte:
+
+```cddl
+DepotMeasurement = {                ; claim body for schema "kotva-depot/measurement/v0"
+  1 => tstr,                        ; service      a §3 registry value ("bucket", "queue", …)
+  2 => tstr,                        ; metric       "uptime" / "conformance" / "visibility-audit" / "latency-ms"
+  3 => uint / bool,                 ; value        metric-typed, below — never a float (§18.1)
+  4 => tstr,                        ; method       "probe" / "conformance-vector" / "audit" / "self-report"
+  5 => ts,                          ; observed_at  ms since the Unix epoch (§18.1)
+  ? 6 => { 1 => tstr, 2 => tstr },  ; evidence     { kind: "recipe"/"vector-id"/"transcript", ref }
+}
+```
+
+  `value` is typed **by `metric`**, with no float anywhere: `uptime` = `uint` **per-mille** availability
+  (`0…1000`); `latency-ms` = `uint` milliseconds; `conformance` and `visibility-audit` = `bool`. An
+  unrecognised `metric` MUST be ignored by aggregators (never guessed at). Representing the same claim
+  as an EAS attestation or W3C VC for consumers outside KOTVA is a **binding-layer mapping**
+  ([bindings/README.md](../bindings/README.md)) and is out of scope for `v0`; pinning that external
+  mapping is a ratification item, not an interoperability blocker inside the family.
 
 A consumer verifies the ATTEST carrier signature against `issuer` and treats `issuer == subject` as a
 self-measurement. Measurements are an **append-only time-series** on the rater's feed (§22.4.2): a newer
