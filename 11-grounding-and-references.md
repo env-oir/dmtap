@@ -72,8 +72,9 @@ existing standards**; the novelty is the composition and transport, not new cryp
 
 - **Global active adversary** with unlimited resources is not fully defeated — the
   **Anonymity Trilemma** (Das et al., IEEE S&P 2018) makes strong anonymity cost latency
-  and/or bandwidth. DMTAP targets a **global passive adversary** and *bounds* (not eliminates)
-  partial-active exposure.
+  and/or bandwidth. The opt-in, research-tier mixnet (`docs/research/mixnet.md`) targets a
+  **global passive adversary** and *bounds* (not eliminates) partial-active exposure; DMTAP's
+  default (`fast`) guarantee is a metadata *reduction* vs intermediaries, not GPA immunity.
 - **Intersection / statistical-disclosure attacks** against always-on nodes are inherited;
   cover traffic bounds, does not eliminate, them.
 - **First-contact MITM** is possible until KT gossip or out-of-band verification (§3.4).

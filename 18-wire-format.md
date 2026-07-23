@@ -1800,7 +1800,7 @@ defined object below.
 contract, and that every other kind (`relay`, `media-relay`, `reachability-adapter`, `indexer`,
 `labeler`, `matcher`, `compute`, `arbiter`, `oracle`, `custodial-escrow`) inherits the same four
 clauses unchanged. `CoordinatorDescriptor`/`Tariff`/`UsageReceipt` are correspondingly **one**
-object family, keyed by the `kind` field (§18.8a.1, key 1) rather than one bespoke shape per kind
+object family, keyed by the `kind` field (§18.8a.1, key 2) rather than one bespoke shape per kind
 — a `gateway`'s domain/modes/attestation-selector (§7.5) and an adapter's rail/mode/initiation-
 class (§26.3.1) are kind-specific facts and live in the opaque `policy` field (key 4) exactly as
 they do informally today; nothing about §7.5's or §26.3.1's own field list changes. §26's

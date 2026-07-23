@@ -36,7 +36,7 @@ Every coordinator MUST satisfy all four.
 
 ### 2.1 Accountable
 A coordinator MUST have an **attested identity** (a substrate keypair,
-[substrate/IDENTITY.md](substrate/IDENTITY.md)) and MUST
+[substrate/IDENTITY.md](../substrate/IDENTITY.md)) and MUST
 publish a **signed descriptor** carrying its kind, its policy, and — where it charges — a
 signed tariff. The descriptor is **discovery-only and self-asserted**: it carries no global
 reputation score, no price ranking, and no stake field. Reputation is **locally measured** by
@@ -66,7 +66,7 @@ controlled by a third party, never the user:
    `reachability-adapter`. Both members are a network resource a third party (ISP/host) allocates,
    not something a user can always self-provision.
 2. **A regulatory-licensing class**, with one member: `custodial-escrow` (§5, §6;
-   [primitives/ESCROW.md](primitives/ESCROW.md) SEC-6a). Holding a stranger's money for a trade
+   [primitives/ESCROW.md](../primitives/ESCROW.md) SEC-6a). Holding a stranger's money for a trade
    window is, in most jurisdictions, a licensed and bonded activity — a wall an unlicensed
    individual cannot self-provision **at any technical skill level**, unlike every other kind's
    requirement, which a sufficiently motivated user can always meet with hardware, bandwidth, or
@@ -177,12 +177,12 @@ re-deriving its own tally.
 | **compute** *(provisional)* | Hosted/outsourced computation (e.g. private-AI inference on rented GPU) | `terminating` (default) / `attested` (TEE, for blind compute) |
 | **arbiter** | Dispute resolution (staked jury) | `terminating` for evidence, disclosed |
 | **oracle** | Physical-world / real-fact attestation (delivered? ride done?) | `terminating`, disclosed |
-| **custodial-escrow** | Holds the trade float for a trade window ([primitives/ESCROW.md](primitives/ESCROW.md) SEC-6a) | `terminating` for evidence, disclosed — the family's **one load-bearing exception** (§1) |
+| **custodial-escrow** | Holds the trade float for a trade window ([primitives/ESCROW.md](../primitives/ESCROW.md) SEC-6a) | `terminating` for evidence, disclosed — the family's **one load-bearing exception** (§1) |
 
 `gateway` (DMTAP §7) and the legacy `adapter`s (§26) are the first, fully-worked instances;
 every kind above inherits the four clauses and the visibility property unchanged. `custodial-escrow`
 satisfies all four clauses like every other kind but, uniquely, does not fade once hired — see §1
-and [primitives/ESCROW.md](primitives/ESCROW.md) §9–§10 (SEC-6a, "the one honest load-bearing
+and [primitives/ESCROW.md](../primitives/ESCROW.md) §9–§10 (SEC-6a, "the one honest load-bearing
 exception").
 
 ---
@@ -206,7 +206,7 @@ exception").
 - **Stake verification (where a kind requires stake).** §2.1 excludes a stake field from the
   descriptor so stake cannot become a ranking signal. Where a kind carries skin-in-the-game
   (`arbiter`, `oracle` — DIRECTION §5, "sized to the value at risk" — and, where bonded per
-  [primitives/ESCROW.md](primitives/ESCROW.md) SEC-6a, `custodial-escrow`'s float bond), the stake
+  [primitives/ESCROW.md](../primitives/ESCROW.md) SEC-6a, `custodial-escrow`'s float bond), the stake
   MUST instead be verifiable **on the settlement/staking rail itself** — e.g. an on-chain stake
   balance or lock a client can query directly (Kleros-class staked arbitration, OpenRank-class
   staked attestation, DIRECTION §3) — never merely asserted in the descriptor or taken on faith. A

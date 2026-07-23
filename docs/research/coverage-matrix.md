@@ -66,7 +66,7 @@ never classifies.
 | 19 | **Notarization / registries** | PUB(timestamped) · storage(Arweave) · attestation | — | curation (labeler-class) · oracle/attester (real-world fact) | §22 PUB | ▲ editorial + authoritative-issuer |
 | 20 | **Advertising** | PUB(sponsored obj) · indexer | OFFER · PAY | indexer (`blind`) — sponsored-listing only | §22 / TRACT | ✔ direct-buy / ✖ surveillance |
 | 21 | **IoT / telemetry** | MOTE(light) · PUB · WAKE · SYNC | — | relay (`blind`) · mailbox (`blind-routing`) | *unbuilt constrained-device profile* | ✚ constrained crypto |
-| 22 | **Private-AI** | box (self-host) · PUB(weights) · storage | OFFER(compute) · PAY(x402) | **compute** *(new kind)* — `terminating` / `attested` (TEE) for blind | TRACT/WRAP for compute-OFFER | self-host ✔ / hosted-blind ✚ |
+| 22 | **Private-AI** | box (self-host) · PUB(weights) · storage | OFFER(compute) · PAY(x402) | **compute** *(provisional kind, CONTRACT §5)* — `terminating` / `attested` (TEE) for blind | TRACT/WRAP for compute-OFFER | self-host ✔ / hosted-blind ✚ |
 
 ---
 
@@ -111,16 +111,19 @@ waist capability, no new primitive, no new coordinator.* A thin profile plus one
 ### G2 — Hosted private-AI (blind inference) *(✚ gap; row 22)*
 **What's missing.** Private-AI on *your own box* is fully covered — it is compute on hardware
 you hold, needing no coordinator. Renting *someone else's* GPU while keeping your prompts
-private is a coordinator job (a scarce resource — accelerators — with a global-ish view) and
-there is **no `compute` kind** in [CONTRACT §5](../../coordinator/CONTRACT.md). A naive hosted
-inferencer is `terminating` (it reads your prompt).
-**Minimal fix.** Add **compute** to the [CONTRACT §5](../../coordinator/CONTRACT.md) kind table:
-visibility `terminating` by default, `attested` (TEE, bound via the existing TEE
-[binding](../../bindings/README.md)) for blind inference. The *offer* of compute-for-hire rides
-TRACT/WRAP unchanged; payment rides x402. *No new primitive* — one coordinator kind and the
-existing binding. The honest residual is the TEE residual already disclosed
-([CONTRACT §3.4](../../coordinator/CONTRACT.md)): `attested` trades operator-trust for
-chip-vendor-trust and is never sold as trustless.
+private is a coordinator job (a scarce resource — accelerators — with a global-ish view); **`compute`
+is a provisional kind** in [CONTRACT §5](../../coordinator/CONTRACT.md) (`terminating` by default,
+`attested`/TEE for blind inference), but no bindings or offer/settlement wiring for it are built
+yet. A naive hosted inferencer is `terminating` (it reads your prompt).
+**Minimal fix.** Graduate **compute** from provisional to fully-specified in
+[CONTRACT §5](../../coordinator/CONTRACT.md) once its TEE
+[binding](../../bindings/README.md) and offer/settlement path are worked through end to end. The
+*offer* of compute-for-hire rides TRACT/WRAP unchanged; payment rides x402. *No new primitive* —
+the kind slot already exists; what remains is filling it in. The honest residual is that the
+provisional slot is **disclosed-but-undemonstrated**: the TEE residual already disclosed
+([CONTRACT §3.4](../../coordinator/CONTRACT.md)) — `attested` trades operator-trust for
+chip-vendor-trust and is never sold as trustless — plus the fact that, unlike `gateway`, this
+kind has not yet been worked through as a first fully-specified instance of the contract.
 
 ### G3 — Geospatial query / maps *(✚ partial; row 14)*
 **What's missing.** Map *data* is covered (tiles are PUB blobs over
