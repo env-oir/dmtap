@@ -70,7 +70,7 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Clients** (`CLI`) | 1 | 0 | 0 | 1 | 0 |
 | **Auth** (`AUTH`) | 5 | 0 | 0 | 5 | 0 |
 | **Private** — deniable 1:1 mode (`DENIABLE`) | 5 | 0 | 0 | 5 | 0 |
-| **Core** — org administration (`ORG`) | 5 | 0 | 0 | 5 | 0 |
+| **Core** — org administration (`ORG`) | 8 | 0 | 0 | 8 | 0 |
 | **Private** — KT-v1 hardening (`KTV1`) | 4 | 0 | 0 | 4 | 0 |
 | **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 | 0 |
 | **Core** — profile / avatar (`PROFILE`) | 2 | 0 | 0 | 2 | 0 |
@@ -113,7 +113,7 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Core** — wire objects with no vector: decode & cross-field rules (`WIRE`) | 10 | 0 | 0 | 10 | 0 |
 | **Core** — §18 KATs: manifest, mix descriptor, Sphinx framing (`WIREKAT`) | 9 | 9 | 0 | 0 | 0 |
 | **Core** — DMTAP-PUBSUB extension, optional `pubsub-1` (`PUBSUB`) | 15 | 0 | 0 | 14 | 1 |
-| **Total** | **358** | **52** | **6** | **281** | **19** |
+| **Total** | **361** | **52** | **6** | **284** | **19** |
 
 The 52 vectored + 6 self-contained cases (**58**) are fully machine-runnable **today** from
 `vectors.json` / `pub_vectors.json` + the inline bytes here, with **no reference implementation
@@ -154,7 +154,7 @@ easy to over-read, so:
 - It is **section-level, not MUST-level.** A section counts as covered if *any* case cites it, not
   if every MUST in it is exercised. The metric is a deliberately generous floor: it says "nothing
   in the implementable spec is entirely unattended", never "everything is checked".
-- It counts cases that **exist**, not cases that **pass.** Of 358 cases, 58 are byte-runnable
+- It counts cases that **exist**, not cases that **pass.** Of 361 cases, 58 are byte-runnable
   today; the rest carry a construction recipe or are settled by review. **No implementation has
   been run against this suite**, so the suite is a specification of tests, not a test result.
 - The denominator is **curated.** [`scope.json`](scope.json) classifies all 347 MUST-bearing
@@ -169,7 +169,7 @@ numbers are printed by `make coverage`, deliberately, so the curation can be che
 trusted.
 
 **Sync status:** `SUITE.md` and [`suite.json`](suite.json) are **in sync** — both carry the same
-**358** case ids, and `make lint` (check C5) fails the build if they ever disagree, or if any
+**361** case ids, and `make lint` (check C5) fails the build if they ever disagree, or if any
 document states a different count. The changed deniable objects (§5.2.1 dedicated-`idk`) are still
 to be re-vectored when the reference regenerates `vectors.json`.
 
@@ -442,6 +442,9 @@ dedicated `idk` change is flagged for re-vectoring, see README "deferred").
 | DMTAP-ORG-03 | MUST | §3.10.3, §18.4.7 | a `DomainDirectory` not signed by the pinned domain authority is rejected | reject → `ERR_DOMAIN_DIRECTORY_SIG_INVALID` (0x0113), FAIL_CLOSED_BLOCK | construction-todo |
 | DMTAP-ORG-04 | MUST | §13.5.1, §18.7.3 | a `CapabilityToken` whose link grants more than its parent (attenuation broken), is expired, or is invoked beyond its rights is rejected | reject → `ERR_CAPABILITY_DELEGATION_INVALID` (0x0508), DENY_POLICY | construction-todo |
 | DMTAP-ORG-05 | MUST | §13.5.1, §18.7.3 | a validly-formed `CapabilityToken` covered by a published `CapabilityRevocation` (from its issuer/ancestor) is denied | reject → `ERR_CAPABILITY_REVOKED` (0x050B), DENY_POLICY | construction-todo |
+| DMTAP-ORG-06 | MUST | §18.7.3 (`caveats`), §18.7.3 step 4 | **Caveats are conjunctive across every link of the chain, not merely the leaf's.** A child that omits a parent's caveat does not drop it: the parent's caveat is evaluated regardless, which is what makes "a child MAY add caveats, never remove a parent's" self-enforcing rather than a rule needing a caveat comparator | construction: a two-link chain where the **parent** `Capability` carries `{"before": T}` and the **child** omits `caveats` entirely; invoke at a time **after** `T`, with the child's own grant otherwise valid and within the parent's `resource`/`ability` | reject → `ERR_CAPABILITY_DELEGATION_INVALID` (0x0508), DENY_POLICY. Accepting because the leaf carries no caveat is non-conformant — it is exactly the attenuation escape the conjunctive rule exists to close | construction-todo |
+| DMTAP-ORG-07 | MUST | §18.7.3 (`caveats`), §18.7.3 step 4 | **An unrecognised caveat key MUST fail closed** — never ignored, never treated as permission | construction: a single-link `CapabilityToken` whose `Capability.caveats` carries a key the verifier does not implement (e.g. `{"geo-fence": "za"}`), invoked with everything else valid | reject → `ERR_CAPABILITY_DELEGATION_INVALID` (0x0508), DENY_POLICY. Ignoring the unknown key and granting is non-conformant: an unknown caveat is a restriction the verifier cannot evaluate, so it cannot be satisfied | construction-todo |
+| DMTAP-ORG-08 | MUST | §18.7.3 (`caveats`) | **Caveats are purely restrictive: there is no exemption or override form.** A verifier MUST NOT interpret any caveat as relaxing a restriction imposed anywhere else in the chain | construction: a two-link chain where the parent restricts `resource` to `"mail:alice"` and the child carries a caveat whose plain reading purports to widen or exempt (e.g. `{"allow-any-resource": true}`), invoked against a resource outside the parent's grant | reject → `ERR_CAPABILITY_DELEGATION_INVALID` (0x0508), DENY_POLICY — under §18.7.3 the key is either unrecognised (fail closed, ORG-07) or recognised and still purely narrowing; in neither case may it widen the grant | construction-todo |
 
 ---
 
