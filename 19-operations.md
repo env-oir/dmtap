@@ -1527,10 +1527,24 @@ committer (ordering) and all current members (applying).
 
 | Operation | Required role |
 |---|---|
-| `group-add` | `admin` (or `owner`) |
-| `group-remove` | `admin` (or `owner`) |
-| `group-role-change` / transfer ownership | `admin`/`owner` (transferring ownership itself typically requires `owner`) |
+| `group-add` | `admin` (or `owner`) — but granting `role = "owner"` **MUST** require `owner` |
+| `group-remove` | `admin` (or `owner`) — but removing an `owner` **MUST** require `owner` |
+| `group-role-change` / transfer ownership | `admin`/`owner` — changing an `owner`'s role, or promoting any member **to** `owner`, **MUST** require `owner` |
 | `group-policy-change` | `admin` (or `owner`) |
+
+**Rank rule (normative — the group-layer instance of §19.1.5's).** Group roles are ordered
+`owner` > `admin` > `member` > `poster` > `reader`. The required-role check above authorises the
+**actor**; it does **not** by itself constrain the **target**. An actor therefore MUST NOT
+`group-remove`, demote, or otherwise act on a member whose role is **strictly above its own**, and
+MUST NOT grant a role **strictly above its own** — in particular an `admin` MUST NOT expel, demote, or
+mint an `owner`. Peer-level acts remain permitted (an `owner` MAY act on a co-`owner`, and any member
+MAY act on itself), so ownership transfer and voluntary departure still work.
+
+Without this, "does the actor hold `admin`-or-better" alone lets an `admin` expel or demote a
+co-`owner` and add owners of its choosing — **seizing the group**, even though `admin` is defined as
+subordinate to `owner`. This mirrors §19.1.5's org rank rule and §18.7.3's `CapabilityRevocation.iss`
+ancestor test. The "last `owner`" invariant below is **not** a substitute: it only prevents a group
+reaching zero owners, never an `admin` acting on a non-last one.
 
 **Procedure (normative).**
 1. Initiator constructs the appropriate MLS Proposal: `Add` (via `keypackage`), `Remove` (via
@@ -1558,6 +1572,7 @@ the change, logged and auditable.
 |---|---|---|
 | Initiator lacks the required role | Reject | `ERR_GROUP_POLICY_VIOLATION` (`0x0409`); the committer (or, if using signature-gated proposals, any verifying member) refuses to apply an Update/Remove/Add not signed by a sufficiently-privileged member |
 | `group-remove` targets a member not currently in the roster | Reject | `ERR_GROUP_POLICY_VIOLATION` (`0x0409`, closest registered code — the change is not applicable to the current roster) |
+| Actor acts on a member whose role is **strictly above its own**, or grants a role above its own (e.g. an `admin` removing, demoting, or minting an `owner`) | Reject | `ERR_GROUP_POLICY_VIOLATION` (`0x0409`), FAIL_CLOSED_BLOCK — the rank rule above; the required-role check authorises the *actor*, never the act against a superior |
 | `group-role-change` attempts to remove the **last** `owner` without designating a successor | Reject | `ERR_GROUP_POLICY_VIOLATION` (`0x0409`, closest registered code — a group-state-invariant violation); a group MUST retain at least one `owner` at all times (analogous to the identity layer's requirement that recovery policy changes can't lock the owner out, §1.4) — implementations MUST enforce this as a group-state invariant |
 | `group-policy-change` sets `visibility="hidden"` on a group whose `posting_model="collaborative"` (channel) and members have already seen each other in the shared tree | Reject or warn | The exposure already happened for existing members (§5.8.3's per-member sealed re-fan-out only protects members added *after* the switch); implementations MUST surface that a policy switch is not retroactive |
 | Committer unreachable | Defer | §19.5.5 failover applies |
