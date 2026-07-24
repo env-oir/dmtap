@@ -324,6 +324,34 @@ high-traffic audited surfaces** (`SPEC.md`, `DIRECTION.md`, `00-overview.md`,
 this round's evidence alone: six fixes landed in `24-video-profile.md` and `conformance/*` today, and
 a copy-edit pass over text that changed hours ago is exactly the churn W5 is sequenced to avoid.
 
+### W6 ROUND 1 — RESULT
+
+| Lens | Verdict |
+|---|---|
+| Spelling + RFC layout | **1 substantive residual, fixed** (`f0810a1`). No damage: `labeler`, every `ERR_*`, the CDDL `license`, `tls_serialize` and the RFC 8949 quotation all verified byte-intact. |
+| Cross-reference integrity | **CLEAN** (driver-run; agent stalled). See the false-positive table below. |
+| Correctness / contradictions | **Zero findings**, on honestly-declared partial coverage. |
+| Family coherence | **NOT REACHED** — the agent stalled before this half. Carried to round 2. |
+
+**The residual was self-inflicted.** W5's script excluded capitalised forms of the `authorize`
+family wholesale in order to protect the HTTP `Authorization` header. Too blunt: it also skipped
+sentence- and heading-initial "Authorize", leaving the doctrine phrase American in
+`coordinator/CONTRACT.md`, `primitives/MATCH.md` (×2), `profiles/rtc.md` and `conformance/SUITE.md`
+— the very phrase W5 was sequenced as one commit to keep consistent. `conformance/SUITE.md:681`
+carried both spellings in a single sentence. Lesson: **a freeze rule scoped by letter-case is a
+proxy for the thing you actually want to protect, and proxies over-fire.** The right scope was "the
+`Authorization` header and RFC titles", not "anything capitalised".
+
+**Two lens-A reports adjudicated as NON-defects** (verified, not assumed):
+- `05-messaging.md:57` lowercase "Commits must be applied…" — *describes MLS's own property*; the
+  DMTAP obligation follows as "**REQUIRES**" in the next sentence. Correct per `STYLE.md`.
+- WRAP `licence` (key 33) vs the spec's `license` — different concepts, not a naming collision:
+  WRAP's is a **professional credential** (`"za:pirb"`), where "licence" is the correct British
+  noun; `license` is correct as the SPDX identifier.
+
+**One lens-A finding was itself wrong:** the claim that BCP-14 boilerplate exists "only in §21".
+**58 files carry it.** Verified before acting — chasing it would have invented a structural gap.
+
 ### W6 — CROSS-REFERENCE AUDIT: CLEAN (driver-run, `b8c9a51`..)
 
 Run by the driver as insurance after the W6 cross-ref agent stalled — and it earned its keep, since
