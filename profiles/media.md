@@ -167,7 +167,10 @@ real-time must not be forced through MOTE delivery.
   `LiveManifest` segments served as ordinary public plaintext (§24.13 — a holder serves plaintext it
   can read), fronted by the same CDN/mirror tier as VOD (MED-3), never a `media-relay`. In both cases
   the streamer MUST publish the §24.10 rolling `LiveManifest` chain on its feed, so the stream has the
-  **same integrity as VOD** and closes into an ordinary `VideoManifest` for archive. The two planes
+  **same integrity as VOD**. The creator **SHOULD** then close it into an ordinary `VideoManifest`
+  for archive (§24.10 `final: true`) — a recommendation, not a consequence of the MUST above: a
+  streamer that publishes the required chain but never issues the closing manifest is conformant,
+  and the durable, verifiable record in that case is the signed `LiveManifest` chain itself. The two planes
   are separate: MOTE delivery MUST NOT be on the real-time path.
 
 - **MED-5 — Channels are feeds; the social graph is portable.** A channel is an author feed (§24.5);
