@@ -415,13 +415,18 @@ is keyed by section number, and re-spelling a title leaves lint at 0 errors. So 
 cannot break the build, but scope.json titles must still be swept for consistency, since they are
 copies of headings a reader will compare.
 
-**W5 STATUS: automated pass DONE** — `6dcd626`, 1385 substitutions across 83 tracked files in one
+**W5 STATUS: DONE (automated + manual).** Automated pass — `6dcd626`, 1385 substitutions across 83 tracked files in one
 commit (all-or-nothing, per the rule above). Verified after applying: `labeler` untouched at 56
 occurrences with zero "labeller"; no `ERR_*` name altered; no British spelling inside any code span
 or fence; the RFC 8949 "preferred serialization" quotation byte-identical; `tls_serialize` intact.
 
-**W5 REMAINDER — the deliberately-excluded words, still to do by hand.** These were kept out of the
-automated pass because a blind replace corrupts them. Counts are over tracked `*.md`:
+**W5 REMAINDER — DONE (`1459538`).** `signaling`→`signalling` (70, including the substrate role label
+and heading, moved together because a role name carries the same all-or-nothing constraint as the
+doctrine phrase) and prose `serialization`→`serialisation` (12). **Three of the six excluded words
+needed no change at all, which checking established and assuming would not have:** `meter` is always
+the verb or a substring of "parameter" (British English reserves "metre" for the unit); `practice`
+has zero verb uses and the noun is identical; `program` is the computing sense throughout. `license`
+was already "licence" in every prose-noun position. Original table kept below for the record:
 
 | Word | Count | Why it needs a human |
 |---|---:|---|
