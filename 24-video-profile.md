@@ -982,7 +982,7 @@ than reuse licensing:
 |-------|---------|
 | `all-rights-reserved` | No republication consent expressed |
 | `mirror-freely` | Anyone may pin and serve the unmodified bytes |
-| `endorsed-only` | Serving intended for PUB servers the creator endorses (an endorsement announce, §24.13) |
+| `endorsed-only` | Serving intended for PUB servers the creator endorses, named by an `endorse.gateway` announce (kind 80, Appendix A — **informative**). Like the notices of §24.13, this expresses the creator's preference and **obligates no one by protocol**: no PUB server is required to check it, and nothing enforces it. |
 
 **Hardware, content and software licenses are all first-class SPDX.** Because the engineering-artifact
 facet's primary motivating use case is open-hardware part sharing (ROADMAP), the CERN Open Hardware
@@ -1079,7 +1079,7 @@ blob, the channel, and every social object are **plaintext by construction**. Th
 confidentiality claim** — a publisher who needs a private video uses the sealed-file model of §5.5,
 not this profile. For the rare encrypted-media case, vidmesh's `keygrant` (kind 97) and `encryption`
 manifest field are explicitly **out of scope** for this public profile; they belong to the sealed path
-(§5.5, §8-privacy), and mixing them into a public `VideoManifest` is a category error a conformant
+(§5.5, §6.2), and mixing them into a public `VideoManifest` is a category error a conformant
 client SHOULD refuse.
 
 **Honest limits (from §22.9,** [`substrate/FEEDS.md § 8`](substrate/FEEDS.md)**):** irrevocability
@@ -1412,7 +1412,7 @@ ArtifactMetadata = {
 | `tags` | 6 | `[* tstr]` | OPTIONAL | Free-form category/search tags. Purely advisory index input (§24.18.9); carries no protocol meaning. |
 | `license` | 7 | `tstr` | MUST | SPDX license expression (§24.11). |
 | `deprecated` | 8 | `bool` | OPTIONAL | Present and `true` iff this revision's purpose is to mark the artifact deprecated/yanked (§24.7). Absent ⇒ `false`. |
-| `deprecation_reason` | 9 | `tstr` | MUST iff `deprecated = true` | Human-readable reason. A `deprecated = true` announce with this field absent is malformed for this facet and SHOULD be flagged by a facet-aware index (see §24.18.10, CAD-7). |
+| `deprecation_reason` | 9 | `tstr` | MUST iff `deprecated = true` | Human-readable reason. A `deprecated = true` announce with this field absent is malformed for this facet. Because discarding a malformed deprecation would fail **open** on a safety signal, a conformant client MUST still honour the `deprecated` flag — surfacing the artifact as deprecated with its reason unavailable — rather than ignoring the announce, and a facet-aware index MUST flag it as malformed (§24.18.10, CAD-7). |
 | `derived_from` | 10 | `hash` | OPTIONAL | Content address (announce id, §22.3) of the ancestor artifact/revision this one forks from (§24.7). Distinct from `supersedes`, which is same-identity revision history; `derived_from` is cross-identity provenance. |
 
 ### 24.18.2 Artifact-kind and format registries (profile-local)
@@ -1462,8 +1462,10 @@ or consumer — unit ambiguity in interchanged engineering data is a well-docume
 bug, and this facet closes it structurally rather than by convention: an `ArtifactMetadata` with
 `units.length_unit` absent is malformed for this facet, and a conformant client MUST refuse to interpret the
 artifact's geometry (it MAY still display name/description/license) until the publisher corrects it in a
-superseding revision (§24.7). `angle_unit` defaults to radians when absent; `mass_unit` is informational,
-relevant chiefly to BOM mass roll-ups for `assembly`-kind artifacts (§24.18.8).
+superseding revision (§24.7). `angle_unit` defaults to radians when absent; `mass_unit` is
+informational — it declares the unit in which masses carried in the artifact's own format-native
+payload are to be read. This facet defines no mass field and no mass aggregation: §24.18.8's BOM
+walk multiplies `quantity` only.
 
 ### 24.18.4 `ArtifactFormat` and the canonical-source specialization (normative)
 
