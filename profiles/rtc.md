@@ -164,7 +164,8 @@ the call at every scale — only *who forwards the bytes* changes:
 | **Hundreds+, global reach** | a **third-party media-relay pool** (LiveKit / Jitsi-Octo / mediasoup cascade) | swappable operator | the pool's, cascaded |
 
 The move from left to right adds **reach**, never **function**: the SFU is a `media-relay`
-coordinator anyone can provide, content-blind by construction, so **the host's hardware is not the
+coordinator anyone can provide, content-blind wherever it commits to `sframe_required=true`
+(R-RTC-1 — an operator commitment the client checks, not a structural guarantee), so **the host's hardware is not the
 size limit** ([DIRECTION §7](../DIRECTION.md)). Because the operator is disclosed and refusable
 (R-RTC-3) and holds no key (R-RTC-1), sliding the anchor outward never surrenders sovereignty or
 confidentiality — it trades a bounded, disclosed metadata exposure (§7) for scale. The default is

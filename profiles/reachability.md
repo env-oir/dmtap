@@ -2,8 +2,10 @@
 
 > **Status:** profile spec (KOTVA family). Normative once ratified. REACH is the **infrastructure
 > profile** that gives a sovereign box a stable public name for *any* service it runs — a web app,
-> an API, a Git remote, an object bucket, a game server — without a static IP and without the
-> coordinator that provides the name ever reading the traffic. It defines **no new wire kinds**: it
+> an API, a Git remote, an object bucket, a game server — without a static IP and, for an
+> own-domain name, without the coordinator that provides the name being able to read the traffic
+> (`structural`; a bare adapter-zone vanity is `declared` and carries a disclosed MITM residual —
+> REACH-1a, §8). It defines **no new wire kinds**: it
 > is the generalization of DMTAP [§7.15.2](../07-gateway.md) (the legacy-client *reachability
 > ingress*) from "carry one legacy mail client to a mailbox" to "carry any TLS client to any box
 > service", and of [§7.10.5](../07-gateway.md) (vanity *local-parts*) from mail local-parts to **DNS
@@ -23,9 +25,12 @@ A sovereign box behind CGNAT or on a dynamic IP has services worth reaching, but
 gives each service a stable public HTTPS name — `svc.alice.reach.example` — that any such client
 dials normally, while the adapter providing that name stays **content-blind**: it routes by TLS SNI
 onto a persistent reverse tunnel and **the box terminates TLS**. The adapter forwards ciphertext it
-holds no key to read. This is the ngrok/Cloudflare-Tunnel product shape, rebuilt so the tunnel
-operator is *hired, not depended on* — accountable, swappable, self-hostable, and blind by
-construction ([DIRECTION §0/§4](../DIRECTION.md)).
+holds no key to read. That blindness is `structural` only for an **own-domain** name whose RFC 8657
+`accounturi`-bound CAA record denies the adapter a certificate; for a **bare adapter-zone vanity**
+the adapter is its own zone's sole writer, so the blindness is `declared` and a real MITM residual
+remains (REACH-1a, §7, §8). This is the ngrok/Cloudflare-Tunnel product shape, rebuilt so the
+tunnel operator is *hired, not depended on* — accountable, swappable, self-hostable, and blind at
+a declared, client-checkable assurance level ([DIRECTION §0/§4](../DIRECTION.md)).
 
 REACH is three thin things over existing substrate:
 

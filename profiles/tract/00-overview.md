@@ -30,9 +30,12 @@ Concretely, TRACT MUST provide:
 7. **Trust without an authority** — reviews are signed objects proven against real purchases,
    and ranking is derived data any node computes. There is no global score, because computing
    one requires a party that aggregates and ranks (§10).
-8. **Lawful by construction, worldwide** — jurisdiction, tax anchors and the responsible party
+8. **Jurisdiction-legible, worldwide** — jurisdiction, tax anchors and the responsible party
    are machine-readable fields on every offer and order, not an afterthought bolted onto a
-   platform's terms of service (§11).
+   platform's terms of service. This makes TRACT *defensible*, **not** *compliant by
+   construction*, and it must not be read as the latter: §11 discloses an unresolved GDPR
+   Art 17 (erasure) conflict against immutable published objects as the design's most likely
+   hard blocker ([§11.2a](11-jurisdiction.md), and §11's honest limit).
 9. **Future-proofing** — crypto-agility and transport independence inherited from the substrate;
    standards reuse everywhere a standard exists (§20).
 

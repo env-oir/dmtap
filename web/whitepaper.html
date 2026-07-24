@@ -590,7 +590,7 @@
             <tr><td>Dispute / arbitration</td><td>Kleros-class staked juries</td><td>Real but small and unproven at scale; risks re-centralizing toward professional jurors.</td></tr>
             <tr><td>Mesh reachability</td><td>libp2p — Circuit Relay v2, DCUtR, Kademlia, Noise, QUIC</td><td>Mature; profiled directly, not re-derived.</td></tr>
             <tr><td>Messaging crypto</td><td>MLS (RFC 9420)</td><td>Standards-track, mature group ratchet.</td></tr>
-            <tr><td>Media transport / E2E</td><td>WebRTC + SFrame (RFC 9605, keyed from the MLS epoch) + TURN</td><td>Mature and standardized; media relays are structurally blind by construction.</td></tr>
+            <tr><td>Media transport / E2E</td><td>WebRTC + SFrame (RFC 9605, keyed from the MLS epoch) + TURN</td><td>Mature and standardized; a media relay that commits to <code>sframe_required=true</code> is content-blind (<code>blind-routing</code> — routing metadata stays visible).</td></tr>
             <tr><td>Verifiable coordination</td><td>TEEs (SGX / SEV / ARM)</td><td><strong>New trust dependency</strong> — trades operator-trust for chip-vendor-trust; disclosed, not trustless.</td></tr>
           </tbody>
         </table>
@@ -738,7 +738,7 @@
         <dl>
           <dt>Adopts</dt><dd>Generalizes the legacy-client reachability ingress (§7.15) from "carry one legacy mail client to a mailbox" to "carry any TLS client to any box service," and vanity local-parts (§7.10.5) from mail addressing to DNS subdomains.</dd>
           <dt>Narrow waist</dt><dd>A box→adapter persistent, libp2p-secured (Noise + yamux) reverse-tunnel stream-mux, SNI-demuxed by the adapter — explicitly <em>not</em> the mesh's native Circuit Relay v2, which relays between two libp2p peers and cannot carry a non-libp2p client (a conflation the spec calls out explicitly).</dd>
-          <dt>Status</dt><dd>The provider is a <code>reachability-adapter</code> coordinator, fenced by the same contract as every other kind — <code>blind-routing</code> (SNI-passthrough) preferred, the box terminates TLS, the adapter forwards ciphertext it holds no key to read.</dd>
+          <dt>Status</dt><dd>The provider is a <code>reachability-adapter</code> coordinator, fenced by the same contract as every other kind — <code>blind-routing</code> (SNI-passthrough) preferred, the box terminates TLS, the adapter forwards ciphertext it holds no key to read. That blindness is <code>structural</code> for an own-domain name whose CAA record denies the adapter a certificate, and <code>declared</code> for a bare adapter-zone vanity, where the adapter writes its own zone and a MITM residual is disclosed rather than excluded.</dd>
         </dl>
       </div>
 

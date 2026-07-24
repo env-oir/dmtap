@@ -209,7 +209,7 @@ Sections: [00 overview](profiles/wrap/00-overview.md) · [01 identity](profiles/
 | Profile | What it is | Primitives / plane | Spec |
 |---|---|---|---|
 | **SOCIAL** | Microblogging & public feeds — no timeline operator, no ranking authority. | PUB · SYNC · REPUTATION; `labeler` + `indexer` | [`profiles/social.md`](profiles/social.md) |
-| **REACH** | Public HTTPS name for any box service; the adapter stays content-blind (SNI-passthrough). | Roles; `reachability-adapter` | [`profiles/reachability.md`](profiles/reachability.md) |
+| **REACH** | Public HTTPS name for any box service; the adapter stays content-blind (SNI-passthrough) — `structural` for an own-domain name, `declared` for a bare vanity. | Roles; `reachability-adapter` | [`profiles/reachability.md`](profiles/reachability.md) |
 | **SEARCH** | Discovery over public objects — following-graph first, indexer-optional. | PUB · PUBSUB; `indexer` | [`profiles/search.md`](profiles/search.md) |
 | **MEDIA** | The Evermesh profile — video & music; box-as-origin, CDN as swappable cache. | PUB · storage · media-relay; `indexer` | [`profiles/media.md`](profiles/media.md) |
 | **RTC** | Real-time voice / video / calling — the parallel media plane (family-level view of §27). | ID · MLS→SFrame; `media-relay` | [`profiles/rtc.md`](profiles/rtc.md) |
