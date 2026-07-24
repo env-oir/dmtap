@@ -907,15 +907,18 @@ definition, which is exactly why its ordering is normatively fixed (§2.7).
    sender is not owed a receipt confirmation (acking would confirm the recipient's existence and
    falsely signal *delivered* when the MOTE is merely pending review), and the sender's own retry
    independently reaches `EXPIRED` (§16.1, 72 h) — consistent with §2.7a and §20.2. A MOTE whose
-   `id` this node **already holds** (dedup, §2.6) is acked immediately at whichever step the
-   duplicate is detected, without re-running the remaining steps.
+   `id` this node has **previously acked** (dedup, §2.6) is re-acked immediately at whichever step
+   the duplicate is detected, without re-running the remaining steps. The dedup shortcut is scoped
+   to **previously-acked** ids only: a re-delivery of an `id` held solely in the requests area was
+   never acked, MUST NOT be acked, and MUST NOT bypass the step-6 gate — it simply remains deferred
+   (§2.7a, §19.3.2, §20.2). The ordinary cold-sender retry takes exactly that path.
 
 **Success result.** The MOTE is stored (inbox or requests area). Exactly one of three terminal
 states is reached for every input: **stored+acked** (inbox), **deferred+unacked** (durably held
 in the requests area, but no receipt is sent — the sender's own retry expires), or
 **dropped+unacked** (silent, for cryptographically invalid input per §2.7a) — there is no fourth,
-undefined outcome. The ack axis is binary: **ack iff delivered to the inbox** (or a dedup of one
-already held); deferred and dropped are both unacked, differing only in retention.
+undefined outcome. The ack axis is binary: **ack iff delivered to the inbox** (or a dedup of an
+`id` previously acked); deferred and dropped are both unacked, differing only in retention.
 
 **Failure modes.**
 
@@ -933,7 +936,8 @@ already held); deferred and dropped are both unacked, differing only in retentio
 | `kind = 0x0b` `DeniablePayload` carries a signature field | Reject (fail-closed) | `ERR_DENIABLE_SIGNATURE_PRESENT` (`0x040F`) — a signature would defeat the mode; MUST reject, never render |
 | `Payload.sig` fails under `Payload.from`, OR `from` mismatches a known contact's pin | Silent drop | No ack — a passed anti-abuse gate does not substitute for payload authenticity |
 | `from` (revealed post-decrypt) is on the recipient's explicit block list | Silent drop | No ack — step 6 passing (anonymous accountability) does not override an explicit identity-level block once identity is known |
-| Duplicate `id` (already held) | N/A — not a failure | `ack` immediately, no re-processing (§2.6 dedup) |
+| Duplicate `id` (**previously acked**) | N/A — not a failure | `ack` immediately, no re-processing (§2.6 dedup) |
+| Duplicate `id` **held only in the requests area** (deferred, never acked) | N/A — not a failure | **No ack**; remains deferred, retention timer unchanged, step-6 gate not bypassed (§2.7a, §20.2). Acking here would reopen the existence oracle (§19.3.2) |
 | `expires` in the past relative to receipt (already-expired MOTE) | Reject (soft) | Store per `kind` semantics but apply client-enforced expiry immediately (i.e. it may appear and be immediately removed) — `expires` is a client hint, not a delivery gate (§6.6 item 8: cooperative, not enforced by the network) |
 
 **Idempotency / retry.** Fully idempotent on `id`: re-delivering an already-acked `id` is a

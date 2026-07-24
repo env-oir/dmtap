@@ -1176,16 +1176,29 @@
       "category": "VAL",
       "req": "MUST",
       "clause": [
-        "§2.6"
+        "§2.6",
+        "§2.7a",
+        "§19.3.2",
+        "§20.2",
+        "§21.4"
       ],
-      "checks": "a duplicate id already held is acked immediately without re-processing",
+      "checks": "a duplicate of an id the recipient PREVIOUSLY ACKED is re-acked immediately without re-processing. The test is 'previously acked', never merely 'already held': an id held only in the requests area was never acked and MUST NOT be acked on re-delivery (see DMTAP-VAL-12 and the existence-oracle rationale in 19.3.2)",
       "operation": "mote_validate",
-      "construction": "re-deliver an already-stored id",
+      "construction": "(a) re-deliver an already-acked (inbox-stored) id; (b) re-deliver an id currently deferred in the requests area, as a cold sender's ordinary 20.1 retry does for up to 72h",
       "expect": {
         "outcome": "accept",
-        "error_code": "0x020E",
-        "error_name": "STATUS_DUPLICATE_ID",
-        "action": "ACK_DEDUP"
+        "cases": {
+          "a": {
+            "error_code": "0x020E",
+            "error_name": "STATUS_DUPLICATE_ID",
+            "action": "ACK_DEDUP"
+          },
+          "b": {
+            "no_ack": true,
+            "action": "DEFER_REQUESTS",
+            "note": "still held, DEFERRED unchanged, cold gate not shortcut; acking is non-conformant and reopens the existence oracle"
+          }
+        }
       },
       "status": "construction-todo"
     },
