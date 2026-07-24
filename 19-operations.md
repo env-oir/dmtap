@@ -907,8 +907,11 @@ definition, which is exactly why its ordering is normatively fixed (§2.7).
    sender is not owed a receipt confirmation (acking would confirm the recipient's existence and
    falsely signal *delivered* when the MOTE is merely pending review), and the sender's own retry
    independently reaches `EXPIRED` (§16.1, 72 h) — consistent with §2.7a and §20.2. A MOTE whose
-   `id` this node has **previously acked** (dedup, §2.6) is re-acked immediately at whichever step
-   the duplicate is detected, without re-running the remaining steps. The dedup shortcut is scoped
+   `id` this node has **previously acked** (dedup, §2.6) is re-acked without re-running the
+   remaining steps — but **only once classification (step 5) has run, and for a cold sender only
+   once the step-6 gate is cleared** (§2.7 *Dedup ordering*). Dedup MUST NOT run before
+   classification: step 5 authenticates nothing, so a replay of a previously-acked `ciphertext`
+   under a throwaway `sender_key` would otherwise earn a signed `ack` at zero cost. The dedup shortcut is scoped
    to **previously-acked** ids only: a re-delivery of an `id` held solely in the requests area was
    never acked, MUST NOT be acked, and MUST NOT bypass the step-6 gate — it simply remains deferred
    (§2.7a, §19.3.2, §20.2). The ordinary cold-sender retry takes exactly that path.

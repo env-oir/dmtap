@@ -1177,6 +1177,7 @@
       "req": "MUST",
       "clause": [
         "§2.6",
+        "§2.7 Dedup ordering",
         "§2.7a",
         "§19.3.2",
         "§20.2",
@@ -1184,7 +1185,7 @@
       ],
       "checks": "a duplicate of an id the recipient PREVIOUSLY ACKED is re-acked immediately without re-processing. The test is 'previously acked', never merely 'already held': an id held only in the requests area was never acked and MUST NOT be acked on re-delivery (see DMTAP-VAL-12 and the existence-oracle rationale in 19.3.2)",
       "operation": "mote_validate",
-      "construction": "(a) re-deliver an already-acked (inbox-stored) id; (b) re-deliver an id currently deferred in the requests area, as a cold sender's ordinary 20.1 retry does for up to 72h",
+      "construction": "(a) a known contact re-delivers an already-acked (inbox-stored) id; (b) re-deliver an id currently deferred in the requests area, as a cold sender's ordinary 20.1 retry does for up to 72h; (c) a cold sender with no valid challenge replays a previously-acked id's ciphertext under a throwaway sender_key",
       "expect": {
         "outcome": "accept",
         "cases": {
@@ -1196,7 +1197,11 @@
           "b": {
             "no_ack": true,
             "action": "DEFER_REQUESTS",
-            "note": "still held, DEFERRED unchanged, cold gate not shortcut; acking is non-conformant and reopens the existence oracle"
+            "note": "still held, DEFERRED unchanged"
+          },
+          "c": {
+            "no_ack": true,
+            "note": "cold replay is challenged or deferred per 2.7a exactly as any other cold MOTE; dedup runs after classification and never short-circuits step 6"
           }
         }
       },
