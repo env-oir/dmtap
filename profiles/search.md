@@ -248,6 +248,20 @@ required one would be a conformance violation.
 Discovery is where the **editorial-governance** ceiling ([DIRECTION §8.4](../DIRECTION.md)) bites
 hardest, and this profile **discloses it rather than solving it**:
 
+- **Complete indexing of public objects amplifies targeted harassment, and this profile has no
+  answer.** Mastodon deliberately restricted full-text search to a user's own posts and mentions
+  precisely because complete searchability is the mechanism by which pile-ons find their targets;
+  that limitation was a product decision its operators defended for years, not an implementation
+  gap. KOTVA treats corpus completeness as a virtue — an `indexer`'s "corpus is public plaintext
+  (nothing to be blind about)" ([CONTRACT §5](../coordinator/CONTRACT.md)) — and publishes no
+  discoverability preference on a PUB object, so nothing in this profile lets an author say "public,
+  but not indexable". Note that the coordinator contract makes the obvious fix harder than it looks:
+  indexers are uncoordinated and swappable, so any such preference would be an author-declared
+  request that a conformant indexer MAY honour and a hostile one simply ignores — closer to
+  `endorsed-only` (§24.11) than to a structural control, and unenforceable by construction against
+  the very actor it needs to bind. **This is a disclosed gap, not a solved problem**; whether the
+  substrate should carry such a field at all is an open design question recorded for the maintainer,
+  and is deliberately *not* decided here.
 - **Discovery re-centralizes first, and SRCH-6 does not stop it.** A content-addressed substrate
   offers no global index, so whichever indexer becomes economically dominant becomes a *de-facto*
   content-policy gatekeeper — able to bury (never delete) an author across most readers' views —
