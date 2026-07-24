@@ -284,7 +284,14 @@ SYNC; §18.8a objects; deterministic CBOR §18.1; §2.7; §3 (post-fix); §18.7.
 §12 operators + §14 scaling (**driver-inline**, not agent-audited — see caveat below).
 **Fixed, then clean:** §13 org/admin (rank escalation, `db52634`).
 **In flight:** §16 · §17 · §21 (numeric/registry drift); §19 · §20 (systematic pass).
-**Still un-audited:** §23 CAD · §24 video profiles.
+**Still un-audited:** *(none — the audit map is CLOSED as of `2357bcc`)*. §23 CAD · §24 video were
+the last two; §23 proved to be an 18-line stub folded into §24.18, so the audit ran against §24.18.
+Six defects fixed there: CAD-7's "MUST"/"always" enforced only by a SHOULD-level index flag (resolved
+fail-safe — a malformed deprecation MUST still be honoured, since discarding it fails *open* on a
+safety signal); `mass_unit` and `endorsed-only` each justified by a mechanism their cited section
+never defines; `§8-privacy` a typo for the privacy chapter (retargeted to §6.2, deliberately **not**
+§6.3, which is the opt-in research-tier mixnet); and a §23→§24.18 renumber gap in
+`conformance/suite.json` that neither audit reached, found only by post-fix sweep.
 
 **Caveat on "inline" entries.** Driver-inline checks target the highest-yield axes (framing,
 overclaim, refs) and are NOT equivalent to an independent adversarial mechanism-trace. This mattered
@@ -304,6 +311,18 @@ remain un-audited), but it does mean the marginal round is now buying **honesty 
 **security**. W5 (South-African English + RFC layout) stays blocked while the summary layer is still
 moving — a copy-edit over text that still overclaims only makes the overclaims read better — but the
 gap between "correctness still moving" and "W5 unblocked" is now narrower than at any prior round.
+
+**Round 14 and the W5 gate.** Round 14 found six defects, which naively resets the stop-rule again.
+It should not, and the distinction is the whole convergence question: **every one was in a file that
+had never been audited.** Findings in never-opened files are the expected yield of opening them; they
+say nothing about whether the *audited* surfaces are still moving. The clock that gates W5 runs on
+audited surfaces only, and by that clock the last wire-level change was round 9.
+
+W5 (South-African English + RFC layout) therefore unblocks on **one quiet confirming pass over the
+high-traffic audited surfaces** (`SPEC.md`, `DIRECTION.md`, `00-overview.md`,
+`coordinator/CONTRACT.md`) for the live defect class — summary-drops-hedge. Do not unblock it on
+this round's evidence alone: six fixes landed in `24-video-profile.md` and `conformance/*` today, and
+a copy-edit pass over text that changed hours ago is exactly the churn W5 is sequenced to avoid.
 
 ### Method notes earned the hard way (keep these)
 
