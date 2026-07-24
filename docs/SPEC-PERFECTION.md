@@ -415,6 +415,27 @@ is keyed by section number, and re-spelling a title leaves lint at 0 errors. So 
 cannot break the build, but scope.json titles must still be swept for consistency, since they are
 copies of headings a reader will compare.
 
+**W5 STATUS: automated pass DONE** — `6dcd626`, 1385 substitutions across 83 tracked files in one
+commit (all-or-nothing, per the rule above). Verified after applying: `labeler` untouched at 56
+occurrences with zero "labeller"; no `ERR_*` name altered; no British spelling inside any code span
+or fence; the RFC 8949 "preferred serialization" quotation byte-identical; `tls_serialize` intact.
+
+**W5 REMAINDER — the deliberately-excluded words, still to do by hand.** These were kept out of the
+automated pass because a blind replace corrupts them. Counts are over tracked `*.md`:
+
+| Word | Count | Why it needs a human |
+|---|---:|---|
+| `signaling` | 70 | **Signaling** is a substrate *role name* (`substrate/ROLES.md` §3). Prose → "signalling"; the role label must move consistently everywhere or not at all — same all-or-nothing rule as the doctrine phrase. |
+| `license` | 62 | CDDL field key and SPDX term (frozen); prose noun → "licence"; prose verb stays "license". Needs per-occurrence judgement. |
+| `practice` | 18 | The noun is identical in British English. Only a *verb* use becomes "practise". Most hits are correct already. |
+| `serialization` | 17 | Inside an RFC 8949 quotation and in `tls_serialize` (both frozen); other prose uses → "serialisation". |
+| `meter` | 9 | "metre" only where it is the unit of length; `parameter`-adjacent and code uses stay. |
+| `program` | 7 | Correct as-is in the computing sense. Likely a no-op; verify, don't change reflexively. |
+
+**Script scope:** the W5 script walked every `*.md` on disk and edited 87 files under gitignored
+`build/node_modules/` (repo unaffected; restored with `npm ci`). A repo-wide text sweep MUST be
+scoped to `git ls-files`, not `rglob`.
+
 **Sequencing:** run the prose-dense, identifier-light files first (`profiles/`, `primitives/`) to
 validate the method, and only then the numbered core files (`00`–`27`), which are the most
 identifier-dense and where a bad replace is most costly. After every W5 commit, diff-review for
@@ -452,6 +473,14 @@ clean, having checked §4/§7/§8 where every blindness claim *is* correctly con
 the same overclaim in §6's scaling paragraph, outside its window. Agents report their method
 honestly; read it, and check the surfaces it names as skipped. A file is only as audited as the
 sections actually opened.
+
+**8. A verification command that errors prints nothing — and nothing reads as clean.** Checking
+whether the W5 script had touched vendored files, `find … -newermt "-30 minutes"` failed on this
+platform (BSD `find` rejects the relative timestamp), printed only to stderr, and produced an empty
+result that was reported as "vendored untouched". It had in fact edited 87 files. This is the same
+failure as the `lint | tail` commit guard: **an empty result is only evidence when the command is
+known to have run.** Make verification commands prove they executed — check the exit status, or
+assert on a positive control that must produce output.
 
 **7. Verify before fixing, including in the "obvious" direction.** The same sweep implied
 `rtc.md`'s other `content-blind` uses were suspect. They are correct: `blind-routing` means
