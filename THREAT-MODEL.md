@@ -78,7 +78,7 @@ Every object MUST be **self-authenticating** — COSE/Ed25519-signed (or content
 fetcher verifies it identically regardless of which transport delivered it, trusting the server for
 nothing (the HTTP test, [`substrate/README.md §4.2`](substrate/README.md); §22.5.1). A signing
 preimage MUST be **domain-separated** by a DS-tag ([§18.1.6](18-wire-format.md)) so a signature
-minted for one object kind can never verify as another. Authorization for mutable state MUST chain
+minted for one object kind can never verify as another. Authorisation for mutable state MUST chain
 to an identity key via a non-revoked `DeviceCert` ([`substrate/IDENTITY.md §2.2`](substrate/IDENTITY.md),
 SYNC §9) — the substrate never re-invents authorisation, it checks a cert chain. Names confer
 **discovery, never authority**: a name resolves to a key; the key is the identity; the ladder is

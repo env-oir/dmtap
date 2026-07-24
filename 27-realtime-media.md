@@ -310,7 +310,7 @@ these three:
   rule, a delayed answer from an earlier negotiation silently reverts a session to a prior media
   configuration — including, concretely, re-enabling a screen share the user had just stopped.
 
-### 27.4.5 Authorization, ordering and teardown (normative)
+### 27.4.5 Authorisation, ordering and teardown (normative)
 
 - **Group membership is the authorisation.** An endpoint MUST accept an `RtcSignal` only if
   `Payload.from` is a **current member** of the MLS group under whose epoch key the MOTE was

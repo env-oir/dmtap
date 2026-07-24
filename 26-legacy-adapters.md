@@ -56,7 +56,7 @@ the mode is a **property of the deployment**, never of the adapter's code:
 | Credentials | the user's own (their WABA, their bot token, their modem, their own aggregator account) | the operator's own, serving identities that are not the operator |
 | Identities served | exactly one | many |
 | Billing | none — nothing to charge, nobody positioned to charge it (§12.3) | MAY be metered where the underlying rail has genuine marginal cost (§26.10) |
-| Authorization layer | none — there is only one identity, so there is nothing to authorise between | REQUIRED (§26.2.1) |
+| Authorisation layer | none — there is only one identity, so there is nothing to authorise between | REQUIRED (§26.2.1) |
 
 **The same adapter code runs both modes.** An implementation MUST NOT require a separate build,
 fork, or reimplementation to move an adapter from node mode to gateway mode or back; the two modes
@@ -77,7 +77,7 @@ distinguish it from. The moment an adapter serves more than one identity, four t
 necessary, and are the **entire** list — gateway mode MUST provide all four and MUST NOT be
 represented as providing less:
 
-1. **Authorization scope** — which identity may send as what. This generalises §7.11.2 step 2 (the
+1. **Authorisation scope** — which identity may send as what. This generalises §7.11.2 step 2 (the
    per-address claim check that closed GW-7's open-relay gap for mail) to any rail: an operator
    running an adapter in gateway mode MUST know, for every outbound message it relays, which of its
    served identities is authorised to present as which remote-facing number/handle/account, and

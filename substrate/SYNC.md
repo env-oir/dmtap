@@ -1448,7 +1448,7 @@ rule, carried forward.
 
 ---
 
-## 9. Authorization and admission (summary)
+## 9. Authorisation and admission (summary)
 
 | Deployment | Admitted authors | Gate | Eviction |
 |------------|------------------|------|----------|

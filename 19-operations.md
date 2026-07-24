@@ -2035,7 +2035,7 @@ client, which holds the newly-authorised session key.
 
 **Procedure (normative, §13.4).**
 1. Generate `session_key`, scoped to this RP and this device only.
-2. Authorize `session_key` under a current device key (a signed statement: "this device key
+2. Authorise `session_key` under a current device key (a signed statement: "this device key
    authorises this session key for this RP").
 3. Establish the session using the chosen `mechanism`:
    - **DPoP (RFC 9449):** every subsequent request carries a fresh proof-of-possession JWT signed

@@ -460,7 +460,7 @@ As everywhere in §9, only the **floor** — that both directions are gated, fai
 signals — is in-spec; the **thresholds, caps, and pricing** are operator policy and out of scope
 (§7.13).
 
-## 9.11 Authorization is at the boundary; classification is at the recipient (normative)
+## 9.11 Authorisation is at the boundary; classification is at the recipient (normative)
 
 Two questions get confused in mail, and keeping them apart is the difference between a bridge and
 an institution:

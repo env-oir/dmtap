@@ -530,7 +530,7 @@ derivation_sig = Sign( producer_device_key, M or M' as Rendition.suite selects )
   `DeviceCert`** exactly as a `pub_announce` signer chains to its `pub` (§22.3.3 step 4), with
   `DeviceCert.ik` compared to `produced_by` bytewise (§24.3.1). No new algorithm and no new core
   primitive; the one identifier this profile allocates is the DS-tag string, registered in §21.24e.
-- **Authorization.** A rendition is *authorised* iff `produced_by` is the manifest's author, **or** an
+- **Authorisation.** A rendition is *authorised* iff `produced_by` is the manifest's author, **or** an
   identity holding an unrevoked, unexpired **`rendition` delegate grant** from the author (§24.4.6).
   Both limbs are the bytewise `ik-pub` comparisons of §24.3.1 — `produced_by` against
   `PubAnnounce.pub`, or `produced_by` against `Delegate.grantee` — never a comparison of a key against

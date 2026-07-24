@@ -232,7 +232,7 @@ per-item statements are §27.11. The load-bearing claims:
 - **Fail-closed, no downgrade (SEC-1, SEC-8).** SFrame ratchets up only; a superseded ICE
   generation is scoped out by `ufrag`; a stale answer MUST NOT revert a session (RTC-3). A member's
   Remove takes media authority with it at the next epoch.
-- **Authorize-never-classify (SEC-6).** The only gate is MLS membership. No coordinator inspects,
+- **Authorise-never-classify (SEC-6).** The only gate is MLS membership. No coordinator inspects,
   scores, re-ranks or drops on a content basis — it holds no key to do so with.
 
 **No metadata privacy is claimed (SEC-9 residual).** A real-time call cannot ride the mixnet — its

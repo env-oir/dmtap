@@ -762,7 +762,7 @@ To rotate `IK` (compromise, or scheduled PQ migration):
 A verifier MUST accept `IK'` only via a valid chain from a previously-pinned `IK`, or via an
 explicit out-of-band re-verification.
 
-**Authorization of the new authoritative key (stolen-`IK` takeover defence, normative).** A
+**Authorisation of the new authoritative key (stolen-`IK` takeover defence, normative).** A
 `KeyRotation` installs a **new authoritative key** — an act at least as powerful as a
 recovery-*weakening* change (§1.4 rule 3), and in fact stronger, since the new key can subsequently
 rewrite recovery outright. An `old_ik`-alone rotation therefore reopens exactly the takeover §1.4

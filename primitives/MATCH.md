@@ -137,7 +137,7 @@ when it runs the rule inside a TEE that proves the terminated match-fields are c
 enclave and not logged ([`CONTRACT § 3.3`](../coordinator/CONTRACT.md), §8 R-M-2). A matcher MUST
 NOT require more fields than the rule consumes.
 
-### 3.3 Authorize, never classify
+### 3.3 Authorise, never classify
 A matcher optimises; it MUST NOT **classify**. It MUST NOT drop, hide, quarantine, or
 down-rank an **eligible** candidate on a content basis (who the supplier is beyond identity+rate,
 what they "seem like"), and MUST NOT inject candidates the rule does not rank. Eligibility is an
@@ -279,7 +279,7 @@ Inheriting [`THREAT-MODEL.md`](../THREAT-MODEL.md); a profile MAY add, MUST NOT 
   one **assurance level** — `declared` (default) or `attested` (TEE, proves the terminated
   plaintext never leaves the enclave) — surfaced to users. No silent downgrade into `declared`
   where `attested` was advertised.
-- **R-M-3 — Authorize, never classify (SEC-6).** Eligibility is identity+rate+well-formedness; a
+- **R-M-3 — Authorise, never classify (SEC-6).** Eligibility is identity+rate+well-formedness; a
   matcher MUST NOT content-drop or content-rank an eligible candidate, and MUST NOT be
   load-bearing — removing it degrades reach, never function.
 - **R-M-4 — Fail-closed and replay-inert (SEC-1, SEC-8).** A candidate that fails signature,

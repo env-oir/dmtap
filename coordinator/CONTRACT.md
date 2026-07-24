@@ -144,7 +144,7 @@ generalised). Clients MUST NOT present a `declared`-level `blind` claim as if it
 
 ---
 
-## 4. Authorize, never classify (normative)
+## 4. Authorise, never classify (normative)
 
 Every gate a coordinator applies **on a delivery path or a canonical/authoritative path** MUST
 be an **authorisation** question answered from **sender identity and rate** — *is this party who
