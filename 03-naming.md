@@ -19,7 +19,11 @@ tamper-evident, and how it degrades safely.
   name; it does not attest it. A compromised registrar can lie about the pointer, so the pointer
   is never trusted on its own.
 - **Key transparency (KT) makes the `name → key` binding tamper-evident**, so a silent key swap
-  by DNS/registrar/directory is *detectable* (§3.5).
+  by DNS/registrar/directory is *detectable* (§3.5) — **relative to a log set the verifier trusts
+  independently of that record**. KT is tamper-evidence against a trusted log, not trust from
+  nothing: a registrar that substitutes the key *and* the attesting log in one atomic write is
+  **not** detectable at genuine first contact, which is why §3.5's bootstrap rule classifies such a
+  resolution TOFU-only rather than KT-verified.
 - **Pinning (TOFU) makes discovery a one-time event.** After first contact you route by the
   pinned key via the mesh (§4); DNS is not consulted again unless the signed identity chain says
   to. A later DNS/registrar compromise cannot redirect an existing relationship.
@@ -233,8 +237,24 @@ detection paths carry codes `0x0107`, `0x0110`–`0x0112` (§21.3).
 
 #### (b) Multi-log federation — quorum-audited bindings
 
+- **Where the log set comes from (normative — the bootstrap rule).** A quorum is only meaningful over
+  a set the verifier trusts **independently of the record being checked**. A `kt=` value read from the
+  *same* DNS/SVCB answer that carries `ik=` is **attacker-supplied exactly when the zone is**: an
+  entity that can rewrite the record can rewrite the log set with it, stand up logs it controls, and
+  satisfy any quorum against itself. A verifier MUST therefore classify the outcome:
+  - **KT-verified** — only where the attesting quorum lies within a log set the verifier obtained
+    **out of band**: shipped with the client, configured by its operator, or carried over from a
+    previous pin for this name — **never** taken from the record under verification; or
+  - **TOFU-only, NOT KT-verified** — where the only available log set is the one the record itself
+    names. Resolution MAY still proceed (running a log is permissionless, §21.19), but a client
+    **MUST NOT present the result as KT-verified**, and MUST surface it as ordinary first-contact
+    trust (§3.4), exactly as if no KT existed.
+
+  A `kt=` list MAY be used to *discover* logs, and to *propose* additions to a set the user or
+  operator chooses to trust; it MUST NOT by itself confer verified status.
 - **Pin a set, not a log.** A v1 verifier pins a **set** of logs for a name (the `kt=` DNS/SVCB
-  anchor MAY list several, §3.2), and accepts a `name → ik` binding only when it appears, with a
+  anchor MAY list several, §3.2 — subject to the bootstrap rule above), and accepts a
+  `name → ik` binding only when it appears, with a
   valid inclusion proof, in a **`> n/2` quorum** of that pinned set — the same strict-majority
   rule the group committer takeover uses (§5.1, §16.8 roster quorum). A **minority of malicious
   or partitioned logs therefore can neither forge nor suppress** a binding, and **no single log
