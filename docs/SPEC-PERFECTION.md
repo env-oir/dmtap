@@ -324,6 +324,30 @@ high-traffic audited surfaces** (`SPEC.md`, `DIRECTION.md`, `00-overview.md`,
 this round's evidence alone: six fixes landed in `24-video-profile.md` and `conformance/*` today, and
 a copy-edit pass over text that changed hours ago is exactly the churn W5 is sequenced to avoid.
 
+### W6 ROUND 2 — one HIGH finding, fixed (`0254027`). NOT converged.
+
+**The ack existence-oracle was still open in the state machine.** Round 2's deep read of the files
+round 1 could only grep found it: §2.7/§2.7a and §19.3.2 all correctly scope the dedup re-ack to an
+`id` **previously acked**, and §2.7a even spells out "a duplicate of an `id` held only in the
+requests area is never acked" — but Appendix C's `§20.2` machine said "Dedup: already **hold** `id`.
+Ack immediately", and a `DEFERRED` entry *is* held (its own row: the entry "lives in the requests
+area"). An ordinary cold-sender retry — §20.1 resends the identical immutable `Envelope`, same
+content-address `id`, every backoff tick for up to 72 h — reached `ADDR_OK`, matched
+`check_duplicate`, and went straight to `ACKED`, bypassing `COLD_GATE` and acking a MOTE never
+promoted to the inbox. That is exactly the oracle §19.3.2 documents having closed once already.
+
+**This is the fix-and-sweep lesson failing on its fourth application, and the worst instance yet.**
+The earlier fix (`77f0897`) corrected §2.7's ordering and §19.3.2's rule and never swept into the
+state machine that *implements* them. Two signals were sitting in plain sight and were not acted on:
+§19.3.2's own rationale lists "**§20.2**" among the sections the bad revision contradicted — naming
+the very file that still disagreed — and §20.2's `[fill]` note argued the cheapest-first ordering
+was safe on anonymity grounds without ever checking what "duplicate" ranged over.
+
+**Sharpened rule: when a prose rule is fixed, the sweep MUST include every artefact that
+*implements* it** — state machines, conformance vectors, error tables, appendices — not merely
+every other place that *states* it. A grep for the rule's wording finds restatements; it does not
+find the machine that encodes the rule in different words ("previously acked" vs "already hold").
+
 ### W6 ROUND 1 — RESULT
 
 | Lens | Verdict |
