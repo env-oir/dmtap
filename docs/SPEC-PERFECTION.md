@@ -324,6 +324,48 @@ high-traffic audited surfaces** (`SPEC.md`, `DIRECTION.md`, `00-overview.md`,
 this round's evidence alone: six fixes landed in `24-video-profile.md` and `conformance/*` today, and
 a copy-edit pass over text that changed hours ago is exactly the churn W5 is sequenced to avoid.
 
+### W5 SAFETY CONTRACT — read before any spelling sweep
+
+**W5 is UNBLOCKED** as of the clean confirming pass over `SPEC.md` · `DIRECTION.md` ·
+`00-overview.md` · `coordinator/CONTRACT.md` (zero findings; RESERVE hedge, mixnet scoping,
+`blind-routing`, all six open problems and ~35 cross-ref paths verified).
+
+**W5 is the most dangerous wave in this plan, not the safest.** It looks like cosmetic
+find-and-replace; it is editing a document whose nouns are load-bearing wire identifiers. An
+unguarded sweep silently breaks the protocol and lint will not catch it. Measured hazards:
+
+- **`labeler` is a coordinator KIND NAME** (54 occurrences). SA/British English wants "labeller".
+  Renaming it changes a wire identifier. **FROZEN.**
+- **`authorization` (99) appears inside REGISTERED ERROR NAMES** — `ERR_DEVICE_UNAUTHORIZED`,
+  `ERR_KEYROTATION_UNAUTHORIZED`, `ERR_GATEWAY_SENDER_ADDRESS_UNAUTHORIZED` (§21 registry).
+  **FROZEN** in every identifier; prose "authorisation" only.
+- **`license` (60) is a CDDL field name** (`ArtifactMetadata` key 9 / key 7) and an SPDX term.
+  **FROZEN** as an identifier. In prose the noun is "licence", the verb stays "license".
+- **`serialization` (15) appears inside a direct RFC 8949 quotation** ("preferred serialization")
+  and in `tls_serialize`. **A quotation MUST NOT be re-spelled** — altering quoted standards text
+  is a correctness defect, not a style choice.
+
+**FROZEN — never re-spell, even in prose:** the twelve coordinator kinds (`gateway`, `relay`,
+`media-relay`, `reachability-adapter`, `infra-service`, `indexer`, `labeler`, `matcher`, `compute`,
+`arbiter`, `oracle`, `custodial-escrow`); the visibility/assurance vocabulary (`blind`,
+`blind-routing`, `terminating`, `structural`, `attested`, `declared`); every `ERR_*` name; every
+CDDL field name and map key; capability tokens (`pub-1`, `vid-live-1`, …); DS-tags, suite ids,
+`det_cbor`, `tls_serialize`; HTTP header names; SPDX identifiers; anything inside backticks, code
+fences, JSON/CDDL, URLs, file paths or link targets; **quoted text from any RFC or standard**; and
+product/proper nouns.
+
+**CHANGE (prose only, outside backticks):** behavior→behaviour, defense→defence, offense→offence,
+center→centre, catalog→catalogue, labeled→labelled, labeling→labelling, enrollment→enrolment,
+organization→organisation, recognize→recognise, normalize→normalise, analyze→analyse,
+meter→metre (only where it is the unit). **KEEP:** `program` (computing sense), `practice` (the
+noun is identical in British English; only the verb is "practise").
+
+**Sequencing:** run the prose-dense, identifier-light files first (`profiles/`, `primitives/`) to
+validate the method, and only then the numbered core files (`00`–`27`), which are the most
+identifier-dense and where a bad replace is most costly. After every W5 commit, diff-review for
+identifier drift — `git diff` and grep the frozen list — because lint cannot see this class of
+break.
+
 ### Method notes earned the hard way (keep these)
 
 **1. Fix-and-sweep, never fix-in-place.** An agent report names *where a defect was found*, not
