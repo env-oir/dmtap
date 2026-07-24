@@ -138,7 +138,7 @@ sonnet lens-agents (one stall no longer voids the batch).
 (inline-verified by the driver with evidence, because the re-run agents ALSO stalled mid-stream — a
 persistent infra issue). Evidence: BlindedTag conformance row (DMTAP-REST-05) correctly cites §18.3.2 and
 carries no stale KDF; no row asserts old postage/vouch preimage or max-applied cut; §20.1 table↔mermaid
-agree on the RETRY→QUEUED pre-seal edge; `[§18.3.2](18-wire-format.md)` links resolve; lint 0 errors;
+agree on the RETRY→QUEUED pre-seal edge; `[§18.3.2](../18-wire-format.md)` links resolve; lint 0 errors;
 REACH §7 scopes Noise to "control leg only, does not affect the REACH-1a cert residual"; BlindedTag honest
 limits intact; WRAP "four of six" + canonical numbers; 11 kinds + six capabilities consistent.
 **CAVEAT (honesty):** 4/5 lenses were driver-inline, not independent agents — less adversarially
@@ -323,6 +323,28 @@ high-traffic audited surfaces** (`SPEC.md`, `DIRECTION.md`, `00-overview.md`,
 `coordinator/CONTRACT.md`) for the live defect class — summary-drops-hedge. Do not unblock it on
 this round's evidence alone: six fixes landed in `24-video-profile.md` and `conformance/*` today, and
 a copy-edit pass over text that changed hours ago is exactly the churn W5 is sequenced to avoid.
+
+### W6 — CROSS-REFERENCE AUDIT: CLEAN (driver-run, `b8c9a51`..)
+
+Run by the driver as insurance after the W6 cross-ref agent stalled — and it earned its keep, since
+that agent never reported. Result: **all relative file links resolve** (one break found and fixed,
+and it was in this plan file, not the spec: a `docs/`-relative link missing `../`). **All section
+references resolve.** A naive checker reported 104 unresolved `§` refs; every one was a false
+positive of the checker, not a defect. Recorded here because the next person to audit this will
+build the same naive checker and see the same 104:
+
+| Apparent break | Why it is actually correct |
+|---|---|
+| `§4.4.x` (≈390 refs) | Mixnet content moved to `docs/research/mixnet.md` and **kept its numbering**; refs are properly repointed as `[docs/research/mixnet.md §4.4.8](…)`. The W1-ripple was done correctly. |
+| `§18.8a.1`–`.3` (42) | Real headings — a letter-infix number (`18.8a.1`) that a `(\d+\.)*\d+[a-z]?` regex cannot index. |
+| `§6.1.1`, `§6.1.2`, `§4.4` in `substrate/` | `substrate/SYNC.md` has its **own** internal numbering, as do `profiles/tract/`, `profiles/wrap/` and `conformance/`. A `§N.N` is only resolvable relative to its own document. |
+| `§0.5.1` (33) | Defined as a **numbered normative statement inside a blockquote** (`> **Normative (§0.5.1).**`), not a heading. |
+| `§22.8.1`–`.8` (17) | `§22.8` is a numbered list; `§22.8.4` is item 4. A legitimate `section.item` convention. |
+| `§151.0242`, `§4.5.3.1.3` | **External citations** — Texas Tax Code and RFC 5321 respectively, not KOTVA sections. |
+
+**Lesson for any future checker:** resolve `§N.N` against the *citing document's own* numbering
+first, index letter-infix and blockquote-labelled section numbers, and exclude external legal/RFC
+citations before reporting anything.
 
 ### CRITIQUE-LENS ROTATION (founder directive 2026-07-24: "deep research… critique and criticise and look from different perspectives")
 
