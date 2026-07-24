@@ -277,6 +277,7 @@ surfaces when a specific mechanism is adversarially traced. Hunt by that heurist
 10. Bloat retired into existing primitives: `ServiceMeasurement`→ATTEST, `TrustEdge`→ATTEST (the latter violated ATTEST's own "MUST NOT invent a parallel attestation object")
 11. ATTEST↔REPUTATION issuer contradiction resolved (ATTEST gained a pseudonymous-issuer mode with its disqualification stated); REP-2's primitive-depends-on-profile citation fixed — `d6f7b5a`
 12. §10.1 structural-version (DS-tag/`v=dmtap`) migration specified — the hardest-to-change seam — `03f4647`; §10.3a falsifiable Core boundary + the **two senses of "Core"** disambiguated — `06f5f80`, `77f0897`
+13. Overclaim sweep, 2nd application: REACH's blurb/§1 claimed the adapter never reads traffic and is "blind by construction" while §7/§8 disclose an undetectable MITM for a **bare vanity** — the default the doc introduces first, and which §3's own table already scoped correctly; the whitepaper called media relays "structurally blind by construction" (dropping both `blind-routing`'s metadata caveat and `sframe_required=true`); rtc.md §6 said "by construction" where its own §275 says "an operator commitment, not structural"; TRACT's overview said "**Lawful by construction**" — the exact framing §11.2a rejects verbatim, over an unresolved GDPR Art 17 conflict — `047829e`
 
 **Audited → CLEAN:** substrate/* + TRACT + WRAP; §26 legacy adapters; §22 PUB; §25 PUBSUB; §5.2.1;
 SYNC; §18.8a objects; deterministic CBOR §18.1; §2.7; §3 (post-fix); §18.7.3; §1.4; DEPOT;
@@ -291,10 +292,18 @@ twice: an inline pass declared rounds 4-5 "clean" while a live HIGH sat in §1.4
 §18.3.2 was itself wrong (unbounded epoch retention fighting MLS forward secrecy) until an agent
 caught it. Treat inline-audited surfaces as lower-confidence than agent-audited ones.
 
-**Convergence honesty.** The three-round stop-rule has fired (≈8 rounds, each finding something real).
-Do NOT declare PERFECTED on a quiet round alone — the honest options are (a) keep hunting
-surface-by-surface, or (b) freeze deliberately **with this audited/un-audited map recorded**. W5
-(South-African English + RFC layout) remains correctly blocked: correctness is still moving.
+**Convergence honesty.** The three-round stop-rule has fired (≈11 rounds, each finding something
+real). Do NOT declare PERFECTED on a quiet round alone — the honest options are (a) keep hunting
+surface-by-surface, or (b) freeze deliberately **with this audited/un-audited map recorded**.
+
+**The yield has changed character, and that is the real signal.** Findings 1–9 were *mechanism*
+defects — exploitable holes and interop breaks in wire rules. Findings 10–13 are *summary* defects:
+the mechanism is right and the prose above it overstates what the mechanism proves. Nothing in the
+last three rounds required a wire change. That is not proof the mechanism is clean (§23 CAD and §24
+remain un-audited), but it does mean the marginal round is now buying **honesty of claims**, not
+**security**. W5 (South-African English + RFC layout) stays blocked while the summary layer is still
+moving — a copy-edit over text that still overclaims only makes the overclaims read better — but the
+gap between "correctness still moving" and "W5 unblocked" is now narrower than at any prior round.
 
 ### Method notes earned the hard way (keep these)
 
@@ -321,3 +330,14 @@ commit reached `main` that way. Use an explicit `grep -q "^0 error"` guard.
 
 **5. An in-text "TODO"/"owed to §X" is a defect, not documentation.** §20's replay-cache row had
 flagged its own unresolved conflict; it sat there until treated as a finding.
+
+**6. An agent's "clean" is scoped to what it read, not to the file.** A sweep reported `profiles/rtc.md`
+clean, having checked §4/§7/§8 where every blindness claim *is* correctly conditioned — and missed
+the same overclaim in §6's scaling paragraph, outside its window. Agents report their method
+honestly; read it, and check the surfaces it names as skipped. A file is only as audited as the
+sections actually opened.
+
+**7. Verify before fixing, including in the "obvious" direction.** The same sweep implied
+`rtc.md`'s other `content-blind` uses were suspect. They are correct: `blind-routing` means
+precisely *blind to content, routing visible*. Fixing them would have introduced an error while
+"correcting" one. Fix-and-sweep widens the candidate set; it does not license editing every hit.
