@@ -308,7 +308,7 @@ before relying on any of them):
 - **Delay/disruption-tolerant networking — store-carry-forward, custody transfer.** IETF
   [RFC 9171 (Bundle Protocol v7)](https://datatracker.ietf.org/doc/rfc9171/);
   [DTN7 implementation](https://arxiv.org/pdf/1908.10237). KOTVA's MOTE delivery (§3.2) *is* this pattern,
-  but with end-to-end self-authenticating objects, so a carrier needs no custody-signaling trust.
+  but with end-to-end self-authenticating objects, so a carrier needs no custody-signalling trust.
 - **Self-authenticating feeds over any carrier, including sneakernet.**
   [Secure Scuttlebutt](https://ssbc.github.io/ssb-db/) — signed append-only logs replicated by gossip or
   SD card. This is the §22 feed model and the §1 sneakernet property.

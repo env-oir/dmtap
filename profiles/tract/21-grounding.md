@@ -226,7 +226,7 @@ is not a theoretical risk being designed around.
 
 Each of these must be accepted or replaced explicitly by §6. None was visible before this pass.
 
-1. **An intra-replica serialization point is mandatory.** A single-writer node, a compare-and-swap,
+1. **An intra-replica serialisation point is mandatory.** A single-writer node, a compare-and-swap,
    or consensus. **A "replica" therefore cannot itself be a set of mutually uncoordinated nodes** —
    the coordination is not removed, it is pushed down one level and made local.
 2. **The failure model is crash-recovery with durable state, not Byzantine.** This is the sharpest
@@ -250,7 +250,7 @@ therefore not a limitation to be engineered away later; it is the correct shape.
 
 ### 21.10.4 What §6 must now say
 
-- Name the intra-replica serialization requirement rather than implying replicas need no
+- Name the intra-replica serialisation requirement rather than implying replicas need no
   coordination at any level (§21.10.2 item 1).
 - State the **non-Byzantine failure model as a hard boundary**: bounded counters protect a seller
   from their own concurrency, not a buyer from a dishonest seller. Conflating the two would be a

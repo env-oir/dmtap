@@ -120,7 +120,7 @@ fragmentation. The suite lives in `conformance/` as three coupled artifacts:
 - **`conformance/suite.json`** — the machine-readable mirror of those cases, so a runner in **any
   language** can drive them. It mirrors all 358 (SUITE.md and suite.json are in sync — the wave-2
   deniable-1:1 and KT-v1-hardening families, the `PROFILE` display-data cases, the optional
-  `PUSH` wake-signaling cases, the `FILE` durability cases, the wave-3 device-cluster `SYNC`,
+  `PUSH` wake-signalling cases, the `FILE` durability cases, the wave-3 device-cluster `SYNC`,
   `ALIAS`, and gateway-alias `GWALIAS` families, the pluggable-resolver `RESOLVE` family, the
   `PUB` public-object family, the wave-6 anti-drift families — Bootstrap profile
   (`MIXPROF`, [docs/research/mixnet.md §4.4.10a](docs/research/mixnet.md), opt-in mixnet only),
@@ -159,7 +159,7 @@ they are the rows marked `manual-attestation` in `conformance/SUITE.md`, each na
 that settles it. The remaining 263 carry an exact construction recipe and expected §21 error for the
 branches whose subsystems are not yet vectored (mixnet/MLS/gateway/auth, plus the wave-2
 deniable/KT-v1/org/device-attestation families, the `FILE` durability guards, the `PROFILE`
-display-data guards, the optional `PUSH` wake-signaling guards, the wave-6 anti-drift families
+display-data guards, the optional `PUSH` wake-signalling guards, the wave-6 anti-drift families
 (`MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`), the gateway families
 (`GWOPS`/`GWSMTP`/`GWATT`/`GWNAME`/`GWFLOOR`/`GWLEG`), the profile-level `CAD`/`VIDEO` checklists,
 and the DMTAP-PUBSUB guards (`PUBSUB`, §25) — see `conformance/README.md`). The partition is exact:

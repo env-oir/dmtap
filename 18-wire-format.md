@@ -2248,14 +2248,14 @@ the suite is a rejection, never a selection (§18.1.5, `ERR_HASH_ALG_MISMATCH`, 
 **MLS-native referents (carve-out from the `det_cbor` rule).** Where the referent is an
 **MLS-native object** — a KeyPackage referenced by `KeyPackageRef.ref`, or the bundle referenced
 by `KeyPackageBundleRef.id` — the content address is computed over its **MLS/TLS wire
-serialization** (RFC 9420 `tls_serialize`), not `det_cbor`:
+serialisation** (RFC 9420 `tls_serialize`), not `det_cbor`:
 
 ```
 mls_ref = prefix ‖ BLAKE3-256( tls_serialized_bytes )         ; v0 prefix 0x1e
 ```
 
 MLS objects are **never re-encoded as DMTAP CBOR** — the address is a pure function of the bytes
-RFC 9420 puts on the wire, so both sides hash the identical serialization. By contrast,
+RFC 9420 puts on the wire, so both sides hash the identical serialisation. By contrast,
 `GroupState.log_head` references the **DMTAP CBOR committer-log head** (a DMTAP object, §5.1), so
 the generic `det_cbor` rule above applies to it. A **`ClusterOp` op-hash** (as recorded in a
 `JournalEntry.ref`, §18.6.3) is likewise `prefix ‖ BLAKE3-256(det_cbor(ClusterOp))`, with no
@@ -2457,7 +2457,7 @@ integrity is the Sphinx per-hop MAC / wide-block PRP ([docs/research/mixnet.md
 §4.4.1](docs/research/mixnet.md), §18.9.9), the same "security-from-a-different-proof-system" case
 as `ArcToken`/deniable frames.
 
-### 18.9.15 Push wake-signaling objects (`PushSubscription.sig`, `WakePing`) (§4.9)
+### 18.9.15 Push wake-signalling objects (`PushSubscription.sig`, `WakePing`) (§4.9)
 
 `PushSubscription.sig` (key 7) uses the general rule
 `Sign(sk_device, "DMTAP-v0/push-subscription" ‖ 0x00 ‖ det_cbor(PushSubscription ∖ {7}))` with an

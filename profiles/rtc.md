@@ -19,7 +19,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHALL**, **SHOULD**, **SHO
 
 RTC is the profile for a **call**: a continuous, latency-bounded media flow between endpoints
 that are simultaneously online — 1:1 and multi-party voice, video, screen sharing, and system/tab
-audio, at parity with a mainstream conferencing product, **with no proprietary signaling server
+audio, at parity with a mainstream conferencing product, **with no proprietary signalling server
 and no operator that can read the media.**
 
 A call is the opposite shape from a MOTE. A MOTE is signed, sealed, queued, retried and acked —
@@ -30,8 +30,8 @@ infrastructure roles and its signed coordination, but **not** its store-and-forw
 Only the media *bytes* are on their own track. That separation is the whole design; everything
 below is a consequence of it.
 
-The one thing the media plane still needs from the substrate is a **signaling carrier**: WebRTC's
-JSEP is deliberately signaling-agnostic (it says *what* endpoints exchange, never *how*), and every
+The one thing the media plane still needs from the substrate is a **signalling carrier**: WebRTC's
+JSEP is deliberately signalling-agnostic (it says *what* endpoints exchange, never *how*), and every
 deployed product fills that hole with a central server. The substrate already is a signed,
 mutually-authenticated, end-to-end-encrypted delivery layer, so the hole is already filled — RTC
 adds only a message kind, a key label, and a capacity advertisement (§27.1, §27.3).
@@ -45,7 +45,7 @@ adds only a message kind, a key label, and a capacity advertisement (§27.1, §2
 | Waist capability | How RTC uses it |
 |---|---|
 | **Identity** ([`../01-identity.md`](../01-identity.md)) | A keypair is the call endpoint. An SFU is identified by its own identity key, disclosed before any media (§27.4.1 keys 9/10). |
-| **MOTE** ([`../02-mote.md`](../02-mote.md)) | Signaling is one sealed-MOTE kind, `0x44 rtc_signal`, on the ordinary deliver/ack/retry path (§27.3, §27.4). Media is **not** a MOTE. |
+| **MOTE** ([`../02-mote.md`](../02-mote.md)) | Signalling is one sealed-MOTE kind, `0x44 rtc_signal`, on the ordinary deliver/ack/retry path (§27.3, §27.4). Media is **not** a MOTE. |
 | **SYNC / MLS group** ([`../substrate/SYNC.md`](../substrate/SYNC.md)) | The MLS group that scopes the conversation supplies **membership** (the sole call authorisation) and, via its epoch exporter, the **media key root** (§27.5). A 1:1 call is a call in a 2-member group. |
 | **Roles & Wake** ([`../substrate/ROLES.md`](../substrate/ROLES.md)) | The SFU is an infrastructure **role** any node may take — your own always-on box or an operator — never a privileged server type (§27.7.2). Wake is content-free push; it is **never relied on for correctness** ([`../substrate/OFFLINE.md`](../substrate/OFFLINE.md) §3). |
 
@@ -139,7 +139,7 @@ them — it states the rules a profile reader must not miss.
   (§27.7.4, RTC-15/16). A call refused up front is retried in seconds; a call degraded mid-session
   fails in front of its participants with no remedy.
 - **R-RTC-5 (calling is an explicit, disclosed act).** Placing a call MUST be an explicit user act,
-  and the client MUST surface — before the first signaling MOTE leaves — that a call reveals its
+  and the client MUST surface — before the first signalling MOTE leaves — that a call reveals its
   existence, timing and duration to observers and its endpoint addresses to the peer or SFU
   (§27.4.6, §27.9 item 2). A security-relevant reduction is refused or surfaced, **never silent**.
 - **R-RTC-6 (keys die with the call).** Media key material MUST be deleted at the reorder-window
@@ -191,13 +191,13 @@ rather than pretending otherwise:
   connection. The async answer to "I called and you were out" is a **voicemail** — an ordinary
   sealed MOTE on the store-and-forward plane, a *different profile*, not a degraded call. RTC does
   not blur the two.
-- **Signaling reconciles; §27 defines no offer-freshness bound.** `rtc_signal` MOTEs reconcile on
+- **Signalling reconciles; §27 defines no offer-freshness bound.** `rtc_signal` MOTEs reconcile on
   reconnect like any MOTE (mailbox drain, §27's ordinary path). An opening `offer` carries a fresh
   `call_id` (§27.4.1), and RTC-2/RTC-3 reject only a replay against an already-known `(call_id,
   sender)` or a non-offer on an unknown one — neither rejects an offer merely for arriving late. A
   `rtc_signal` exchange that reconciles minutes after it was sent will therefore still open and ring
   the call rather than cleanly surface as a **missed call**; RTC does not claim otherwise. A bounded
-  offer-freshness check that gives late-reconciled signaling a missed-call disposition is
+  offer-freshness check that gives late-reconciled signalling a missed-call disposition is
   unspecified here and left to a future revision.
 - **No offline-money case.** A call moves media, not funds. Where a *metered* SFU is used, its usage
   receipts settle on reconnect under the payer's rail (OFFLINE §5 strategy C, settle-on-reconnect,

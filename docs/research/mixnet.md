@@ -686,7 +686,7 @@ detection, and stricter guard/diversity. It is **negotiated as a capability** (�
 MUST support the profile in force, and a recipient **MAY require** it for its inbound `private`
 traffic. Profiles are the lever that lets a deployment climb toward the trilemma bound; the
 irreducible residual **after** the maximal profile is stated honestly in §6.6. When this profile is
-in force, **push wake-signaling jitter/batching (§4.9.1) becomes a MUST, not a MAY** — an
+in force, **push wake-signalling jitter/batching (§4.9.1) becomes a MUST, not a MAY** — an
 un-jittered per-arrival wake would reopen at the push relay the very recipient-arrival timing
 channel this profile's constant-rate cover is spent to close.
 

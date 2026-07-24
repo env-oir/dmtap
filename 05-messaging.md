@@ -54,7 +54,7 @@ axes are policed independently so neither can silently mask a downgrade on the o
 ### CAUTION — epoch ordering is the hard part on a mesh
 
 MLS trusts the DS for exactly one thing: **a total order on MLS group epochs** (§0.8) —
-Commits must be applied in an agreed order per group. A leaderless mesh has no natural serialization point,
+Commits must be applied in an agreed order per group. A leaderless mesh has no natural serialisation point,
 so **this ordering/consensus of Commits is the real difficulty of "MLS over P2P," not the
 crypto.** DMTAP REQUIRES that MLS **handshake** messages (Proposal / Commit / Welcome) travel
 over an **ordered, reliable channel** per group, while ordinary **application** messages

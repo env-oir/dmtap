@@ -66,11 +66,11 @@ already minimal and mail-agnostic.
 | 3 | **Transport** | Reach anyone by key — online, offline, or over a mesh; store-and-forward at the edge | [`ROLES.md`](ROLES.md) | §4, §14 | libp2p (Kademlia, Circuit Relay v2, DCUtR) |
 | 4 | **PUB (Feeds & Blobs)** | Signed append-only per-author feeds + plaintext content-addressed blobs, self-verifying, servable over plain HTTPS with no mesh | [`FEEDS.md`](FEEDS.md) | §22 (DMTAP-PUB) | Nostr-class signed events, IPFS-class CAS, RFC 6962 Merkle, HTTP caching |
 | 5 | **SYNC** | A signed CRDT op algebra + range-Merkle reconciliation + snapshots + sparse sync — multi-author, deterministic, COSE-signed | [`SYNC.md`](SYNC.md) | **new** (this directory); semantics grounded in §5.6 device-cluster sync | CBOR/COSE, HLC, version vectors, range-based set reconciliation |
-| 6 | **Roles & Wake** | Open, key-addressed infrastructure roles any node MAY serve (announce/resolve, signaling, circuit relay, short-TTL content-blind mailbox, cache/pin) + content-free, sender-blind wake push | [`ROLES.md`](ROLES.md) | §4, §14, §4.9 | libp2p, Chatmail relay-mailbox, Web Push (RFC 8030/8291/8292 VAPID), UnifiedPush |
+| 6 | **Roles & Wake** | Open, key-addressed infrastructure roles any node MAY serve (announce/resolve, signalling, circuit relay, short-TTL content-blind mailbox, cache/pin) + content-free, sender-blind wake push | [`ROLES.md`](ROLES.md) | §4, §14, §4.9 | libp2p, Chatmail relay-mailbox, Web Push (RFC 8030/8291/8292 VAPID), UnifiedPush |
 
 > **Transport** and **Roles & Wake** are two distinct waist capabilities that share one substrate
 > document, [`ROLES.md`](ROLES.md): Transport is the *reach-by-key* mechanism itself (announce/resolve,
-> signaling, circuit relay, mailbox — "how do I reach this key"); Roles & Wake is the *open-role
+> signalling, circuit relay, mailbox — "how do I reach this key"); Roles & Wake is the *open-role
 > vocabulary* those mechanisms are built from (any node may serve any role, no privileged type) plus
 > **Wake**. Wake is folded into capability 6 rather than numbered on its own because a *wake origin* is an
 > infrastructure role like a relay or a mailbox — but a product may want it *without* running any of the
@@ -251,7 +251,7 @@ from each repository rather than assumed.
 - [`IDENTITY.md`](IDENTITY.md) — Capability ①: keys, `DeviceCert`, `name→key`, KT, key-name floor.
 - MOTE (Capability ②) — profiled directly by the core spec ([`../02-mote.md`](../02-mote.md),
   [`../05-messaging.md`](../05-messaging.md)); no standalone substrate document.
-- [`ROLES.md`](ROLES.md) — Capabilities ③+⑥: reach-by-key transport (announce/resolve, signaling, relay,
+- [`ROLES.md`](ROLES.md) — Capabilities ③+⑥: reach-by-key transport (announce/resolve, signalling, relay,
   mailbox) and the open infrastructure-role vocabulary + content-free wake.
 - [`FEEDS.md`](FEEDS.md) — Capability ④ (PUB): signed append-only author feeds + public content-addressed blobs.
 - [`SYNC.md`](SYNC.md) — Capability ⑤: the signed CRDT op algebra and reconciliation wire protocol (the one new spec).

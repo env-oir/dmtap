@@ -71,7 +71,7 @@ The reference core (see [`BINDINGS.md`](BINDINGS.md) for the full crate layout).
   `OrSet`/`LwwMap`/`DeathReg`/`Journal`/`range_fingerprint`) and `dmtap-sync` (the substrate's multi-author
   six-kind algebra, COSE-signed ops) are the crates [`SYNC.md`](SYNC.md) grounds itself in.
 - **Roles — partial.** `dmtap-p2p` gives real libp2p implementations of announce/resolve (Kademlia),
-  signaling (DCUtR), and circuit relay (Circuit Relay v2) — to-spec for those three sub-roles. Mailbox and
+  signalling (DCUtR), and circuit relay (Circuit Relay v2) — to-spec for those three sub-roles. Mailbox and
   a servable cache/pin surface were not confirmed to exist in this survey (`node/src/pubserve.rs` exists
   and its name suggests a pub-serving path, but its wire shape was not verified). **What would close the
   gap:** confirm or build the mailbox role and verify `pubserve.rs` actually serves the
@@ -110,7 +110,7 @@ the substrate's shape without speaking its bytes.
 - **Roles — independent.** `peering/relay.go` is a genuine Ed25519-signed deposit/pickup/ack mailbox with
   TTL — structurally the mailbox role, own auth-header wire format (`Vula-Relay <id>.<ts>.<sig>`), not
   `LocationRecord`/DMTAP's mailbox wire. `peering/discovery.go` is a plain REST directory lookup against
-  vulos.org, not key-addressed announce/resolve. No circuit-relay/signaling in this repo (that lives in
+  vulos.org, not key-addressed announce/resolve. No circuit-relay/signalling in this repo (that lives in
   vulos-relay). **What would move it:** re-key `discovery.go` to resolve by `IK` instead of an account
   directory lookup, and re-wire `relay.go`'s auth header as a `DeviceCert`-chained signature.
 - **Wake — independent, and not content-free.** `internal/webpush/webpush.go` (`PUSH-CELL-01`) is real,
@@ -206,7 +206,7 @@ the substrate's shape without speaking its bytes.
     death-certificate-vs-LWW selection guidance — ofisi first mapped "clear cell" onto §4.5, which would
     have silently swallowed every subsequent edit to a cleared cell, caught it, and then chose §4.5
     *correctly* for slide deletion in the same investigation).
-- **Roles — independent.** A vendored `@vulos/relay-client` (`FabricClient`) provides signaling, rendezvous,
+- **Roles — independent.** A vendored `@vulos/relay-client` (`FabricClient`) provides signalling, rendezvous,
   WebRTC circuit-fallback relay, and presence — conceptually close to the Roles substrate, but its own
   SDK/protocol, not DMTAP key-addressed announce/resolve.
 - **Wake — n/a.** No VAPID/web-push/UnifiedPush code found; nothing in ofisi's design implies it needs one
@@ -347,7 +347,7 @@ Its actual current state is **better than that document's text**, which had gone
 - **Roles — to-spec, cache/pin only.** The `/.well-known/dmtap-pub/*` endpoint itself **is** the cache/pin
   role ([`ROLES.md § 6`](ROLES.md#6-cache--pin--serve-content-addressed-objects-profile-of-225-55)),
   correctly implemented (immutable `Cache-Control`/`ETag` on the four content-addressed endpoints). No
-  other role (announce/resolve, signaling, circuit relay, mailbox) is attempted, and none is implied by
+  other role (announce/resolve, signalling, circuit relay, mailbox) is attempted, and none is implied by
   what kerf-pub is.
 - **Wake — independent.** kerf-pub ships its own Wake extension (VAPID keys, `router.py`'s
   `wake-key`/`subscribe` routes) — a real, working use of the correct open standard (Web Push/VAPID), but

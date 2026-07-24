@@ -279,7 +279,7 @@ before any author may write them.
   implementations is a design-purity call, not a mechanically derivable one.
 - **Recommendation:** **Do not mandate a single algorithm.** Leave the mechanism to the seller but
   require a normative floor: the policy MUST be **deterministic per replica set and disclosed** in
-  the seller's operational configuration, so it cannot violate the intra-replica serialization
+  the seller's operational configuration, so it cannot violate the intra-replica serialisation
   constraint. **No §16 change** (seller-internal SYNC state).
 
 ### 6.2 Replica rebalancing aggressiveness — mandate a policy?

@@ -309,7 +309,7 @@ value shape is free.**
 | Use | When | Cost |
 |---|---|---|
 | **Native nested `ext-value`** | The object is genuinely edited as a unit, *and* you want the protocol to canonicalize it, hash it reproducibly, and let a generic tool inspect it without product knowledge. | Encoder must validate recursively; slightly larger validator surface. |
-| **Opaque payload** (`tstr` of JSON, or `bstr` of any format) | The value has a shape the protocol should not model at all — a foreign format, a versioned application struct with its own evolution rules, a pre-existing serialization you must round-trip byte-exactly. | **You own canonicalization.** See the obligation below. |
+| **Opaque payload** (`tstr` of JSON, or `bstr` of any format) | The value has a shape the protocol should not model at all — a foreign format, a versioned application struct with its own evolution rules, a pre-existing serialisation you must round-trip byte-exactly. | **You own canonicalization.** See the obligation below. |
 
 Neither is "the CRDT-native one": there is no such thing at this boundary, because the boundary does not
 merge. **Prefer native nesting when the content is yours and structured**, because it makes the bytes

@@ -85,8 +85,8 @@ What §21.10.2 surfaced is that **four operator-shaped roles hide inside the cou
 accepts each explicitly rather than letting "no coordinator" read as "no coordination anywhere."
 None is engineered away; three are stated as hard constraints, and the fourth is left open (§6.5).
 
-1. **An intra-replica serialization point is mandatory.** Each replica MUST have a local
-   serialization point — a single-writer node, a compare-and-swap, or a local consensus — over its
+1. **An intra-replica serialisation point is mandatory.** Each replica MUST have a local
+   serialisation point — a single-writer node, a compare-and-swap, or a local consensus — over its
    own rights. A "replica" therefore MUST NOT itself be a set of mutually uncoordinated nodes. The
    coordination is not removed; it is pushed down one level and made local, and an implementation
    MUST NOT present replica-level operation as coordination-free at every level.
@@ -185,7 +185,7 @@ above and collected here for the founder-decision list. Neither is invented in t
   seller-elected coordinating replica. Requires no §16 change (it is seller-internal state over the
   substrate sync op algebra). *Recommendation:* leave the mechanism to the seller but require, as a
   normative floor, that the policy be deterministic per replica set and disclosed in the seller's
-  own operational configuration, so it cannot silently violate the intra-replica serialization
+  own operational configuration, so it cannot silently violate the intra-replica serialisation
   constraint (§6.2a item 1); do not mandate a single allocation algorithm in the specification.
 - **Quota rebalancing aggressiveness (§6.2a).** How aggressively replicas should transfer rights to
   reduce stranding (§6.4), and whether the specification should mandate one policy or leave it to

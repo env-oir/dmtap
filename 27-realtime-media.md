@@ -11,9 +11,9 @@ It does that by adopting the existing real-time media stack wholesale — WebRTC
 establishment (ICE/STUN/TURN) and its end-to-end media protection (SFrame) — and contributing
 exactly **three** things that stack deliberately leaves out:
 
-1. **Signaling.** JSEP is explicitly signaling-agnostic (RFC 8829): it defines *what* an endpoint
+1. **Signalling.** JSEP is explicitly signalling-agnostic (RFC 8829): it defines *what* an endpoint
    must exchange and says nothing about *how*. That omission is the hole every deployed system
-   fills with a proprietary, centrally-operated signaling server. DMTAP is already a signed,
+   fills with a proprietary, centrally-operated signalling server. DMTAP is already a signed,
    mutually-authenticated, end-to-end-encrypted substrate with delivery, retry and ack semantics
    (§2.6), so the hole is already filled — it just needs a message kind (§27.3, §27.4).
 2. **A media key schedule rooted in MLS.** SFrame needs a key source and does not specify one for
@@ -46,7 +46,7 @@ unknown-key discipline unchanged.
 
 1. **Parity with a mainstream conferencing product** — 1:1 voice and video, multi-party calls,
    screen sharing, mid-call track add/remove, and graceful teardown — with **no proprietary
-   signaling server**, because the signaling server is the single component every such product
+   signalling server**, because the signalling server is the single component every such product
    requires and DMTAP already renders unnecessary.
 2. **Adopt, do not invent.** Every byte on the media path is a byte some other standards body
    already specified. DMTAP's contribution is a carrier, a key schedule, and a limit
@@ -90,7 +90,7 @@ map, not a substitute for reading the RFC.
 | Adopted | Document | Used for | Status as understood here |
 |---|---|---|---|
 | SDP | **RFC 8866** | the session description carried in `RtcSignal.sdp` (§27.4.1) | Proposed Standard; obsoletes RFC 4566 |
-| JSEP | **RFC 9429** | the offer/answer state machine, `RTCSdpType`, rollback, renegotiation | Proposed Standard; obsoletes RFC 8829 (Apr 2024); **explicitly signaling-agnostic** (preserved in 9429), which is precisely the seam §27.3 fills. Any reliance on `max-bundle` bundle-policy semantics should be checked against RFC 9429's `max-bundle`→`must-bundle` rename — §27 uses RFC 9143 BUNDLE without naming a policy, so likely unaffected |
+| JSEP | **RFC 9429** | the offer/answer state machine, `RTCSdpType`, rollback, renegotiation | Proposed Standard; obsoletes RFC 8829 (Apr 2024); **explicitly signalling-agnostic** (preserved in 9429), which is precisely the seam §27.3 fills. Any reliance on `max-bundle` bundle-policy semantics should be checked against RFC 9429's `max-bundle`→`must-bundle` rename — §27 uses RFC 9143 BUNDLE without naming a policy, so likely unaffected |
 | ICE | **RFC 8445** | candidate gathering, connectivity checks, nomination | Proposed Standard; updated by RFC 8863 (PAC timer — failure-declaration *timing* only, not wire format; does not affect DMTAP's stated usage) |
 | STUN | **RFC 8489** | server-reflexive candidate discovery | Proposed Standard |
 | TURN | **RFC 8656** | relayed candidates; the IP-disclosure mitigation of §27.11 item 3 | Proposed Standard |
@@ -152,19 +152,19 @@ it is correct is the reason it does not generalise here.
   what a peer has opted into.** §4.6's default tier for mail and control messages is `fast`
   (direct/low-hop); the opt-in, research-tier `private` mixnet
   ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)) is a deliberate, user-surfaced choice a
-  peer may make for its *other* traffic. A signaling exchange whose offer/answer round trip took
-  minutes is not a call at all (§27.4.6), so call signaling MUST ride `fast` even for a peer that
+  peer may make for its *other* traffic. A signalling exchange whose offer/answer round trip took
+  minutes is not a call at all (§27.4.6), so call signalling MUST ride `fast` even for a peer that
   has otherwise opted into `private` — kind is the field DMTAP already uses to pin a message's tier
   independently of what its sender's general preference is; a metadata field cannot carry that
   override, because by the time the metadata is parsed the routing decision has been made.
 - **`kind` is bound into both signatures; a metadata field is bound into one.** `Envelope.kind` is
   covered by `sender_sig` (§18.9.1) *and* by `Payload.sig` (§18.9.2, enforced at
-  `ERR_ENVELOPE_CONTEXT_MISMATCH`, `0x0211`). A relabel of a signaling message into another kind is
+  `ERR_ENVELOPE_CONTEXT_MISMATCH`, `0x0211`). A relabel of a signalling message into another kind is
   therefore already detected by machinery that exists. Application metadata inside the ciphertext
   gets the second binding but not the first, so an intermediary's view of "what is this traffic"
   would come from a field the anti-abuse gate (§2.7 step 6) cannot see.
 - **Capability gating and rate limiting need a pre-decryption discriminator.** A node that does not
-  offer calls, or a user who has turned them off, should refuse signaling traffic without
+  offer calls, or a user who has turned them off, should refuse signalling traffic without
   decrypting it. `kind` is available at §2.7 step 3; metadata inside `Payload` is not available
   until step 7.
 
@@ -173,7 +173,7 @@ of which this is the fifth used. That is the entire cost, and §27.3.2 keeps it 
 
 ### 27.3.2 Why one kind, not four
 
-Signaling has at least five distinguishable acts — offer, answer, ICE candidate, renegotiate,
+Signalling has at least five distinguishable acts — offer, answer, ICE candidate, renegotiate,
 teardown — and an obvious design gives each a kind. This profile allocates **one**, with an inner
 `type` discriminator (§27.4.2), for three reasons:
 
@@ -203,7 +203,7 @@ subsection (§27.8). It allocates **no new error subsystem byte**: its three err
 points inside subsystem `0x04` (Messaging & Group), which §21 already owns, under the same
 lighter-weight policy §21.24d used to extend subsystem `0x09` (§27.12).
 
-## 27.4 Signaling
+## 27.4 Signalling
 
 ### 27.4.1 The `RtcSignal` object (kind `0x44`)
 
@@ -288,7 +288,7 @@ individual candidate failures, RFC 8445).
 ### 27.4.4 Offer/answer, renegotiation and glare (normative)
 
 The offer/answer state machine is JSEP's (RFC 8829), adopted unchanged. Three points where a
-signaling-agnostic standard leaves a hole that a *transport* must fill are specified here, and only
+signalling-agnostic standard leaves a hole that a *transport* must fill are specified here, and only
 these three:
 
 - **Renegotiation is an ordinary `offer` with a higher `seq` on an existing `call_id`.** Adding a
@@ -343,7 +343,7 @@ these three:
   array — is `ERR_MALFORMED_OBJECT` (`0x020D`, DROP_SILENT), the disposition §21.4 already assigns
   to any object that fails its schema.
 
-### 27.4.6 Tier: signaling always rides `fast`; a reduction from an established `private` relationship is disclosed, not silent (normative)
+### 27.4.6 Tier: signalling always rides `fast`; a reduction from an established `private` relationship is disclosed, not silent (normative)
 
 §4.6's default tier for mail and control messages is `fast` (direct/low-hop). The opt-in,
 research-tier `private` mixnet ([docs/research/mixnet.md §4.4](docs/research/mixnet.md)) is a
@@ -369,7 +369,7 @@ stated explicitly rather than left to be discovered:
   Because that contact's other traffic runs on the opt-in `private` tier, a call to them is a
   visible reduction from that established posture, not merely the ordinary `fast` default. It MUST
   NOT be automatic, MUST NOT be a fallback from a failed private send, and the client MUST
-  surface — before the first signaling MOTE leaves — that a call reveals the call's existence, its
+  surface — before the first signalling MOTE leaves — that a call reveals the call's existence, its
   timing and its duration to observers, and its endpoint addresses to the peer or the SFU (§27.11).
   Refusing is the default if the user does not consent. This is the same shape as §5.2.1(d)'s
   no-silent-deniability-downgrade and satisfies §10.7.5's governing rule: a security-relevant
@@ -426,7 +426,7 @@ Normatively:
   encoding is RFC 9605's, not this profile's; see §27.13 item 3 — confirmed sufficient, but this
   profile does not yet state a RECOMMENDED `E`.
 - `sframe_epoch_secret` and everything derived from it are **media keys only**. An implementation
-  MUST NOT use them to authenticate signaling, to authorise a participant, or as an input to any
+  MUST NOT use them to authenticate signalling, to authorise a participant, or as an input to any
   other DMTAP key schedule.
 
 **What this inherits, for free.** Because the secret is an MLS exporter output at a given epoch, a
@@ -473,7 +473,7 @@ protects:
   quantifies what an observer learns from them.
 - **RTCP feedback.** Receiver reports, PLI/FIR, bandwidth estimates and the rest are visible to the
   SFU; that visibility is what lets it do congestion-responsive forwarding at all.
-- **The signaling.** Signaling is protected separately and more strongly — it is a sealed MOTE
+- **The signalling.** Signalling is protected separately and more strongly — it is a sealed MOTE
   (§2.4), so an SFU that is not a group member never sees SDP, candidates or `call_id` unless a
   participant chooses to send them to it out of band as part of establishing the media path.
 
@@ -720,7 +720,7 @@ A conformant DMTAP-RTC client:
    forward-compatibility rule, and MUST surface "cannot be reached for calls" rather than a
    protocol error.
 2. MUST make placing a call an explicit user act, with the disclosure of §27.4.6 shown before the
-   first signaling MOTE is emitted.
+   first signalling MOTE is emitted.
 3. MUST show, for every call, **who else is in it**, sourced from the MLS group's own membership
    and not from any list an SFU supplies; and MUST surface a membership change during a call
    (§27.5.2's epoch advance is the same event) rather than only re-keying silently.
@@ -841,7 +841,7 @@ is a defect awaiting a fix; each is an inherent consequence of the design above.
    defines no recording indicator, because an indicator a client can simply not send is a false
    assurance rather than a control. This is the same endpoint floor SP-1 discloses (§6.6 item 3),
    applied to media.
-7. **Compromise of an operational signing key extends to call signaling.** A compromised device key
+7. **Compromise of an operational signing key extends to call signalling.** A compromised device key
    can emit `rtc_signal` under the identity until it is revoked (§1.5), which within a group means
    it can place calls, add tracks and tear down calls as that member. Keeping `IK` cold and signing
    with a revocable operational key (§1.2) bounds this exactly as it bounds every other kind. Note
@@ -917,8 +917,8 @@ shape is unchanged), and how it was found.
 
 | # | Change | Class | Found by |
 |---|--------|-------|----------|
-| **C-01** | **Initial specification.** DMTAP-RTC is introduced allocating one core message kind (`0x44 rtc_signal`, §27.3), one MLS exporter label (`"DMTAP-RTC-v0/sframe"`, §27.5.1), two capability tokens (`rtc-1`, `rtc-sfu-1`), and three error points within the existing subsystem `0x04` (§27.12). It defines **no** new signed structure, **no** new signature DS-tag, and **no** new error subsystem byte (§27.3.3). | **NORMATIVE — new extension.** Nothing pre-existing changes shape: no existing object gains or loses a key, no existing preimage changes, and a node that does not advertise `rtc-1` is unaffected in both directions. **Depends on companion changes to §21 and §16 that have not landed** (§27.8): until §21 registers kind `0x44`, the two tokens, the three codes and the exporter label, every citation of them in this document is a **forward reference** — the same status §24.17 C-06 recorded for §21.24e. | Written to fill the gap §5 leaves: DMTAP has groups, epochs and delivery but no real-time path, so calling required a proprietary signaling server — the one component the substrate makes unnecessary. |
-| **C-02** | **The core-kind-vs-metadata decision is recorded with its reasoning rather than asserted.** §24's facets allocate no kind and ride `pub_announce.meta`; the obvious symmetry would have carried signaling on an existing kind's `Headers.ext`. §27.3.1 states why the precedent does not transfer, and the decisive argument is a concrete user-visible failure rather than a taxonomy preference: §21.20 requires an unrecognized *header* to be ignored while the **message is processed and acked**, so a call offer to a peer without call support would be acked as delivered and rendered as an empty chat message. §2.3's unknown-**kind** rule (ignore, MUST NOT ack) produces exactly the right outcome instead. | **Rationale, recorded normatively.** No byte differs from what C-01 already specifies; what is added is the record of why, so a future revision that proposes collapsing the kind back into metadata has to answer the argument rather than rediscover it. | Writing §27.3 against §24's precedent and §21.20's forward-compatibility rule, and following what a non-implementing peer actually does with each of the two carriers. |
+| **C-01** | **Initial specification.** DMTAP-RTC is introduced allocating one core message kind (`0x44 rtc_signal`, §27.3), one MLS exporter label (`"DMTAP-RTC-v0/sframe"`, §27.5.1), two capability tokens (`rtc-1`, `rtc-sfu-1`), and three error points within the existing subsystem `0x04` (§27.12). It defines **no** new signed structure, **no** new signature DS-tag, and **no** new error subsystem byte (§27.3.3). | **NORMATIVE — new extension.** Nothing pre-existing changes shape: no existing object gains or loses a key, no existing preimage changes, and a node that does not advertise `rtc-1` is unaffected in both directions. **Depends on companion changes to §21 and §16 that have not landed** (§27.8): until §21 registers kind `0x44`, the two tokens, the three codes and the exporter label, every citation of them in this document is a **forward reference** — the same status §24.17 C-06 recorded for §21.24e. | Written to fill the gap §5 leaves: DMTAP has groups, epochs and delivery but no real-time path, so calling required a proprietary signalling server — the one component the substrate makes unnecessary. |
+| **C-02** | **The core-kind-vs-metadata decision is recorded with its reasoning rather than asserted.** §24's facets allocate no kind and ride `pub_announce.meta`; the obvious symmetry would have carried signalling on an existing kind's `Headers.ext`. §27.3.1 states why the precedent does not transfer, and the decisive argument is a concrete user-visible failure rather than a taxonomy preference: §21.20 requires an unrecognized *header* to be ignored while the **message is processed and acked**, so a call offer to a peer without call support would be acked as delivered and rendered as an empty chat message. §2.3's unknown-**kind** rule (ignore, MUST NOT ack) produces exactly the right outcome instead. | **Rationale, recorded normatively.** No byte differs from what C-01 already specifies; what is added is the record of why, so a future revision that proposes collapsing the kind back into metadata has to answer the argument rather than rediscover it. | Writing §27.3 against §24's precedent and §21.20's forward-compatibility rule, and following what a non-implementing peer actually does with each of the two carriers. |
 | **C-03** | **Track purpose is SDP-native (`a=content:`, RFC 4796) with no DMTAP field, and the implementation cost is disclosed rather than designed around.** An application-level `tracks` map in `RtcSignal` was the obvious alternative and was rejected on §24.4.2's duplicated-fact reasoning, on atomicity with renegotiation, and on the §27.1 requirement that this profile be implementable against an SFU that does not know DMTAP exists. The cost — that no browser API sets the attribute, so endpoints must write and read it in SDP, and that engine tolerance of the added line is unverified (§27.13 item 4) — is stated in §27.6.2 rather than mitigated by adding the field back as a "fallback", which would have reintroduced the two-sources-of-truth problem the decision exists to avoid. | **NORMATIVE — behavioural rule; no DMTAP wire bytes.** `RtcSignal` carries no track-purpose key and none is reserved for one. What is newly non-conformant is an implementation that carries purpose anywhere but SDP, or ignores `a=content:` in a remote description (RTC-13). | Following the mandate to prefer the SDP-native route, then testing it against the case that usually forces an application field: an engine that rejects the munged description. The answer is to fix the engine path, because a subordinate fallback field is still a second source of truth. |
 | **C-04** | **The SFU capacity ceiling is expressed in tracks and bitrate, never in participants, and `advisory_max_participants` is explicitly not an admission basis.** A `max_participants` capability is the intuitive design and is wrong for a specific, checkable reason: a screen share is typically the highest-bitrate stream in a conference, so six participants with two shares can cost several times six on camera, and a headcount does not bound the resource that runs out. §27.7.4 makes keys 1–4 the admission basis, keeps key 5 as display-only, requires the check to re-run on **every** renegotiation (because renegotiation is how a share is added, RTC-16), and pins the auto-detection rule: measurement MAY inform the next published announcement, MUST NOT override a published bound, because a call that degrades mid-session is worse than one refused up front. | **NORMATIVE — new object shape (`RtcCapacity`) carried in an existing `system` MOTE.** No new signed structure: the advertisement rides §10.2's capability announcement, so it inherits `Payload.sig` and the monotonic `caps_version` rollback protection (`0x030A`) unchanged. | Working the screen-share case through a headcount bound and finding it wrong in both directions — too permissive for a call with shares, too restrictive for an audio-only one. |
 | **C-05** | **§27.11 item 4 is stated as a MUST: SFrame keys are scoped to the MLS group, not to the call's participants.** Because `sframe_epoch_secret` is an exporter output of the **group** epoch, any current member can derive it whether or not they joined the call — so excluding someone from a call is a forwarding/UX property, not a cryptographic one. The remedy (an MLS group over exactly the intended participants) is required of the application rather than automated, because a silently auto-created sub-group is a membership change the user never saw. | **NORMATIVE — behavioural rule; no wire bytes.** No CDDL, label or code changes. What is newly required is that an application needing cryptographic exclusion create the group explicitly, and that no implementation present call-participant exclusion as a confidentiality boundary. | Tracing who can compute the §27.5.1 exporter output, rather than who the SFU forwards to — the two sets differ, and the difference is invisible from the call UI. |

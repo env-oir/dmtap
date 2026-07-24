@@ -74,7 +74,7 @@ and on `reject` MUST map it to the named §21 error code with that code's `Actio
 | **Private** — KT-v1 hardening (`KTV1`) | 4 | 0 | 0 | 4 | 0 |
 | **Core** — device attestation (`ATTEST`) | 2 | 0 | 0 | 2 | 0 |
 | **Core** — profile / avatar (`PROFILE`) | 2 | 0 | 0 | 2 | 0 |
-| **Optional** — push wake-signaling (`PUSH`) | 2 | 0 | 0 | 2 | 0 |
+| **Optional** — push wake-signalling (`PUSH`) | 2 | 0 | 0 | 2 | 0 |
 | **Private** — Bootstrap mix profile (`MIXPROF`) | 5 | 0 | 0 | 3 | 2 |
 | **Private** — derived mix-fleet view (`FLEET`) | 3 | 0 | 0 | 3 | 0 |
 | **Private** — guards & path diversity (`GUARD`) | 3 | 0 | 0 | 3 | 0 |
@@ -130,7 +130,7 @@ incl. the idempotent-refetch and fork/equivocation branches).
 The 281 `construction-todo` cases give the exact recipe and expected §21 error for every remaining
 normative branch — the full §2.7 pipeline, identity/KT fail-closed, the higher levels, the
 hardening families (`DENIABLE`/`ORG`/`KTV1`/`ATTEST`), the `PROFILE` display-data guards, the
-pluggable-resolver guards (`RESOLVE`), the optional `PUSH` wake-signaling guards, the `FILE`
+pluggable-resolver guards (`RESOLVE`), the optional `PUSH` wake-signalling guards, the `FILE`
 durability guards, the anti-drift families
 (`MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE`), the gateway families
 (`GWOPS`/`GWSMTP`/`GWATT`/`GWNAME`/`GWFLOOR`/`GWLEG`), the remaining `PUB` fail-closed rows not yet
@@ -483,7 +483,7 @@ The self-asserted, signed display object (`display_name` / name parts / avatar).
 
 ---
 
-## Push wake-signaling (§4.9, OPTIONAL) — `PUSH`
+## Push wake-signalling (§4.9, OPTIONAL) — `PUSH`
 
 The optional wake layer (§4.9): a device registers a `PushSubscription` with its own node, and the
 node emits a content-free, sender-blind `WakePing`. Push is **not required for Core** (§10.3) — these

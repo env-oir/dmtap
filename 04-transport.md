@@ -299,13 +299,13 @@ network need no infrastructure at all.
   Supporting them would mean writing a custom libp2p `Transport` — flagged as future work, not
   a v0 claim.
 
-## 4.9 Push wake-signaling (optional)
+## 4.9 Push wake-signalling (optional)
 
 A mobile device sleeps its radios and its KOTVA process to save battery; while asleep it cannot
 hold the mesh connection that §4.3 delivery assumes. Today the only way to wake such a device is
 the platform's push service — Apple **APNs** or Google **FCM** — which sees, for every message,
 **which device was woken and when**. That is a centralised metadata choke point squarely against
-KOTVA's goals (§6). KOTVA therefore defines an **optional**, open wake-signaling layer that
+KOTVA's goals (§6). KOTVA therefore defines an **optional**, open wake-signalling layer that
 (a) prefers self-hostable, decentralised push transports, (b) carries **no** content and **no**
 sender identity in the wake signal, and (c) is originated by the **user's own node**, so no third
 party ever sees the social graph. It **reuses existing standards** rather than inventing a push

@@ -32,7 +32,7 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **RFC 6962** | Certificate Transparency (Merkle log, STH, inclusion/consistency proofs) | the profile for key-transparency `SignedTreeHead`/`InclusionProof`/`ConsistencyProof` (§3.5, §18.4.9–§18.4.11) |
 | **UCAN v1.0** (Fission et al.) | User-Controlled Authorization Networks — chained, attenuable capability tokens | the profile for the delegated `CapabilityToken` (§13.5, §18.7.3) |
 | **XEdDSA / VXEdDSA** (Perrin, 2016) | Ed25519↔X25519 signing/DH from one key | **historical:** earlier drafts derived the deniable X3DH identity DH key from `IK` via XEdDSA; **retired** in favour of a dedicated `IK`-certified X25519 `idk` so `IK` stays sign-only and hardware-buildable (§5.2.1(a)). No longer used by DMTAP. |
-| **RFC 8949** | Concise Binary Object Representation (CBOR) | wire serialization; **deterministic (core) encoding, §4.2** (all objects) |
+| **RFC 8949** | Concise Binary Object Representation (CBOR) | wire serialisation; **deterministic (core) encoding, §4.2** (all objects) |
 | **FIPS 203** | ML-KEM (Module-Lattice KEM) | PQ KEM (suite 0x02, §1.1) |
 | **FIPS 204** | ML-DSA (Module-Lattice signatures) | PQ signatures (suite 0x02, §1.1) |
 | **BLAKE3** | BLAKE3 cryptographic hash | content addressing (§2.2), hash-agile prefix; not FIPS/IETF-standardised — SHA-256 fallback |
@@ -46,7 +46,7 @@ where DMTAP narrows or extends a referenced spec, the DMTAP text is normative fo
 | **RFC 1035 / 9460** | DNS / SVCB & HTTPS RRs | `name→key` records; underscore-scoped TXT + SVCB (§3.2) |
 | **RFC 6376** | DomainKeys Identified Mail (DKIM) | gateway signs-as-domain via delegated selector (§7.3) |
 | **RFC 8461 / 7672** | MTA-STS / DANE (SMTP TLS) | enforce TLS on the legacy leg (§7) |
-| **RFC 8030** | Generic Event Delivery Using HTTP Push (Web Push) | delivery transport for the optional wake-signaling layer (§4.9) |
+| **RFC 8030** | Generic Event Delivery Using HTTP Push (Web Push) | delivery transport for the optional wake-signalling layer (§4.9) |
 | **RFC 8291** | Message Encryption for Web Push | payload encryption of the content-free `WakePing` token — `aes128gcm` under the device push key + auth secret (§4.9, §18.5.6, §18.9.15) |
 | **RFC 8292** | Voluntary Application Server Identification (VAPID) for Web Push | the node authenticates to a Web Push endpoint as the VAPID application server (§4.9.3) |
 | **UnifiedPush** | UnifiedPush specification (`unifiedpush.org`) | the user-chosen, self-hostable distributor — the decentralised push provider preferred where the platform allows (§4.9.3) |

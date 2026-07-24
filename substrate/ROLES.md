@@ -1,11 +1,11 @@
 # Substrate Capabilities ③ + ⑥ — Transport & Infrastructure Roles / Wake
 
 > **Status:** additive profile of the core specification. This document presents the DMTAP
-> **infrastructure roles** — announce/resolve, signaling, circuit relay, short-TTL content-blind
+> **infrastructure roles** — announce/resolve, signalling, circuit relay, short-TTL content-blind
 > mailbox, cache/pin, and **wake** — as an **open, key-addressed protocol** that any product may adopt
 > without reading the mail spec. Together these roles profile two of the waist's canonical six
 > capabilities ([`README.md § 2`](README.md#2-the-six-capabilities)): **③ Transport** (reach anyone by
-> key, online, offline, or over a mesh — announce/resolve, signaling, circuit relay, mailbox) and
+> key, online, offline, or over a mesh — announce/resolve, signalling, circuit relay, mailbox) and
 > **⑥ Roles & Wake** (the open, key-addressed role vocabulary itself, plus content-free wake). It
 > restates no normative bytes: the `LocationRecord` (§4.2), the reachability ladder (§4.3), the
 > relay-mailbox (§14.3, §14.5), the wake objects (§4.9, §18.5.5–6), and their fail-closed rules (§21) are
@@ -37,7 +37,7 @@ needs, à la carte:
 | Role | What it provides | Key-addressed by | Normative home | Profiles |
 |------|------------------|------------------|----------------|----------|
 | **Announce / Resolve** | key → current location | the served identity's `IK` | §4.2 | IPNS-pattern signed value records, Kademlia |
-| **Signaling** | coordinate a direct connection (hole-punch) | both peers' `IK`s | §4.3 (rung 2) | libp2p DCUtR, rendezvous |
+| **Signalling** | coordinate a direct connection (hole-punch) | both peers' `IK`s | §4.3 (rung 2) | libp2p DCUtR, rendezvous |
 | **Circuit relay** | content-blind ciphertext relay for a NAT'd peer | the relayed peer's `IK` | §4.3 (rung 3), §14.5 | libp2p Circuit Relay v2 |
 | **Mailbox** | short-TTL content-blind offline buffer | the offline identity's `IK` | §14.3, §14.5 | Chatmail relay-mailbox |
 | **Cache / pin** | serve/retain content-addressed objects | content address (+ publisher `IK`) | §22.5, §5.5 | IPFS-style pinning, HTTP caching |
@@ -110,20 +110,20 @@ LocationRecord {
 
 ---
 
-## 3. Signaling — coordinate a direct connection (profile of §4.3 rung 2)
+## 3. Signalling — coordinate a direct connection (profile of §4.3 rung 2)
 
 Two nodes that are both online can usually reach each other **directly** with a coordinated hole-punch —
 no relay carries their traffic, only the *coordination*. This is rung 2 of the reachability ladder (§4.3):
 
-- **Direct first (rung 1).** IPv6, or IPv4 with port-forward/UPnP — no signaling needed.
+- **Direct first (rung 1).** IPv6, or IPv4 with port-forward/UPnP — no signalling needed.
 - **Hole-punch (rung 2).** **libp2p DCUtR** between two nodes coordinates simultaneous connection attempts
-  so both NATs open; the signaling node relays only the coordination messages, never the payload. Always
+  so both NATs open; the signalling node relays only the coordination messages, never the payload. Always
   succeeds for two always-on boxes. A **rendezvous** point (a known node both peers can reach) is the
   meeting place that makes first contact possible without a hostile DHT lookup (§4.2 resolution order).
-- As IPv6 spreads, rungs 1–2 dominate and the relaying roles fade (§4.3) — signaling is the role that lets
+- As IPv6 spreads, rungs 1–2 dominate and the relaying roles fade (§4.3) — signalling is the role that lets
   the network need *less* infrastructure over time, not more.
 
-A product adopts signaling to get peer-to-peer connectivity between its replicas or clients (e.g. two
+A product adopts signalling to get peer-to-peer connectivity between its replicas or clients (e.g. two
 [`SYNC.md`](SYNC.md) replicas reconciling directly) without routing their bytes through a third party.
 
 ---
@@ -224,7 +224,7 @@ Every role above obeys the same discipline, and a product adopting any of them M
 2. **Any node may serve any role; no privileged node types.** Every role is a capability of the same
    binary, advertised by a token (§10.2). A role a node does not advertise is filled by another node; no
    node's absence breaks the network.
-3. **The middle holds no durable user data (§0.5).** Relay, signaling, mailbox, and wake carry or hold data
+3. **The middle holds no durable user data (§0.5).** Relay, signalling, mailbox, and wake carry or hold data
    only transiently (in-flight ciphertext, short-TTL buffer, a wake token). Durability lives at edges. The
    one exception is *pinning*, which is a deliberate, paid durability act at a holder, not incidental
    middle-state.
@@ -246,7 +246,7 @@ Every role above obeys the same discipline, and a product adopting any of them M
 
 A sleeping mobile device cannot hold a mesh connection, so it must be **woken** to reconnect and sync. The
 naive path — Apple **APNs** / Google **FCM** — sees, for every message, *which device was woken and when*:
-a centralised metadata choke point (§4.9). The **Wake** capability is an **optional, open wake-signaling
+a centralised metadata choke point (§4.9). The **Wake** capability is an **optional, open wake-signalling
 layer** that carries **no content and no sender identity**, is **originated by the user's own node**, and
 **reuses existing standards** rather than inventing a push protocol. It is part of Capability ⑥ (Roles &
 Wake) because *needing to be woken* is a product-facing property a device may want even when it runs none

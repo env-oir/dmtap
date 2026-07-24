@@ -270,7 +270,7 @@ retrieval ceremony that would remove it — this is the priced-in cost of not pa
 8. **`redact`/`expires` are unenforceable** against a non-compliant recipient that already holds
    the plaintext — they are cooperative hints, not guarantees (relevant to any "right to
    erasure" framing).
-9. **Push wake-signaling on platforms that mandate a push service.** The wake-signaling layer
+9. **Push wake-signalling on platforms that mandate a push service.** The wake-signalling layer
    (§4.9) is content-free, sender-blind, node-originated, and RFC 8291-encrypted, and on
    Android / desktop / web it can run **fully open and self-hosted** over UnifiedPush or Web Push
    (§4.9.3) — a push relay there sees nothing but a **self-edge** ("this node woke its own

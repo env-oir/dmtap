@@ -425,7 +425,7 @@ automated pass because a blind replace corrupts them. Counts are over tracked `*
 
 | Word | Count | Why it needs a human |
 |---|---:|---|
-| `signaling` | 70 | **Signaling** is a substrate *role name* (`substrate/ROLES.md` §3). Prose → "signalling"; the role label must move consistently everywhere or not at all — same all-or-nothing rule as the doctrine phrase. |
+| `signaling` | 70 | **Signalling** is a substrate *role name* (`substrate/ROLES.md` §3). Prose → "signalling"; the role label must move consistently everywhere or not at all — same all-or-nothing rule as the doctrine phrase. |
 | `license` | 62 | CDDL field key and SPDX term (frozen); prose noun → "licence"; prose verb stays "license". Needs per-occurrence judgement. |
 | `practice` | 18 | The noun is identical in British English. Only a *verb* use becomes "practise". Most hits are correct already. |
 | `serialization` | 17 | Inside an RFC 8949 quotation and in `tls_serialize` (both frozen); other prose uses → "serialisation". |

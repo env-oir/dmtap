@@ -19,7 +19,7 @@ The suite has two coupled artifacts plus this guide:
 
 `SUITE.md` catalogues **358** numbered cases and `suite.json` mirrors all **358** — the two are **in
 sync** (the wave-2 deniable-1:1 and KT-v1-hardening families, the `PROFILE` display-data cases, the
-optional `PUSH` wake-signaling cases, the `FILE` durability cases, the wave-3 device-cluster
+optional `PUSH` wake-signalling cases, the `FILE` durability cases, the wave-3 device-cluster
 `SYNC`, `ALIAS`, and gateway-alias `GWALIAS` families, the wave-4 DMTAP-PUB `PUB` family, the
 CAD/artifact profile `CAD` family, the wave-5 `VIDEO` family, the wave-6 anti-drift families
 `MIXPROF`/`FLEET`/`GUARD`/`LOC`/`FLOOR`/`FAILCLASS`/`GWROLE` and the gateway families

@@ -171,7 +171,7 @@ connectivity and coordinators become *available* for global reach — never *req
 - The **async world** (mail, chat, social, commerce, files) composes from MOTE + PUB + SYNC.
 - The **real-time world** (voice, video, live streaming) rides a **parallel media plane**
   (WebRTC) that reuses the substrate's identity, keys (MLS→SFrame), roles, coordination, and
-  signaling — but **not** the store-and-forward object model. Only the media *bytes* are on
+  signalling — but **not** the store-and-forward object model. Only the media *bytes* are on
   their own track, which is correct: real-time must not be forced through MOTE delivery.
 - Scaling calls is a **media-relay role** (`blind-routing` — SFrame E2E-encrypts the media
   *payload*, though the relay still reads routing metadata to forward, RFC 9605), a pool anyone

@@ -39,7 +39,7 @@ parallel one.* Concretely:
 - **Sync** → `SYNC.md`: the signed CRDT op algebra (`SyncOp`, HLC total order, the 9 op kinds).
   Carts across a buyer's devices and inventory across a seller's replicas use **this**, not a
   bespoke CRDT.
-- **Infra Roles** → `ROLES.md`: announce/resolve (`LocationRecord`), signaling, circuit relay,
+- **Infra Roles** → `ROLES.md`: announce/resolve (`LocationRecord`), signalling, circuit relay,
   short-TTL content-blind mailbox, cache/pin. Reachability for NAT'd stores/buyers.
 - **Wake** → `ROLES.md §8`: content-free sender-blind push (`PushSubscription`/`WakePing`) to wake
   a sleeping seller node when an order arrives.
@@ -283,7 +283,7 @@ ones you find, cited to the section that raises them):
 - **§18.7** — `CONFIRM_TIMEOUT` protocol-parameter vs offer-level term (leaning protocol floor +
   offer-level extension upward); does a dispute pause `CONFIRM_TIMEOUT`; does `lost` need a distinct
   `disputed-lost`.
-- **§6 (from §21.10)** — name the intra-replica serialization requirement; state the **non-Byzantine
+- **§6 (from §21.10)** — name the intra-replica serialisation requirement; state the **non-Byzantine
   failure model as a hard boundary** (bounded counters protect a seller from their own concurrency,
   not a buyer from a dishonest seller); dead-replica right reclamation as an explicit fallible
   decision; who chooses the recipient when transfer names one at N≥3.

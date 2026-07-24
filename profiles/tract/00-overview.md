@@ -65,7 +65,7 @@ spine on top.
 | ① | **Identity** — keypair `IK`, `DeviceCert`, DNS `name→key`, key transparency, 8-word key-name | seller, buyer, courier, distributor and gateway identity (§1) |
 | ② | **Feeds & Blobs** — signed append-only per-author feeds, plaintext content-addressed blobs, servable over plain HTTPS | catalogues, offers, rate cards, capacity, reviews (§2, §8, §10) |
 | ③ | **Sync** — signed CRDT op algebra, range-Merkle reconciliation | carts across a buyer's devices, inventory across a seller's replicas (§6) |
-| ④ | **Infrastructure Roles** — announce/resolve, signaling, circuit relay, short-TTL content-blind mailbox, cache/pin | reachability for stores and buyers behind NAT (§1.5) |
+| ④ | **Infrastructure Roles** — announce/resolve, signalling, circuit relay, short-TTL content-blind mailbox, cache/pin | reachability for stores and buyers behind NAT (§1.5) |
 | ⑤ | **Wake** — content-free, sender-blind push | waking a sleeping seller node when an order arrives (§1.5) |
 
 Sealed order messages (§7) ride the DMTAP **MOTE** (its §2) and its message kinds. TRACT
